@@ -21,6 +21,7 @@
     "create-seamlessauth": "index.js"
   },
   "dependencies": {
-    "degit": "^2.8.4"
+    "degit": "^2.8.4",
+    "selfsigned": "^3.0.1"
   }
 }
