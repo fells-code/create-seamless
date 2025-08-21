@@ -27,7 +27,7 @@ try {
   if (!fs.existsSync(certDir)) {
     fs.mkdirSync(certDir);
   }
-  const pems = selfsigned.generate(null, { days: 365 });
+  const pems = selfsigned.generate(null, { days: 365, keySize: 2048 });
   fs.writeFileSync(path.join(certDir, "cert.pem"), pems.cert);
   fs.writeFileSync(path.join(certDir, "key.pem"), pems.private);
 
