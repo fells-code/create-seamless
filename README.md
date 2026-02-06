@@ -1,79 +1,136 @@
 # create-seamless
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License: AGPL-3](https://img.shields.io/badge/License-AGPL3-yellow.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/create-seamless.svg?style=flat)](https://www.npmjs.com/package/create-seamless)
 
-🚀 A simple way to bootstrap a new project with [SeamlessAuth](https://seamlessauth.com).  
-This CLI helps you quickly spin up a React + Vite starter template (with HTTPS preconfigured) so you can start building secure apps right away.
+`create-seamless` is a project scaffolding tool for building applications with **Seamless Auth**, an open source, passwordless authentication system.
 
-## ✨ Features
+It provisions a local, production-shaped development environment that can include:
 
-- 📦 **One command setup** with `npx create-seamless <project-name>`
-- 🔒 **HTTPS ready** out of the box (self-signed certs auto-generated)
-- ⚡ **Vite + React starter** integrated with SeamlessAuth
-- 🧹 Automatic cleanup on errors (no half-created projects)
-- 🔮 Future support for:
-  - API server scaffolding
-  - Mode flags (`--web`, `--server`)
-  - Multiple starter templates
+- The Seamless Auth open source server
+- A starter web application
+- A starter API server
 
-## 🚀 Quick Start
+The generated project is fully local and requires no hosted services or external accounts to run.
 
-```bash
-# Create a new project
-npx create-seamless my-app
+---
 
-cd my-app
-npm install
-npm run dev
-```
+## What this creates
 
-Once the dev server starts, open https://localhost:5001.
-Your browser may ask you to trust the local certificate the first time.
+Depending on the flags provided, `create-seamless` scaffolds a local project with the following structure:
 
-## 🛠 Requirements
-
-- Node.js v20+
-- npm or pnpm
-
-## ⚙️ Options (coming soon)
-
-We plan to add support for additional flags to customize your setup:
-
-```bash
-# React web starter (default)
-npx create-seamless my-app --react
-
-# Include a working web server for backend validations
-npx create-seamless my-app --server
-```
-
-## 📂 Project Structure
-
-After running the command, you’ll get:
-
-```graphql
+```text
 my-app/
-├─ .cert/               # Self-signed certificates for local HTTPS
-├─ src/                 # React source code
-├─ vite.config.js       # Preconfigured with HTTPS + SeamlessAuth
-├─ package.json
+├─ auth/        # Seamless Auth OSS server
+├─ web/         # Starter web application (optional)
+├─ api/         # Starter API server (optional)
 └─ README.md
 ```
 
-## 🔒 HTTPS Certificates
+Each service is independently runnable and preconfigured to work together using local URLs and environment variables.
 
-The CLI automatically generates self-signed certificates in .cert/.
-These are used only for local development. If your browser warns you, simply trust the certificate.
+The intended development workflow is to run each service in its own terminal:
 
-## 🧹 Cleanup on Errors
+```bash
+# terminal 1
+cd auth && npm run dev
 
-If the setup process fails at any step, create-seamless will automatically remove the partially created project folder to avoid clutter.
+# terminal 2
+cd api && npm run dev
 
-## 🤝 Contributing
+# terminal 3
+cd web && npm run dev
+```
 
-We welcome contributions!
+---
 
-Report issues via [GitHub Issues](https://seamlessauth.com/create-seamless/issues)
+## Usage
 
-Open PRs for bug fixes or new features
+Run via `npx`:
+
+```bash
+npx create-seamless my-app
+```
+
+By default, this scaffolds the full local stack:
+
+- Seamless Auth server
+- Web application
+- API server
+
+---
+
+## CLI options
+
+| Flag          | Description                                  |
+| ------------- | -------------------------------------------- |
+| `--auth`      | Include the Seamless Auth open source server |
+| `--web`       | Include the starter web application          |
+| `--api`       | Include the starter API server               |
+| `--install`   | Automatically install dependencies           |
+| `--no-git`    | Skip git initialization                      |
+| `--auth-port` | Auth server port (default: 3000)             |
+| `--api-port`  | API server port (default: 4000)              |
+| `--web-port`  | Web dev server port (default: 5173)          |
+
+If no component flags are provided, all components are included.
+
+---
+
+## Included projects
+
+`create-seamless` pulls directly from the following open source repositories:
+
+- Seamless Auth Server
+  [https://github.com/fells-code/seamless-auth-api](https://github.com/fells-code/seamless-auth-api)
+
+- Seamless Auth React Starter
+  [https://github.com/fells-code/seamless-auth-starter-react](https://github.com/fells-code/seamless-auth-starter-react)
+
+- Seamless Auth API Starter
+  [https://github.com/fells-code/seamless-auth-starter-express](https://github.com/fells-code/seamless-auth-starter-express)
+
+Each repository can be used independently, but `create-seamless` wires them together for local development out of the box.
+
+---
+
+## Documentation
+
+Full documentation for Seamless Auth, including architecture, configuration, and deployment guidance, is available at:
+
+[https://seamlessauth.com/docs](https://seamlessauth.com/docs)
+
+---
+
+## Philosophy
+
+Seamless Auth is designed around:
+
+- Passwordless authentication only
+- Embedded auth (no redirects or callbacks)
+- Self-hosted, open source foundations
+- Production-shaped local development
+- Minimal assumptions and explicit configuration
+
+`create-seamless` exists to make getting started with this model straightforward and repeatable.
+
+---
+
+## Requirements
+
+- Node.js 18 or newer
+- npm or pnpm
+
+---
+
+## License
+
+**AGPL-3.0-only** © 2026 Fells Code LLC
+
+This license ensures:
+
+- transparency of security-critical code
+- freedom to self-host and modify
+- sustainability of the managed service offering
+
+See [`LICENSE`](./LICENSE) for details.

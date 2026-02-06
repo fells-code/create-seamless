@@ -1,7 +1,7 @@
 {
   "name": "create-seamless",
   "version": "0.0.2",
-  "description": "The starter script for Seamless Auth + AI",
+  "description": "The starter script for Seamless Auth",
   "homepage": "https://github.com/fells-code/create-seamless#readme",
   "bugs": {
     "url": "https://github.com/fells-code/create-seamless/issues"
@@ -10,8 +10,8 @@
     "type": "git",
     "url": "git+https://github.com/fells-code/create-seamless.git"
   },
-  "license": "MIT",
-  "author": "Brandon Corbett <brandon.corbett@fellscode.com>",
+  "license": "AGPL-3.0-only",
+  "author": "Fells Code, LLC",
   "type": "module",
   "main": "index.js",
   "scripts": {
@@ -21,7 +21,10 @@
     "create-seamlessauth": "index.js"
   },
   "dependencies": {
-    "degit": "^2.8.4",
-    "selfsigned": "^3.0.1"
+    "adm-zip": "^0.5.16"
+  },
+  "devDependencies": {
+    "@types/adm-zip": "^0.5.7",
+    "@types/node": "^24.10.1"
   }
 }
