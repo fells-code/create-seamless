@@ -14,6 +14,12 @@
   "author": "Fells Code, LLC",
   "type": "module",
   "main": "index.js",
+  "files": [
+    "index.js",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
