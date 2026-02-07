@@ -13,6 +13,34 @@ const streamPipeline = promisify(pipeline);
 const MIN_NODE_MAJOR = 18;
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 
+function printHelp() {
+  console.log(`
+create-seamless
+
+Scaffold a local Seamless Auth development environment.
+
+Usage:
+  npx create-seamless [project-name] [options]
+
+Options:
+  --auth           Include the Seamless Auth server
+  --api            Include the Express API example
+  --web            Include the React web application
+  --no-git         Skip git initialization
+
+  --auth-port <n>  Auth server port (default: 5312)
+  --api-port <n>   API server port (default: 3000)
+  --web-port <n>   Web server port (default: 5173)
+
+  -h, --help       Show this help message
+
+If no component flags are provided, all components are included.
+
+Docs:
+  https://docs.seamlessauth.com
+`);
+}
+
 if (nodeMajor < MIN_NODE_MAJOR) {
   console.error(`
 ❌ Seamless requires Node ${MIN_NODE_MAJOR}+.
@@ -24,6 +52,11 @@ Upgrade at https://nodejs.org
 }
 
 const args = process.argv.slice(2);
+
+if (args.includes("-h") || args.includes("--help")) {
+  printHelp();
+  process.exit(0);
+}
 const projectName = args.find((a) => !a.startsWith("--")) ?? "seamless-app";
 
 const hasFlag = (flag) => args.includes(`--${flag}`);
@@ -35,7 +68,6 @@ const getFlag = (flag, fallback) => {
 const includeAuth = hasFlag("auth");
 const includeWeb = hasFlag("web");
 const includeApi = hasFlag("api");
-const installDeps = hasFlag("install");
 const skipGit = hasFlag("no-git");
 
 const authPort = getFlag("auth-port", "5312");
@@ -71,15 +103,64 @@ It is designed for development environments where you want:
 
 \`\`\`text
 .
-├─ auth/        # Seamless Auth open source server
-├─ api/         # Backend API server (optional)
-├─ web/         # Frontend web application (optional)
+├─ auth/                # Seamless Auth open source server
+├─ api/                 # Backend API server (optional)
+├─ web/                 # Frontend web application (optional)
+├─ Docker-compose.yml   # Docker compose for one command spin up of dev environment
 └─ README.md
 \`\`\`
 
 ---
 
 ## Running the stack
+
+### Running with Docker (optional)
+
+This project includes a Docker Compose configuration that allows you to run the
+entire Seamless Auth stack locally with a single command.
+
+### Requirements
+
+* Docker
+* Docker Compose
+
+### Start the stack
+
+From the project root, run:
+
+\`\`\`bash
+docker compose up
+\`\`\`
+
+This will start the following services in development mode:
+
+* Postgres database
+* Seamless Auth server
+* API server
+* Web UI
+
+All services are configured with hot reload. Changes to the source code will be
+picked up automatically.
+
+### Access the application
+
+Once all services are running, open:
+
+\`\`\`
+http://localhost:5001
+\`\`\`
+
+This is the main entry point for the web application.
+
+### Stopping the stack
+
+To stop all services:
+
+\`\`\`bash
+docker compose down
+\`\`\`
+
+This will shut down all containers while preserving the local database volume.
 
 Open separate terminals and run each service independently.
 
@@ -90,7 +171,7 @@ cd auth
 npm run dev
 \`\`\`
 
-Default port: \`3000\`
+Default port: \`5312\`
 
 ---
 
@@ -101,7 +182,7 @@ cd api
 npm run dev
 \`\`\`
 
-Default port: \`4000\`
+Default port: \`3000\`
 
 ---
 
@@ -112,7 +193,7 @@ cd web
 npm run dev
 \`\`\`
 
-Default port: \`5173\`
+Default port: \`5001\`
 
 ---
 
@@ -143,6 +224,64 @@ This generated project inherits the licenses of the open source components it
 includes.
 
 Review each subproject for its specific license before deploying to production.
+`;
+
+const GENERATED_DOCKER_COMPOSE = `
+version: "3.9"
+
+services:
+  db:
+    image: postgres:16
+    container_name: seamless-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: seamless
+      POSTGRES_PASSWORD: seamless
+      POSTGRES_DB: seamless
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  auth:
+    container_name: seamless-auth
+    build: ./auth
+    ports:
+      - "5312:5312"
+    env_file:
+      - ./auth/.env
+    volumes:
+      - ./auth:/app
+    depends_on:
+      - db
+
+  api:
+    container_name: seamless-api
+    build: ./api
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./api/.env
+    volumes:
+      - ./api:/app
+    depends_on:
+      - auth
+      - db
+
+  web:
+    container_name: seamless-web
+    build: ./web
+    ports:
+      - "5001:5001"
+    env_file:
+      - ./web/.env
+    volumes:
+      - ./web:/app
+    depends_on:
+      - auth
+      - api
+
+volumes:
+  pgdata:
 `;
 
 function writeEnv(dir, values) {
@@ -202,8 +341,8 @@ async function downloadRepo(repo, dest) {
       VERSION: "1.0.0",
       APP_NAME: "Seamless Auth Example",
       APP_ID: "local-dev",
-      APP_ORIGIN: "http://localhost:3000",
-      ISSUER: "http://localhost:5312",
+      APP_ORIGIN: `http://localhost:${apiPort}`,
+      ISSUER: `http://localhost:${authPort}`,
 
       AUTH_MODE: "server",
       DEMO: "true",
@@ -223,7 +362,7 @@ async function downloadRepo(repo, dest) {
       JWKS_ACTIVE_KID: "dev-main",
 
       RPID: "localhost",
-      ORIGINS: "http://localhost:3000",
+      ORIGINS: `http://localhost:${apiPort}`,
     });
   }
 
@@ -234,7 +373,7 @@ async function downloadRepo(repo, dest) {
     await downloadRepo(REPOS.api, dir);
 
     writeEnv(dir, {
-      AUTH_SERVER_URL: `http://localhost${authPort}`,
+      AUTH_SERVER_URL: `http://localhost:${authPort}`,
       APP_ORIGIN: `http://localhost:${apiPort}`,
       COOKIE_SIGNING_KEY: randomBytes(32).toString("hex"),
       API_SERVICE_TOKEN: API_SERVICE_TOKEN,
@@ -263,14 +402,11 @@ async function downloadRepo(repo, dest) {
     execSync("git init", { cwd: root });
   }
 
-  if (installDeps) {
-    for (const dir of ["auth", "api", "web"]) {
-      const full = path.join(root, dir);
-      if (fs.existsSync(full)) {
-        console.log(`Installing deps in ${dir}...`);
-        execSync("npm install", { cwd: full, stdio: "inherit" });
-      }
-    }
+  if (AUTH && API && WEB) {
+    fs.writeFileSync(
+      path.join(root, "Docker-compose.yml"),
+      GENERATED_DOCKER_COMPOSE,
+    );
   }
 
   console.log(`
