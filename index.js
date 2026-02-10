@@ -72,7 +72,7 @@ const skipGit = hasFlag("no-git");
 
 const authPort = getFlag("auth-port", "5312");
 const apiPort = getFlag("api-port", "3000");
-const webPort = getFlag("web-port", "5173");
+const webPort = getFlag("web-port", "5001");
 
 const wantsSomething = includeAuth || includeWeb || includeApi;
 const AUTH = wantsSomething ? includeAuth : true;
@@ -246,11 +246,15 @@ services:
     container_name: seamless-auth
     build: ./auth
     ports:
-      - "5312:5312"
+      - "${authPort}:${authPort}"
     env_file:
       - ./auth/.env
+    environment:
+      - DB_HOST: db
+      - ISSUER=http://auth:${authPort}
     volumes:
       - ./auth:/app
+      - /app/node_modules
     depends_on:
       - db
 
@@ -258,11 +262,14 @@ services:
     container_name: seamless-api
     build: ./api
     ports:
-      - "3000:3000"
+      - "${apiPort}:${apiPort}"
     env_file:
       - ./api/.env
+    environment:
+      - AUTH_SERVER_URL=http://auth:${authPort}
     volumes:
       - ./api:/app
+      - /app/node_modules
     depends_on:
       - auth
       - db
@@ -271,11 +278,12 @@ services:
     container_name: seamless-web
     build: ./web
     ports:
-      - "5001:5001"
+      - "${webPort}:${webPort}"
     env_file:
       - ./web/.env
     volumes:
       - ./web:/app
+      - /app/node_modules
     depends_on:
       - auth
       - api
@@ -350,7 +358,11 @@ async function downloadRepo(repo, dest) {
       DEFAULT_ROLES: "user,betaUser",
       AVAILABLE_ROLES: "user,admin,betaUser,team",
 
-      DATABASE_URL: "postgres://myuser:mypassword@localhost:5432/seamless-auth",
+      DB_HOST: "localhost",
+      DB_PORT: "5432",
+      DB_NAME: "seamless-auth",
+      DB_USER: "myuser",
+      DB_PASSWORD: "mypassword",
 
       ACCESS_TOKEN_TTL: "30m",
       REFRESH_TOKEN_TTL: "1h",
@@ -374,10 +386,16 @@ async function downloadRepo(repo, dest) {
 
     writeEnv(dir, {
       AUTH_SERVER_URL: `http://localhost:${authPort}`,
-      APP_ORIGIN: `http://localhost:${apiPort}`,
+      APP_ORIGIN: `http://localhost:${webPort}`,
       COOKIE_SIGNING_KEY: randomBytes(32).toString("hex"),
       API_SERVICE_TOKEN: API_SERVICE_TOKEN,
-      DATABASE_URL: `postgres://myuser:mypassword@localhost:5432/seamless`,
+
+      DB_HOST: "localhost",
+      DB_PORT: "5432",
+      DB_NAME: "seamless-auth",
+      DB_USER: "myuser",
+      DB_PASSWORD: "mypassword",
+
       DB_NAME: "seamless",
       SQL_LOGGING: "false",
     });
@@ -428,6 +446,10 @@ Start development:
 
   # terminal 3
   cd web && npm i && npm run dev
+
+  or if using Docker
+
+  docker compose up
 
 Docs: https://docs.seamlessauth.com/docs
 Happy hacking. 🚀
