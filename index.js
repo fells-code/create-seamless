@@ -236,11 +236,17 @@ services:
     ports:
       - "5432:5432"
     environment:
-      POSTGRES_USER: seamless
-      POSTGRES_PASSWORD: seamless
-      POSTGRES_DB: seamless
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
+      - ./postgres_init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   auth:
     container_name: seamless-auth
@@ -250,13 +256,14 @@ services:
     env_file:
       - ./auth/.env
     environment:
-      - DB_HOST: db
-      - ISSUER=http://auth:${authPort}
+      DB_HOST: db
+      ISSUER=http://auth:${authPort}
     volumes:
       - ./auth:/app
       - /app/node_modules
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 
   api:
     container_name: seamless-api
@@ -266,13 +273,13 @@ services:
     env_file:
       - ./api/.env
     environment:
-      - AUTH_SERVER_URL=http://auth:${authPort}
+      AUTH_SERVER_URL=http://auth:${authPort}
     volumes:
       - ./api:/app
       - /app/node_modules
     depends_on:
-      - auth
-      - db
+      db:
+        condition: service_healthy
 
   web:
     container_name: seamless-web
@@ -358,9 +365,10 @@ async function downloadRepo(repo, dest) {
       DEFAULT_ROLES: "user,betaUser",
       AVAILABLE_ROLES: "user,admin,betaUser,team",
 
+      DB_LOGGING: "false",
       DB_HOST: "localhost",
       DB_PORT: "5432",
-      DB_NAME: "seamless-auth",
+      DB_NAME: "seamless_auth",
       DB_USER: "myuser",
       DB_PASSWORD: "mypassword",
 
@@ -374,7 +382,7 @@ async function downloadRepo(repo, dest) {
       JWKS_ACTIVE_KID: "dev-main",
 
       RPID: "localhost",
-      ORIGINS: `http://localhost:${apiPort}`,
+      ORIGINS: `http://localhost:${webPort}`,
     });
   }
 
@@ -386,13 +394,14 @@ async function downloadRepo(repo, dest) {
 
     writeEnv(dir, {
       AUTH_SERVER_URL: `http://localhost:${authPort}`,
-      APP_ORIGIN: `http://localhost:${webPort}`,
+      APP_ORIGIN: `http://localhost:${apiPort}`,
+      UI_ORIGIN: `http://localhost:${webPort}`,
       COOKIE_SIGNING_KEY: randomBytes(32).toString("hex"),
       API_SERVICE_TOKEN: API_SERVICE_TOKEN,
 
       DB_HOST: "localhost",
       DB_PORT: "5432",
-      DB_NAME: "seamless-auth",
+      DB_NAME: "seamless_api",
       DB_USER: "myuser",
       DB_PASSWORD: "mypassword",
 
@@ -426,6 +435,16 @@ async function downloadRepo(repo, dest) {
       GENERATED_DOCKER_COMPOSE,
     );
   }
+
+  const pgDir = path.join(root, "postgres_init");
+  fs.mkdirSync(pgDir);
+  fs.writeFileSync(
+    path.join(pgDir, "init.sql"),
+    `
+      CREATE DATABASE seamless_auth;
+      CREATE DATABASE seamless_api;
+    `,
+  );
 
   console.log(`
 ╔════════════════════════════════════════╗
