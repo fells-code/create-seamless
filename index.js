@@ -405,7 +405,6 @@ async function downloadRepo(repo, dest) {
       DB_USER: "myuser",
       DB_PASSWORD: "mypassword",
 
-      DB_NAME: "seamless",
       SQL_LOGGING: "false",
     });
   }
