@@ -13,6 +13,12 @@ const streamPipeline = promisify(pipeline);
 const MIN_NODE_MAJOR = 18;
 const nodeMajor = Number(process.versions.node.split(".")[0]);
 
+function ensureExecutable(filePath) {
+  if (fs.existsSync(filePath)) {
+    fs.chmodSync(filePath, 0o755);
+  }
+}
+
 function printHelp() {
   console.log(`
 create-seamless
@@ -434,6 +440,11 @@ async function downloadRepo(repo, dest) {
       path.join(root, "Docker-compose.yml"),
       GENERATED_DOCKER_COMPOSE,
     );
+  }
+
+  if (AUTH) {
+    const authScriptPath = path.join(root, "auth", "validateEnvs.sh");
+    ensureExecutable(authScriptPath);
   }
 
   const pgDir = path.join(root, "postgres_init");
