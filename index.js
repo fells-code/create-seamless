@@ -274,6 +274,7 @@ services:
       - ./api/.env
     environment:
       AUTH_SERVER_URL: http://auth:${authPort}
+      DB_HOST: db
     volumes:
       - ./api:/app
       - /app/node_modules
@@ -416,8 +417,8 @@ async function downloadRepo(repo, dest) {
     await downloadRepo(REPOS.web, dir);
 
     writeEnv(dir, {
-      VITE_AUTH_SERVER_URL: `http://localhost:${apiPort}`,
-      VITE_API_URL: `http://localhost:${apiPort}`,
+      VITE_AUTH_SERVER_URL: `http://localhost:${apiPort}/`,
+      VITE_API_URL: `http://localhost:${apiPort}/`,
       PORT: webPort,
     });
   }
