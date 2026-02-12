@@ -227,8 +227,6 @@ Review each subproject for its specific license before deploying to production.
 `;
 
 const GENERATED_DOCKER_COMPOSE = `
-version: "3.9"
-
 services:
   db:
     image: postgres:16
@@ -250,14 +248,16 @@ services:
 
   auth:
     container_name: seamless-auth
-    build: ./auth
+    build: 
+      context: ./auth
+      dockerfile: Dockerfile.dev
     ports:
       - "${authPort}:${authPort}"
     env_file:
       - ./auth/.env
     environment:
       DB_HOST: db
-      ISSUER=http://auth:${authPort}
+      ISSUER: http://auth:${authPort}
     volumes:
       - ./auth:/app
       - /app/node_modules
@@ -273,7 +273,7 @@ services:
     env_file:
       - ./api/.env
     environment:
-      AUTH_SERVER_URL=http://auth:${authPort}
+      AUTH_SERVER_URL: http://auth:${authPort}
     volumes:
       - ./api:/app
       - /app/node_modules
@@ -440,8 +440,8 @@ async function downloadRepo(repo, dest) {
   fs.writeFileSync(
     path.join(pgDir, "init.sql"),
     `
-      CREATE DATABASE seamless_auth;
-      CREATE DATABASE seamless_api;
+CREATE DATABASE seamless_auth;
+CREATE DATABASE seamless_api;
     `,
   );
 
