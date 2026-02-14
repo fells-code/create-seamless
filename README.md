@@ -1,6 +1,6 @@
 # create-seamless
 
-[![License: AGPL-3](https://img.shields.io/badge/License-AGPL3-yellow.svg)](LICENSE)
+[![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL3-yellow.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/create-seamless.svg?style=flat)](https://www.npmjs.com/package/create-seamless)
 
 `create-seamless` is a project scaffolding tool for building applications with **Seamless Auth**, an open source, passwordless authentication system.

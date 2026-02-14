@@ -10,7 +10,7 @@
     "type": "git",
     "url": "git+https://github.com/fells-code/create-seamless.git"
   },
-  "license": "AGPL-3.0",
+  "license": "AGPL-3.0-only",
   "author": "Fells Code, LLC",
   "type": "module",
   "main": "index.js",
