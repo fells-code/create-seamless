@@ -7,6 +7,7 @@ import { promisify } from "util";
 import { createWriteStream } from "fs";
 import AdmZip from "adm-zip";
 import { randomBytes } from "crypto";
+import net from "net";
 
 const streamPipeline = promisify(pipeline);
 
@@ -17,6 +18,19 @@ function ensureExecutable(filePath) {
   if (fs.existsSync(filePath)) {
     fs.chmodSync(filePath, 0o755);
   }
+}
+
+function isPortAvailable(port) {
+  return new Promise((resolve) => {
+    const server = net
+      .createServer()
+      .once("error", () => resolve(false))
+      .once("listening", () => {
+        server.close();
+        resolve(true);
+      })
+      .listen(port);
+  });
 }
 
 function printHelp() {
@@ -36,7 +50,7 @@ Options:
 
   --auth-port <n>  Auth server port (default: 5312)
   --api-port <n>   API server port (default: 3000)
-  --web-port <n>   Web server port (default: 5173)
+  --web-port <n>   Web server port (default: 5001)
 
   -h, --help       Show this help message
 
@@ -350,6 +364,16 @@ async function downloadRepo(repo, dest) {
   console.log(`\nCreating Seamless project: ${projectName}\n`);
   const API_SERVICE_TOKEN = randomBytes(32).toString("hex");
 
+  let dbHostPort = "5432";
+
+  if (!(await isPortAvailable(5432))) {
+    dbHostPort = "5433";
+    console.log(`
+⚠️  Port 5432 is already in use on your machine.
+   Using 5433 for Docker Postgres instead.
+`);
+  }
+
   if (AUTH) {
     const dir = path.join(root, "auth");
     fs.mkdirSync(dir);
@@ -374,7 +398,7 @@ async function downloadRepo(repo, dest) {
 
       DB_LOGGING: "false",
       DB_HOST: "localhost",
-      DB_PORT: "5432",
+      DB_PORT: dbHostPort,
       DB_NAME: "seamless_auth",
       DB_USER: "myuser",
       DB_PASSWORD: "mypassword",
@@ -407,7 +431,7 @@ async function downloadRepo(repo, dest) {
       API_SERVICE_TOKEN: API_SERVICE_TOKEN,
 
       DB_HOST: "localhost",
-      DB_PORT: "5432",
+      DB_PORT: dbHostPort,
       DB_NAME: "seamless_api",
       DB_USER: "myuser",
       DB_PASSWORD: "mypassword",
@@ -436,10 +460,12 @@ async function downloadRepo(repo, dest) {
   }
 
   if (AUTH && API && WEB) {
-    fs.writeFileSync(
-      path.join(root, "Docker-compose.yml"),
-      GENERATED_DOCKER_COMPOSE,
+    const compose = GENERATED_DOCKER_COMPOSE.replace(
+      '"5432:5432"',
+      `"${dbHostPort}:5432"`,
     );
+
+    fs.writeFileSync(path.join(root, "docker-compose.yml"), compose);
   }
 
   if (AUTH) {
@@ -480,6 +506,9 @@ Start development:
   or if using Docker
 
   docker compose up
+
+  If you already have Postgres running locally,
+  the generator may map Docker to port 5433 instead.
 
 Docs: https://docs.seamlessauth.com/docs
 Happy hacking. 🚀
