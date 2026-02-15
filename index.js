@@ -429,6 +429,7 @@ async function downloadRepo(repo, dest) {
       UI_ORIGIN: `http://localhost:${webPort}`,
       COOKIE_SIGNING_KEY: randomBytes(32).toString("hex"),
       API_SERVICE_TOKEN: API_SERVICE_TOKEN,
+      JWKS_KID: "dev-main",
 
       DB_HOST: "localhost",
       DB_PORT: dbHostPort,
