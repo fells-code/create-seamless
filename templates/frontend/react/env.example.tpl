@@ -1,2 +1,0 @@
-VITE_SEAMLESS_API=http://localhost:3000
-VITE_AUTH_MODE=server

@@ -1,5 +1,5 @@
 import { select, confirm } from "@clack/prompts";
-import { generateReactVite } from "../generators/frontend/react.js";
+import { generateReactStarter } from "../generators/frontend/react.js";
 
 export async function handleEmptyProject(context: any) {
   const shouldCreate = await confirm({
@@ -18,6 +18,6 @@ export async function handleEmptyProject(context: any) {
   });
 
   if (projectType === "react-vite") {
-    await generateReactVite(context);
+    await generateReactStarter(context);
   }
 }
