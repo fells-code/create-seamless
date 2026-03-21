@@ -7,7 +7,6 @@ import { generateAuthServer } from "../generators/auth/auth.js";
 import { configureApiEnv, configureWebEnv } from "../core/configure.js";
 import {
   configureAuthLocalEnv,
-  extractSharedFromExistingEnv,
   generateDockerCompose,
 } from "../generators/docker/docker.js";
 import { printSuccessOutput } from "../core/output.js";

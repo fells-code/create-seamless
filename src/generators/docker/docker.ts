@@ -143,7 +143,7 @@ async function authServiceDocker() {
   return {
     service: `
   auth:
-    image: ghcr.io/fells-code/seamless-auth-api:v0.1.4
+    image: ghcr.io/fells-code/seamless-auth-api:v0.1.5
     container_name: seamless-auth
     ports:
       - "5312:5312"
@@ -231,7 +231,7 @@ export function buildJWKSConfig() {
         keys: [
           {
             kid,
-            pem: publicKey.replace(/\n/g, "\\n"),
+            pem: publicKey,
           },
         ],
       },

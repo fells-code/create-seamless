@@ -21,13 +21,11 @@ BEHAVIOR
 
   Without a name:
     • If directory is empty → create a new project
-    • If directory has files → integrate SeamlessAuth
 
   npx create-seamless <project-name>
   
   With a name:
     • Creates a new directory
-    • Scaffolds a new project inside it
 
 ────────────────────────────────────────────
 
