@@ -59,7 +59,22 @@ export function printSuccessOutput(config: {
   } else {
     if (authMode === "local") {
       console.log(kleur.dim("# Auth server"));
-      console.log("  cd auth && npm install && npm run dev\n");
+
+      console.log(
+        kleur.yellow(
+          "  ⚠ Requires a local PostgreSQL instance running on localhost, port 5432\n",
+        ),
+      );
+
+      console.log("  cd auth");
+      console.log("  npm install\n");
+
+      console.log(kleur.dim("  # Initialize database"));
+      console.log("  npm run db:create");
+      console.log("  npm run db:migrate\n");
+
+      console.log(kleur.dim("  # Start auth server"));
+      console.log("  npm run dev\n");
     }
 
     if (apiFramework) {
