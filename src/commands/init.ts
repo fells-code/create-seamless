@@ -4,13 +4,12 @@ import { runProjectSetupPrompts } from "../prompts/projectSetup.js";
 import { generateReactStarter } from "../generators/frontend/react.js";
 import { generateExpressStarter } from "../generators/backend/express.js";
 import { generateAuthServer } from "../generators/auth/auth.js";
+import { configureApiEnv, configureWebEnv } from "../core/configure.js";
 import {
-  configureApiEnv,
-  configureAuthEnv,
-  configureWebEnv,
-} from "../core/configure.js";
-import { generateKid, generateSecret } from "../core/secrets.js";
-import { generateDockerCompose } from "../generators/docker/docker.js";
+  configureAuthLocalEnv,
+  extractSharedFromExistingEnv,
+  generateDockerCompose,
+} from "../generators/docker/docker.js";
 import { printSuccessOutput } from "../core/output.js";
 
 export async function runCLI(projectName?: string) {
@@ -48,19 +47,25 @@ export async function runCLI(projectName?: string) {
   if (answers.api && answers.apiFramework === "express") {
     await generateExpressStarter({ root });
   }
+
   let sharedConfig: any = {};
 
   if (answers.authMode === "local") {
     await generateAuthServer({ root }, "local");
 
-    sharedConfig = configureAuthEnv(root);
-  } else {
-    await generateAuthServer({ root }, "docker");
+    sharedConfig = await configureAuthLocalEnv(root);
+  }
 
-    sharedConfig = {
-      apiToken: generateSecret(32),
-      kid: generateKid(),
-    };
+  if (answers.useDocker) {
+    const dockerShared = await generateDockerCompose(root, {
+      authMode: answers.authMode,
+      includeApi: answers.api,
+      includeWeb: answers.web,
+    });
+
+    if (answers.authMode === "docker") {
+      sharedConfig = dockerShared;
+    }
   }
 
   if (answers.api) {
@@ -69,14 +74,6 @@ export async function runCLI(projectName?: string) {
 
   if (answers.web) {
     configureWebEnv(root);
-  }
-
-  if (answers.useDocker) {
-    generateDockerCompose(root, {
-      authMode: answers.authMode,
-      includeApi: answers.api,
-      includeWeb: answers.web,
-    });
   }
 
   printSuccessOutput({

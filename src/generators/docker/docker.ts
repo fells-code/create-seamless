@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 import { fetchEnvExample } from "../../core/fetch.js";
 import { parseEnv, parseEnvString } from "../../core/env.js";
-import { generateKid, generateSecret } from "../../core/secrets.js";
+import { generateSecret } from "../../core/secrets.js";
 import { generateJWKS } from "../../core/jwks.js";
 
 export async function generateDockerCompose(
@@ -13,7 +13,7 @@ export async function generateDockerCompose(
     includeWeb: boolean | Symbol;
   },
 ) {
-  const compose = await buildCompose(options, root);
+  const { compose, shared } = await buildCompose(options, root);
 
   fs.writeFileSync(
     path.join(root, "docker-compose.yml"),
@@ -21,6 +21,7 @@ export async function generateDockerCompose(
   );
 
   console.log("Docker compose created.");
+  return shared;
 }
 
 async function buildCompose(options: any, root: string) {
@@ -28,7 +29,8 @@ async function buildCompose(options: any, root: string) {
 
   const { service: authBlock, shared } = await authService(authMode, root);
 
-  return `
+  return {
+    compose: `
 services:
   db:
     image: postgres:16
@@ -50,7 +52,9 @@ ${includeWeb ? webService() : ""}
 
 volumes:
   pgdata:
-`;
+`,
+    shared,
+  };
 }
 
 async function authService(mode: "local" | "docker", root: string) {
@@ -272,4 +276,13 @@ function writeEnvFile(filePath: string, env: Record<string, string>) {
 
 function escapeMultiline(value: string) {
   return value.replace(/\n/g, "\\n");
+}
+
+export function extractSharedFromExistingEnv(root: string) {
+  const env = parseEnv(path.join(root, "auth", ".env"));
+
+  return {
+    apiToken: env.API_SERVICE_TOKEN,
+    kid: env.JWKS_ACTIVE_KID || "main",
+  };
 }
