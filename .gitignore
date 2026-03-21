@@ -1,3 +1,57 @@
-node_modules
-.npmrc
+# ----------------------------
+# Dependencies
+# ----------------------------
+node_modules/
+
+# ----------------------------
+# Build Output
+# ----------------------------
+dist/
+*.tsbuildinfo
+
+# ----------------------------
+# Logs
+# ----------------------------
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# ----------------------------
+# Environment Files
+# ----------------------------
+.env
+.env.local
+.env.*.local
+
+# ----------------------------
+# Coverage / Testing
+# ----------------------------
+coverage/
+.nyc_output/
+
+# ----------------------------
+# IDE / Editor
+# ----------------------------
+.vscode/
+.idea/
+*.swp
+*.swo
 .DS_Store
+
+# ----------------------------
+# OS
+# ----------------------------
+Thumbs.db
+.DS_Store
+
+# ----------------------------
+# npm pack artifacts
+# ----------------------------
+*.tgz
+
+# ----------------------------
+# Local linking artifacts
+# ----------------------------
+.npmrc

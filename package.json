@@ -1,6 +1,6 @@
 {
   "name": "create-seamless",
-  "version": "0.0.11",
+  "version": "0.1.0",
   "description": "The starter script for Seamless Auth",
   "homepage": "https://github.com/fells-code/create-seamless#readme",
   "bugs": {
@@ -12,25 +12,31 @@
   },
   "license": "AGPL-3.0-only",
   "author": "Fells Code, LLC",
+  "bin": {
+    "create-seamless": "dist/index.js"
+  },
   "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "clean": "rm -rf dist"
+  },
   "main": "index.js",
   "files": [
-    "index.js",
     "dist",
+    "templates",
     "README.md",
     "LICENSE"
   ],
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
-  },
-  "bin": {
-    "create-seamlessauth": "index.js"
-  },
   "dependencies": {
-    "adm-zip": "^0.5.16"
+    "@clack/prompts": "^1.0.1",
+    "adm-zip": "^0.5.16",
+    "kleur": "^4.1.5"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
-    "@types/node": "^24.10.1"
+    "@types/node": "^24.10.13",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }
