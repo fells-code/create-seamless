@@ -1,13 +1,10 @@
 import { confirm, select, text } from "@clack/prompts";
 
-type WebFramework = "react" | null;
-type ApiFramework = "express" | null;
+type WebFramework = string | null;
+type ApiFramework = string | null;
 type AuthMode = "local" | "docker";
 
 export async function runProjectSetupPrompts() {
-  // -----------------------------
-  // Web
-  // -----------------------------
   const web = await confirm({
     message: "Do you want to create a web application?",
   });
@@ -28,9 +25,6 @@ export async function runProjectSetupPrompts() {
     webFramework = result as WebFramework;
   }
 
-  // -----------------------------
-  // API
-  // -----------------------------
   const api = await confirm({
     message: "Do you want to create an API server?",
   });
@@ -51,9 +45,6 @@ export async function runProjectSetupPrompts() {
     apiFramework = result as ApiFramework;
   }
 
-  // -----------------------------
-  // Auth Mode
-  // -----------------------------
   const authMode = (await select({
     message: "How would you like to run SeamlessAuth?",
     options: [
@@ -68,9 +59,6 @@ export async function runProjectSetupPrompts() {
     ],
   })) as AuthMode;
 
-  // -----------------------------
-  // Docker
-  // -----------------------------
   let useDocker = await confirm({
     message: "Do you want to run your stack with Docker?",
   });
@@ -82,9 +70,6 @@ export async function runProjectSetupPrompts() {
     useDocker = true;
   }
 
-  // -----------------------------
-  // Final Config
-  // -----------------------------
   return {
     web,
     webFramework,

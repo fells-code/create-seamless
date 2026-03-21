@@ -55,6 +55,8 @@ volumes:
 
 async function authService(mode: "local" | "docker", root: string) {
   if (mode === "local") {
+    const shared = await configureAuthLocalEnv(root);
+
     return {
       service: `
   auth:
@@ -75,7 +77,7 @@ async function authService(mode: "local" | "docker", root: string) {
     depends_on:
       - db
 `,
-      shared: extractSharedFromLocalEnv(root),
+      shared,
     };
   }
 
@@ -150,35 +152,36 @@ ${envBlock}
   };
 }
 
-export function buildAuthEnv(
-  env: Record<string, string>,
-  mode: "local" | "docker",
-) {
+function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
   const apiToken = generateSecret(32);
-  const kid = generateKid();
 
   env.PORT = "5312";
-
   env.NODE_ENV = mode === "docker" ? "production" : "development";
 
   env.AUTH_MODE = "server";
   env.ISSUER = "http://auth:5312";
 
-  env.DB_HOST = "db";
+  env.DB_HOST = mode === "docker" ? "db" : "localhost";
   env.DB_PORT = "5432";
 
   env.API_SERVICE_TOKEN = apiToken;
 
-  const jwks = buildJWKSConfig();
+  let kid = "main";
+  env.JWKS_ACTIVE_KID = kid;
 
-  env.SEAMLESS_JWKS_ACTIVE_KID = jwks.kid;
-  env.JWKS_ACTIVE_KID = jwks.kid;
+  if (mode === "docker") {
+    const jwks = buildJWKSConfig();
 
-  env[`SEAMLESS_JWKS_KEY_${jwks.kid}_PRIVATE`] = jwks.privateKey;
+    kid = jwks.kid;
 
-  env.JWKS_PUBLIC_KEYS = jwks.publicJwksJson;
+    env.SEAMLESS_JWKS_ACTIVE_KID = jwks.kid;
+    env.JWKS_ACTIVE_KID = jwks.kid;
 
-  env.APP_ORIGIN = "http://localhost:5173";
+    env[`SEAMLESS_JWKS_KEY_${jwks.kid}_PRIVATE`] = jwks.privateKey;
+    env.JWKS_PUBLIC_KEYS = jwks.publicJwksJson;
+  }
+
+  env.APP_ORIGIN = "http://localhost:3000";
   env.ORIGINS = "http://localhost:5173";
 
   return {
@@ -210,30 +213,6 @@ function indentMultiline(value: string, spaces: number) {
     .join("\n");
 }
 
-export function extractSharedFromLocalEnv(root: string) {
-  const authEnvPath = path.join(root, "auth", ".env");
-
-  if (!fs.existsSync(authEnvPath)) {
-    throw new Error("Auth .env file not found. Cannot extract shared config.");
-  }
-
-  const env = parseEnv(authEnvPath);
-
-  const apiToken = env.API_SERVICE_TOKEN;
-  const kid = env.JWKS_ACTIVE_KID;
-
-  if (!apiToken || !kid) {
-    throw new Error(
-      "Missing API_SERVICE_TOKEN or JWKS_ACTIVE_KID in auth .env",
-    );
-  }
-
-  return {
-    apiToken,
-    kid,
-  };
-}
-
 export function buildJWKSConfig() {
   const kid = "main";
 
@@ -256,4 +235,41 @@ export function buildJWKSConfig() {
       2,
     ),
   };
+}
+
+export async function configureAuthLocalEnv(root: string) {
+  const authDir = path.join(root, "auth");
+  const envExamplePath = path.join(authDir, ".env.example");
+  const envPath = path.join(authDir, ".env");
+
+  if (!fs.existsSync(envExamplePath)) {
+    throw new Error(".env.example not found in auth directory");
+  }
+
+  const raw = fs.readFileSync(envExamplePath, "utf-8");
+
+  const parsed = parseEnvString(raw);
+
+  const { env, shared } = buildAuthEnv(parsed, "local");
+
+  writeEnvFile(envPath, env);
+
+  return shared;
+}
+
+function writeEnvFile(filePath: string, env: Record<string, string>) {
+  const content = Object.entries(env)
+    .map(([k, v]) => {
+      if (v.includes("\n")) {
+        return `${k}="${escapeMultiline(v)}"`;
+      }
+      return `${k}=${v}`;
+    })
+    .join("\n");
+
+  fs.writeFileSync(filePath, content + "\n");
+}
+
+function escapeMultiline(value: string) {
+  return value.replace(/\n/g, "\\n");
 }

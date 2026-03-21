@@ -11,13 +11,13 @@ import {
 } from "../core/configure.js";
 import { generateKid, generateSecret } from "../core/secrets.js";
 import { generateDockerCompose } from "../generators/docker/docker.js";
+import { printSuccessOutput } from "../core/output.js";
 
 export async function runCLI(projectName?: string) {
   const cwd = process.cwd();
 
   let root = cwd;
 
-  // If project name provided → create directory
   if (projectName) {
     root = path.join(cwd, projectName);
 
@@ -57,7 +57,6 @@ export async function runCLI(projectName?: string) {
   } else {
     await generateAuthServer({ root }, "docker");
 
-    // still generate shared values
     sharedConfig = {
       apiToken: generateSecret(32),
       kid: generateKid(),
@@ -80,5 +79,12 @@ export async function runCLI(projectName?: string) {
     });
   }
 
-  console.log("Setup complete.");
+  printSuccessOutput({
+    projectName,
+    root,
+    webFramework: answers.webFramework,
+    apiFramework: answers.apiFramework,
+    authMode: answers.authMode,
+    useDocker: answers.useDocker,
+  });
 }
