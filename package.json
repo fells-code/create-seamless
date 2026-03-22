@@ -19,9 +19,10 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run build"
   },
-  "main": "index.js",
+  "main": "dist/index.js",
   "files": [
     "dist",
     "templates",

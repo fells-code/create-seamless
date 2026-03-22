@@ -3,85 +3,142 @@
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL3-yellow.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/create-seamless.svg?style=flat)](https://www.npmjs.com/package/create-seamless)
 
-`create-seamless` is a project scaffolding tool for building applications with **Seamless Auth**, an open source, passwordless authentication system.
+`create-seamless` is a CLI for bootstrapping applications with Seamless Auth, an open source, passwordless authentication system.
 
-It provisions a local, production-shaped development environment that can include:
-
-- The Seamless Auth open source server
-- A starter web application
-- A starter API server
-
-The generated project is fully local and requires no hosted services or external accounts to run.
+It guides you through creating a fully working authentication stack with a web app, API, and auth server that are already connected and ready to run.
 
 ---
 
-## What this creates
+## Getting started
 
-Depending on the flags provided, `create-seamless` scaffolds a local project with the following structure:
-
-```text
-my-app/
-├─ auth/        # Seamless Auth OSS server
-├─ web/         # Starter web application (optional)
-├─ api/         # Starter API server (optional)
-└─ README.md
-```
-
-Each service is independently runnable and preconfigured to work together using local URLs and environment variables.
-
-The intended development workflow is to run each service in its own terminal:
-
-```bash
-# terminal 1
-cd auth && npm run dev
-
-# terminal 2
-cd api && npm run dev
-
-# terminal 3
-cd web && npm run dev
-```
-
----
-
-## Usage
-
-Run via `npx`:
+Run the CLI with `npx`:
 
 ```bash
 npx create-seamless my-app
 ```
 
-By default, this scaffolds the full local stack:
+Or run it in your current directory:
 
-- Seamless Auth server
-- Web application
-- API server
+```bash
+npx create-seamless
+```
+
+You’ll be guided through a short setup process where you can choose:
+
+- Whether to create a web application
+- Whether to create an API server
+- How to run the auth server (local or Docker)
+- Whether to run everything with Docker
 
 ---
 
-## CLI options
+## What gets created
 
-| Flag          | Description                                  |
-| ------------- | -------------------------------------------- |
-| `--auth`      | Include the Seamless Auth open source server |
-| `--web`       | Include the starter web application          |
-| `--api`       | Include the starter API server               |
-| `--install`   | Automatically install dependencies           |
-| `--no-git`    | Skip git initialization                      |
-| `--auth-port` | Auth server port (default: 3000)             |
-| `--api-port`  | API server port (default: 4000)              |
-| `--web-port`  | Web dev server port (default: 5173)          |
+Depending on your selections, the CLI generates a project like this:
 
-If no component flags are provided, all components are included.
+```text
+my-app/
+├─ auth/        # Seamless Auth server (optional)
+├─ web/         # React web application (optional)
+├─ api/         # Express API server (optional)
+├─ docker-compose.yml (optional)
+└─ README.md
+```
+
+All services are preconfigured to work together.
+
+- Web calls the API
+- API communicates with the auth server
+- Auth manages sessions and tokens
+
+No manual wiring is required.
+
+---
+
+## Running your project
+
+### Option 1: Docker
+
+If you choose Docker during setup:
+
+```bash
+docker compose up
+```
+
+This starts:
+
+- PostgreSQL
+- Auth server
+- API server
+- Web app
+
+All services are configured to communicate correctly inside the container network.
+
+---
+
+### Option 2: Local development
+
+If you choose to run locally:
+
+#### 1. Start PostgreSQL
+
+Make sure you have a local PostgreSQL instance running on port `5432`.
+
+---
+
+#### 2. Start the auth server
+
+```bash
+cd auth
+npm install
+
+npm run db:create
+npm run db:migrate
+
+npm run dev
+```
+
+---
+
+#### 3. Start the API
+
+```bash
+cd api
+npm install
+npm run dev
+```
+
+---
+
+#### 4. Start the web app
+
+```bash
+cd web
+npm install
+npm run dev
+```
+
+---
+
+## What is configured for you
+
+create-seamless handles the parts that are usually difficult to get right:
+
+- Shared API service tokens
+- JWT signing configuration
+- JWKS key generation for production mode
+- Cross-service environment variables
+- CORS and cookie-based session handling
+
+Everything is aligned across services so the system works immediately after setup.
 
 ---
 
 ## Included projects
 
-`create-seamless` pulls directly from the following open source repositories:
+create-seamless pulls from the following repositories:
 
-- Seamless Auth Server
+- Seamless Auth API
   [https://github.com/fells-code/seamless-auth-api](https://github.com/fells-code/seamless-auth-api)
 
 - Seamless Auth React Starter
@@ -90,29 +147,29 @@ If no component flags are provided, all components are included.
 - Seamless Auth API Starter
   [https://github.com/fells-code/seamless-auth-starter-express](https://github.com/fells-code/seamless-auth-starter-express)
 
-Each repository can be used independently, but `create-seamless` wires them together for local development out of the box.
+Each project can be used independently, but the CLI connects them into a working system.
 
 ---
 
 ## Documentation
 
-Full documentation for Seamless Auth, including architecture, configuration, and deployment guidance, is available at:
+Full documentation is available at:
 
-[https://seamlessauth.com/docs](https://seamlessauth.com/docs)
+[https://docs.seamlessauth.com](https://docs.seamlessauth.com)
 
 ---
 
 ## Philosophy
 
-Seamless Auth is designed around:
+Seamless Auth is built around a few principles:
 
 - Passwordless authentication only
-- Embedded auth (no redirects or callbacks)
-- Self-hosted, open source foundations
+- No redirects or third-party auth providers
+- Self-hosted by default
 - Production-shaped local development
-- Minimal assumptions and explicit configuration
+- Explicit configuration over hidden behavior
 
-`create-seamless` exists to make getting started with this model straightforward and repeatable.
+create-seamless exists to make this setup fast and repeatable.
 
 ---
 
@@ -120,12 +177,13 @@ Seamless Auth is designed around:
 
 - Node.js 18 or newer
 - npm or pnpm
+- Docker (optional)
 
 ---
 
 ## License
 
-**AGPL-3.0-only** © 2026 Fells Code LLC
+AGPL-3.0-only © 2026 Fells Code LLC
 
 This license ensures:
 
@@ -133,4 +191,4 @@ This license ensures:
 - freedom to self-host and modify
 - sustainability of the managed service offering
 
-See [`LICENSE`](./LICENSE) for details.
+See `LICENSE` for details.
