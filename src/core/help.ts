@@ -1,49 +1,69 @@
+import { VERSION } from "../index.js";
+
 export function printHelp() {
   console.log(`
-create-seamless
+create-seamless v${VERSION}
 
-Seamless Auth CLI — scaffold and integrate passwordless authentication.
+Seamless Auth CLI — scaffold and manage full-stack authentication systems.
 
 ────────────────────────────────────────────
 
 USAGE
 
-  npx create-seamless
-  npx create-seamless <project-name>
-  npx create-seamless -h
-  npx create-seamless --help
+  seamless init [project-name]
+  seamless check
+  seamless --help
+  seamless --version
+
+────────────────────────────────────────────
+
+COMMANDS
+
+  init [project-name]
+    Scaffold a new Seamless Auth project
+
+    Without a name:
+      • Creates project in current directory
+
+    With a name:
+      • Creates new directory
+
+  check
+    Validate project setup, Docker, and running services
 
 ────────────────────────────────────────────
 
 BEHAVIOR
 
-  npx create-seamless
+  seamless <project-name>
 
-  Without a name:
-    • If directory is empty → create a new project
-
-  npx create-seamless <project-name>
-  
-  With a name:
-    • Creates a new directory
+    • Shortcut for: seamless init <project-name>
 
 ────────────────────────────────────────────
 
-WHAT YOU CAN BUILD
+WHAT YOU GET
 
-  • A web application starter with Seamless Auth
-  • An API server starter with Seamless Auth
-  • SeamlessAuth server (local or Docker)
+  • Web application (React starter)
+  • API server (Express)
+  • SeamlessAuth server (Docker or local)
+  • Admin dashboard (Docker or source)
+  • Docker Compose setup
 
 ────────────────────────────────────────────
 
 EXAMPLES
 
-  npx create-seamless
+  seamless init
     → Interactive setup in current directory
 
-  npx create-seamless my-app
+  seamless init my-app
     → Create new project in ./my-app
+
+  seamless my-app
+    → Shortcut for init
+
+  seamless check
+    → Validate your project
 
 ────────────────────────────────────────────
 

@@ -9,8 +9,8 @@ export async function generateDockerCompose(
   root: string,
   options: {
     authMode: "local" | "docker";
-    includeApi: boolean | Symbol;
-    includeWeb: boolean | Symbol;
+    adminMode: "image" | "source";
+    includeAdmin: boolean | symbol;
   },
 ) {
   const { compose, shared } = await buildCompose(options, root);
@@ -24,8 +24,15 @@ export async function generateDockerCompose(
   return shared;
 }
 
-async function buildCompose(options: any, root: string) {
-  const { authMode, includeApi, includeWeb } = options;
+async function buildCompose(
+  options: {
+    authMode: "local" | "docker";
+    adminMode: "image" | "source";
+    includeAdmin: boolean | symbol;
+  },
+  root: string,
+) {
+  const { authMode, adminMode, includeAdmin } = options;
 
   const { service: authBlock, shared } = await authService(authMode, root);
 
@@ -46,9 +53,11 @@ services:
 
 ${authBlock}
 
-${includeApi ? apiService(shared) : ""}
+${apiService(shared)}
 
-${includeWeb ? webService() : ""}
+${webService()}
+
+${includeAdmin ? adminService(adminMode) : ""}
 
 volumes:
   pgdata:
@@ -56,7 +65,6 @@ volumes:
     shared,
   };
 }
-
 async function authService(mode: "local" | "docker", root: string) {
   if (mode === "local") {
     const shared = await configureAuthLocalEnv(root);
@@ -87,6 +95,7 @@ async function authService(mode: "local" | "docker", root: string) {
 
   return await authServiceDocker();
 }
+
 function apiService(shared: any) {
   return `
   api:
@@ -98,7 +107,7 @@ function apiService(shared: any) {
       - ./api/.env
     environment:
       AUTH_SERVER_URL: http://auth:5312
-      UI_ORIGIN: http://localhost:5173
+      UI_ORIGINS: http://localhost:5173,http://localhost:5174
       DB_HOST: db
       API_SERVICE_TOKEN: ${shared.apiToken}
       JWKS_KID: ${shared.kid}
@@ -117,17 +126,13 @@ function webService() {
     container_name: web
     build: ./web
     ports:
-      - "5173:5173"
-    env_file:
-      - ./web/.env
+      - "5173:80"
     environment:
-      VITE_API_URL: http://localhost:3000
-      VITE_AUTH_SERVER_URL: http://localhost:3000/
+      API_URL: http://localhost:3000
     volumes:
       - ./web:/app
       - /app/node_modules
     depends_on:
-      - auth
       - api
 `;
 }
@@ -143,7 +148,7 @@ async function authServiceDocker() {
   return {
     service: `
   auth:
-    image: ghcr.io/fells-code/seamless-auth-api:v0.1.5
+    image: ghcr.io/fells-code/seamless-auth-api:latest
     container_name: seamless-auth
     ports:
       - "5312:5312"
@@ -154,6 +159,37 @@ ${envBlock}
 `,
     shared,
   };
+}
+
+function adminService(mode: "image" | "source") {
+  if (mode === "source") {
+    return `
+  admin:
+    container_name: admin
+    build: ./admin
+    ports:
+      - "5174:80"
+    environment:
+      API_URL: http://localhost:3000
+    volumes:
+      - ./admin:/app
+      - /app/node_modules
+    depends_on:
+      - api
+`;
+  }
+
+  return `
+  admin:
+    image: ghcr.io/fells-code/seamless-auth-admin-dashboard:latest
+    container_name: admin
+    ports:
+      - "5174:80"
+    environment:
+      API_URL: http://localhost:3000
+    depends_on:
+      - api
+`;
 }
 
 function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
