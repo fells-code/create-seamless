@@ -12,6 +12,7 @@ USAGE
 
   seamless init [project-name]
   seamless check
+  seamless bootstrap-admin [email]
   seamless --help
   seamless --version
 
@@ -31,6 +32,20 @@ COMMANDS
   check
     Validate project setup, Docker, and running services
 
+  bootstrap-admin [email]
+    Create a bootstrap admin invite
+
+    Automatically resolves bootstrap secret from:
+      • .env
+      • auth/.env
+      • docker-compose.yml
+
+    If not found, you will be prompted.
+
+    Examples:
+      seamless bootstrap-admin
+      seamless bootstrap-admin admin@example.com
+
 ────────────────────────────────────────────
 
 BEHAVIOR
@@ -38,6 +53,16 @@ BEHAVIOR
   seamless <project-name>
 
     • Shortcut for: seamless init <project-name>
+
+────────────────────────────────────────────
+
+GETTING STARTED
+
+  1. seamless init
+  2. docker-compose up
+  3. seamless bootstrap-admin
+
+    → Complete registration to become admin
 
 ────────────────────────────────────────────
 
@@ -64,6 +89,9 @@ EXAMPLES
 
   seamless check
     → Validate your project
+
+  seamless bootstrap-admin
+    → Create your first admin user
 
 ────────────────────────────────────────────
 

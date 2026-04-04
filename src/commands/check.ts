@@ -81,8 +81,8 @@ function checkContainers() {
 
 async function checkHealth() {
   const checks = [
-    { name: "API", url: "http://localhost:3000/health" },
-    { name: "Auth", url: "http://localhost:5312/health" },
+    { name: "API", url: "http://localhost:3000/" },
+    { name: "Auth", url: "http://localhost:5312/health/status" },
     { name: "Admin", url: "http://localhost:5174" },
   ];
 

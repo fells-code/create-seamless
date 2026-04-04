@@ -2,8 +2,9 @@
 
 import { runCLI } from "./commands/init.js";
 import { runCheck } from "./commands/check.js";
-import { printHelp } from "./core/help.js";
+import { printHelp } from "./commands/help.js";
 import pkg from "../package.json" with { type: "json" };
+import { runBootstrapAdmin } from "./commands/bootstrapAdmin.js";
 
 export const VERSION = pkg.version;
 const args = process.argv.slice(2);
@@ -12,7 +13,7 @@ const command = args[0];
 
 async function main() {
   if (!command) {
-    await runCLI();
+    printHelp();
     return;
   }
 
@@ -34,6 +35,12 @@ async function main() {
 
   if (command === "check") {
     await runCheck();
+    return;
+  }
+
+  if (command === "bootstrap-admin") {
+    const email = args[1];
+    await runBootstrapAdmin(email);
     return;
   }
 

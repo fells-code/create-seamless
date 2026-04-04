@@ -128,7 +128,7 @@ function webService() {
     ports:
       - "5173:80"
     environment:
-      API_URL: http://localhost:3000
+      API_URL: http://localhost:3000/
     volumes:
       - ./web:/app
       - /app/node_modules
@@ -170,7 +170,8 @@ function adminService(mode: "image" | "source") {
     ports:
       - "5174:80"
     environment:
-      API_URL: http://localhost:3000
+      API_URL: http://localhost:3000/
+      AUTH_MODE: server
     volumes:
       - ./admin:/app
       - /app/node_modules
@@ -186,7 +187,7 @@ function adminService(mode: "image" | "source") {
     ports:
       - "5174:80"
     environment:
-      API_URL: http://localhost:3000
+      API_URL: http://localhost:3000/
     depends_on:
       - api
 `;
@@ -194,9 +195,13 @@ function adminService(mode: "image" | "source") {
 
 function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
   const apiToken = generateSecret(32);
+  const bootstrapSecret = generateSecret(32);
+
+  env.SEAMLESS_BOOTSTRAP_ENABLED = "true";
+  env.SEAMLESS_BOOTSTRAP_SECRET = bootstrapSecret;
 
   env.PORT = "5312";
-  env.NODE_ENV = mode === "docker" ? "production" : "development";
+  env.NODE_ENV = "development";
 
   env.AUTH_MODE = "server";
   env.ISSUER = "http://auth:5312";
@@ -221,7 +226,7 @@ function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
     env.JWKS_PUBLIC_KEYS = jwks.publicJwksJson;
   }
 
-  env.APP_ORIGIN = "http://localhost:3000";
+  env.APP_ORIGINS = "http://localhost:3000";
   env.ORIGINS = "http://localhost:5173";
 
   return {
@@ -229,6 +234,7 @@ function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
     shared: {
       apiToken,
       kid,
+      bootstrapSecret,
     },
   };
 }
