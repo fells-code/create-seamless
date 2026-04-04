@@ -10,6 +10,7 @@ import {
   generateDockerCompose,
 } from "../generators/docker/docker.js";
 import { printSuccessOutput } from "../core/output.js";
+import { generateSeamlessConfig } from "../generators/config/config.js";
 
 export async function runCLI(projectName?: string) {
   const cwd = process.cwd();
@@ -58,8 +59,8 @@ export async function runCLI(projectName?: string) {
   if (answers.useDocker) {
     const dockerShared = await generateDockerCompose(root, {
       authMode: answers.authMode,
-      includeApi: answers.api,
-      includeWeb: answers.web,
+      adminMode: answers.adminMode,
+      includeAdmin: answers.includeAdmin,
     });
 
     if (answers.authMode === "docker") {
@@ -74,6 +75,14 @@ export async function runCLI(projectName?: string) {
   if (answers.web) {
     configureWebEnv(root);
   }
+
+  generateSeamlessConfig(root, {
+    projectName,
+    webFramework: answers.webFramework,
+    apiFramework: answers.apiFramework,
+    authMode: answers.authMode,
+    adminMode: answers.adminMode,
+  });
 
   printSuccessOutput({
     projectName,

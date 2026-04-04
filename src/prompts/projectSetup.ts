@@ -1,81 +1,93 @@
-import { confirm, select, text } from "@clack/prompts";
+import { confirm, select } from "@clack/prompts";
 
-type WebFramework = string | null;
-type ApiFramework = string | null;
+type WebFramework = "react";
+type ApiFramework = "express";
 type AuthMode = "local" | "docker";
+type AdminMode = "image" | "source";
 
 export async function runProjectSetupPrompts() {
-  const web = await confirm({
-    message: "Do you want to create a web application?",
-  });
+  const webFramework = (await select({
+    message: "Web framework",
+    options: [
+      { value: "react", label: "React (Vite)" },
+      { value: "next", label: "Next.js (coming soon)", disabled: true },
+    ],
+  })) as WebFramework;
 
-  let webFramework: WebFramework = null;
-
-  if (web) {
-    const result = await select({
-      message: "Which framework?",
-      options: [
-        { value: "react", label: "React (Vite)" },
-        { value: "next", label: "Next.js (coming soon)", disabled: true },
-        { value: "vue", label: "Vue (coming soon)", disabled: true },
-        { value: "angular", label: "Angular (coming soon)", disabled: true },
-      ],
-    });
-
-    webFramework = result as WebFramework;
-  }
-
-  const api = await confirm({
-    message: "Do you want to create an API server?",
-  });
-
-  let apiFramework: ApiFramework = null;
-
-  if (api) {
-    const result = await select({
-      message: "Which backend?",
-      options: [
-        { value: "express", label: "Express" },
-        { value: "next", label: "Next.js (coming soon)", disabled: true },
-        { value: "fastify", label: "Fastify (coming soon)", disabled: true },
-        { value: "fast-api", label: "FastAPI (coming soon)", disabled: true },
-      ],
-    });
-
-    apiFramework = result as ApiFramework;
-  }
+  const apiFramework = (await select({
+    message: "Backend framework",
+    options: [
+      { value: "express", label: "Express" },
+      { value: "fastify", label: "Fastify (coming soon)", disabled: true },
+      { value: "fastAPI", label: "FastAPI (coming soon)", disabled: true },
+      { value: "axum", label: "Rust Axum (coming soon)", disabled: true },
+    ],
+  })) as ApiFramework;
 
   const authMode = (await select({
     message: "How would you like to run SeamlessAuth?",
     options: [
       {
-        value: "local",
-        label: "Local development server (npm run dev yourself)",
+        value: "docker",
+        label: "Docker container (recommended)",
       },
       {
-        value: "docker",
-        label: "Docker container (recommended - just run docker compose up)",
+        value: "local",
+        label: "Local dev server (advanced)",
       },
     ],
   })) as AuthMode;
 
-  let useDocker = await confirm({
-    message: "Do you want to run your stack with Docker?",
+  const includeAdmin = await confirm({
+    message: "Include Admin Dashboard?",
+    initialValue: true,
   });
 
-  if (authMode === "docker" && !useDocker) {
-    console.log(
-      "\nAuth server requires Docker — enabling Docker mode automatically.\n",
-    );
-    useDocker = true;
+  let adminMode: AdminMode = "image";
+
+  if (includeAdmin) {
+    adminMode = (await select({
+      message: "Admin dashboard source",
+      options: [
+        {
+          value: "image",
+          label: "Use official Docker image (recommended)",
+        },
+        {
+          value: "source",
+          label: "Clone repo for modification",
+        },
+      ],
+    })) as AdminMode;
+  }
+
+  let useDocker = true;
+
+  if (authMode === "local") {
+    const confirmDocker = await confirm({
+      message:
+        "Auth server still requires Docker for full stack. Enable Docker?",
+      initialValue: true,
+    });
+
+    if (!confirmDocker) {
+      console.log(
+        "\nDocker is required for full seamless stack. Enabling automatically.\n",
+      );
+    }
   }
 
   return {
-    web,
+    web: true,
     webFramework,
-    api,
+
+    api: true,
     apiFramework,
+
     authMode,
-    useDocker,
+    useDocker: true,
+
+    includeAdmin,
+    adminMode,
   };
 }

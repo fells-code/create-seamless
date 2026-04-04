@@ -1,6 +1,6 @@
 {
   "name": "create-seamless",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "The starter script for Seamless Auth",
   "homepage": "https://github.com/fells-code/create-seamless#readme",
   "bugs": {
@@ -13,7 +13,8 @@
   "license": "AGPL-3.0-only",
   "author": "Fells Code, LLC",
   "bin": {
-    "create-seamless": "dist/index.js"
+    "create-seamless": "dist/index.js",
+    "seamless": "dist/index.js"
   },
   "type": "module",
   "scripts": {
