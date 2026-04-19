@@ -12,7 +12,80 @@ import {
 import { printSuccessOutput } from "../core/output.js";
 import { generateSeamlessConfig } from "../generators/config/config.js";
 
-export async function runCLI(projectName?: string) {
+export type ProjectSetupAnswers = {
+  web: boolean;
+  webFramework: string | null;
+  api: boolean;
+  apiFramework: string | null;
+  authMode: "local" | "docker";
+  useDocker: boolean | symbol;
+  includeAdmin: boolean | symbol;
+  adminMode: "image" | "source";
+};
+
+export type SharedConfig = {
+  apiToken?: string;
+  kid?: string;
+  bootstrapSecret?: string;
+};
+
+export type InitDependencies = {
+  runProjectSetupPrompts: () => Promise<ProjectSetupAnswers>;
+  generateReactStarter: (context: { root: string }) => Promise<void>;
+  generateExpressStarter: (context: { root: string }) => Promise<void>;
+  generateAuthServer: (
+    context: { root: string },
+    mode: "local" | "docker" | Symbol,
+  ) => Promise<void>;
+  configureAuthLocalEnv: (root: string) => Promise<SharedConfig>;
+  generateDockerCompose: (
+    root: string,
+    options: {
+      authMode: "local" | "docker";
+      adminMode: "image" | "source";
+      includeAdmin: boolean | symbol;
+    },
+  ) => Promise<SharedConfig>;
+  configureApiEnv: (root: string, shared: SharedConfig) => void;
+  configureWebEnv: (root: string) => void;
+  generateSeamlessConfig: (
+    root: string,
+    options: {
+      projectName?: string;
+      webFramework: string;
+      apiFramework: string;
+      authMode: "local" | "docker";
+      adminMode: "image" | "source";
+    },
+  ) => void;
+  printSuccessOutput: (config: {
+    projectName?: string;
+    root: string;
+    webFramework: string | null;
+    apiFramework: string | null;
+    authMode: "local" | "docker";
+    useDocker: boolean | symbol;
+  }) => void;
+};
+
+const defaultDependencies: InitDependencies = {
+  runProjectSetupPrompts,
+  generateReactStarter,
+  generateExpressStarter,
+  generateAuthServer,
+  configureAuthLocalEnv,
+  generateDockerCompose,
+  configureApiEnv,
+  configureWebEnv,
+  generateSeamlessConfig,
+  printSuccessOutput,
+};
+
+export async function runCLI(
+  projectName?: string,
+  overrides: Partial<InitDependencies> = {},
+) {
+  const deps = { ...defaultDependencies, ...overrides };
   const cwd = process.cwd();
 
   let root = cwd;
@@ -38,26 +111,26 @@ export async function runCLI(projectName?: string) {
     return;
   }
 
-  const answers = await runProjectSetupPrompts();
+  const answers = await deps.runProjectSetupPrompts();
 
   if (answers.web && answers.webFramework === "react") {
-    await generateReactStarter({ root });
+    await deps.generateReactStarter({ root });
   }
 
   if (answers.api && answers.apiFramework === "express") {
-    await generateExpressStarter({ root });
+    await deps.generateExpressStarter({ root });
   }
 
-  let sharedConfig: any = {};
+  let sharedConfig: SharedConfig = {};
 
   if (answers.authMode === "local") {
-    await generateAuthServer({ root }, "local");
+    await deps.generateAuthServer({ root }, "local");
 
-    sharedConfig = await configureAuthLocalEnv(root);
+    sharedConfig = await deps.configureAuthLocalEnv(root);
   }
 
   if (answers.useDocker) {
-    const dockerShared = await generateDockerCompose(root, {
+    const dockerShared = await deps.generateDockerCompose(root, {
       authMode: answers.authMode,
       adminMode: answers.adminMode,
       includeAdmin: answers.includeAdmin,
@@ -69,22 +142,22 @@ export async function runCLI(projectName?: string) {
   }
 
   if (answers.api) {
-    configureApiEnv(root, sharedConfig);
+    deps.configureApiEnv(root, sharedConfig);
   }
 
   if (answers.web) {
-    configureWebEnv(root);
+    deps.configureWebEnv(root);
   }
 
-  generateSeamlessConfig(root, {
+  deps.generateSeamlessConfig(root, {
     projectName,
-    webFramework: answers.webFramework,
-    apiFramework: answers.apiFramework,
+    webFramework: answers.webFramework ?? "",
+    apiFramework: answers.apiFramework ?? "",
     authMode: answers.authMode,
     adminMode: answers.adminMode,
   });
 
-  printSuccessOutput({
+  deps.printSuccessOutput({
     projectName,
     root,
     webFramework: answers.webFramework,
