@@ -7,7 +7,7 @@ import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
 type SeamlessConfig = {
   services: {
     auth: {
-      mode: "local" | "docker";
+      mode: "image" | "source";
     };
   };
 };

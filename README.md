@@ -27,7 +27,7 @@ You’ll be guided through a short setup process where you can choose:
 
 - Whether to create a web application
 - Whether to create an API server
-- How to run the auth server (local or Docker)
+- Whether auth should use the official image or cloned source
 - Whether to run everything with Docker
 
 ---
@@ -78,7 +78,7 @@ All services are configured to communicate correctly inside the container networ
 
 ### Option 2: Local development
 
-If you choose to run locally:
+If you choose source mode:
 
 #### 1. Start PostgreSQL
 
@@ -146,6 +146,9 @@ create-seamless pulls from the following repositories:
 
 - Seamless Auth API Starter
   [https://github.com/fells-code/seamless-auth-starter-express](https://github.com/fells-code/seamless-auth-starter-express)
+
+- Seamless Auth Admin Dashboard
+  [https://github.com/fells-code/seamless-auth-admin-dashboard](https://github.com/fells-code/seamless-auth-admin-dashboard)
 
 Each project can be used independently, but the CLI connects them into a working system.
 

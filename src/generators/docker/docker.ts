@@ -8,7 +8,7 @@ import { generateJWKS } from "../../core/jwks.js";
 export async function generateDockerCompose(
   root: string,
   options: {
-    authMode: "local" | "docker";
+    authMode: "image" | "source";
     adminMode: "image" | "source";
     includeAdmin: boolean | symbol;
   },
@@ -26,7 +26,7 @@ export async function generateDockerCompose(
 
 async function buildCompose(
   options: {
-    authMode: "local" | "docker";
+    authMode: "image" | "source";
     adminMode: "image" | "source";
     includeAdmin: boolean | symbol;
   },
@@ -65,8 +65,8 @@ volumes:
     shared,
   };
 }
-async function authService(mode: "local" | "docker", root: string) {
-  if (mode === "local") {
+async function authService(mode: "image" | "source", root: string) {
+  if (mode === "source") {
     const shared = await configureAuthLocalEnv(root);
 
     return {
@@ -93,7 +93,7 @@ async function authService(mode: "local" | "docker", root: string) {
     };
   }
 
-  return await authServiceDocker();
+  return await authServiceImage();
 }
 
 function apiService(shared: any) {
@@ -137,11 +137,11 @@ function webService() {
 `;
 }
 
-async function authServiceDocker() {
+async function authServiceImage() {
   const raw = await fetchEnvExample();
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "docker");
+  const { env, shared } = buildAuthEnv(parsed, "image");
 
   const envBlock = envToDockerBlock(env);
 
@@ -193,7 +193,7 @@ function adminService(mode: "image" | "source") {
 `;
 }
 
-function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
+function buildAuthEnv(env: Record<string, string>, mode: "image" | "source") {
   const apiToken = generateSecret(32);
   const bootstrapSecret = generateSecret(32);
 
@@ -206,7 +206,7 @@ function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
   env.AUTH_MODE = "server";
   env.ISSUER = "http://auth:5312";
 
-  env.DB_HOST = mode === "docker" ? "db" : "localhost";
+  env.DB_HOST = mode === "image" ? "db" : "localhost";
   env.DB_PORT = "5432";
 
   env.API_SERVICE_TOKEN = apiToken;
@@ -214,7 +214,7 @@ function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
   let kid = "main";
   env.JWKS_ACTIVE_KID = kid;
 
-  if (mode === "docker") {
+  if (mode === "image") {
     const jwks = buildJWKSConfig();
 
     kid = jwks.kid;
@@ -296,7 +296,7 @@ export async function configureAuthLocalEnv(root: string) {
 
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "local");
+  const { env, shared } = buildAuthEnv(parsed, "source");
 
   writeEnvFile(envPath, env);
 

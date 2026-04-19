@@ -2,7 +2,7 @@ import { confirm, select } from "@clack/prompts";
 
 type WebFramework = "react";
 type ApiFramework = "express";
-type AuthMode = "local" | "docker";
+type AuthMode = "image" | "source";
 type AdminMode = "image" | "source";
 
 export async function runProjectSetupPrompts() {
@@ -25,15 +25,15 @@ export async function runProjectSetupPrompts() {
   })) as ApiFramework;
 
   const authMode = (await select({
-    message: "How would you like to run SeamlessAuth?",
+    message: "SeamlessAuth source",
     options: [
       {
-        value: "docker",
-        label: "Docker container (recommended)",
+        value: "image",
+        label: "Use official image (recommended)",
       },
       {
-        value: "local",
-        label: "Local dev server (advanced)",
+        value: "source",
+        label: "Clone repo for modification",
       },
     ],
   })) as AuthMode;
@@ -63,10 +63,10 @@ export async function runProjectSetupPrompts() {
 
   let useDocker = true;
 
-  if (authMode === "local") {
+  if (authMode === "source") {
     const confirmDocker = await confirm({
       message:
-        "Auth server still requires Docker for full stack. Enable Docker?",
+        "Source mode still requires Docker for the full stack. Enable Docker?",
       initialValue: true,
     });
 

@@ -5,7 +5,7 @@ export function printSuccessOutput(config: {
   root: string;
   webFramework: string | null;
   apiFramework: string | null;
-  authMode: "local" | "docker";
+  authMode: "image" | "source";
   useDocker: boolean | symbol;
 }) {
   const { projectName, webFramework, apiFramework, authMode, useDocker } =
@@ -47,7 +47,7 @@ export function printSuccessOutput(config: {
   console.log(
     "  • " +
       kleur.white("Auth server") +
-      kleur.dim(authMode === "local" ? " (local source)" : " (Docker image)"),
+      kleur.dim(authMode === "source" ? " (source)" : " (image)"),
   );
 
   console.log(
@@ -68,7 +68,7 @@ export function printSuccessOutput(config: {
     console.log("  3. Complete registration in the browser");
     console.log(kleur.dim("     This grants admin access to the system\n"));
   } else {
-    if (authMode === "local") {
+    if (authMode === "source") {
       console.log(kleur.dim("  # Auth server"));
 
       console.log(

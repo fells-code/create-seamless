@@ -70,8 +70,8 @@ WHAT YOU GET
 
   • Web application (React starter)
   • API server (Express)
-  • SeamlessAuth server (Docker or local)
-  • Admin dashboard (Docker or source)
+  • SeamlessAuth server (image or source)
+  • Admin dashboard (image or source)
   • Docker Compose setup
 
 ────────────────────────────────────────────

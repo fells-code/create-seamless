@@ -4,6 +4,7 @@ import { runProjectSetupPrompts } from "../prompts/projectSetup.js";
 import { generateReactStarter } from "../generators/frontend/react.js";
 import { generateExpressStarter } from "../generators/backend/express.js";
 import { generateAuthServer } from "../generators/auth/auth.js";
+import { generateAdminStarter } from "../generators/admin/admin.js";
 import { configureApiEnv, configureWebEnv } from "../core/configure.js";
 import {
   configureAuthLocalEnv,
@@ -17,7 +18,7 @@ export type ProjectSetupAnswers = {
   webFramework: string | null;
   api: boolean;
   apiFramework: string | null;
-  authMode: "local" | "docker";
+  authMode: "image" | "source";
   useDocker: boolean | symbol;
   includeAdmin: boolean | symbol;
   adminMode: "image" | "source";
@@ -33,15 +34,16 @@ export type InitDependencies = {
   runProjectSetupPrompts: () => Promise<ProjectSetupAnswers>;
   generateReactStarter: (context: { root: string }) => Promise<void>;
   generateExpressStarter: (context: { root: string }) => Promise<void>;
+  generateAdminStarter: (context: { root: string }) => Promise<void>;
   generateAuthServer: (
     context: { root: string },
-    mode: "local" | "docker" | Symbol,
+    mode: "image" | "source" | Symbol,
   ) => Promise<void>;
   configureAuthLocalEnv: (root: string) => Promise<SharedConfig>;
   generateDockerCompose: (
     root: string,
     options: {
-      authMode: "local" | "docker";
+      authMode: "image" | "source";
       adminMode: "image" | "source";
       includeAdmin: boolean | symbol;
     },
@@ -54,7 +56,7 @@ export type InitDependencies = {
       projectName?: string;
       webFramework: string;
       apiFramework: string;
-      authMode: "local" | "docker";
+      authMode: "image" | "source";
       adminMode: "image" | "source";
     },
   ) => void;
@@ -63,7 +65,7 @@ export type InitDependencies = {
     root: string;
     webFramework: string | null;
     apiFramework: string | null;
-    authMode: "local" | "docker";
+    authMode: "image" | "source";
     useDocker: boolean | symbol;
   }) => void;
 };
@@ -72,6 +74,7 @@ const defaultDependencies: InitDependencies = {
   runProjectSetupPrompts,
   generateReactStarter,
   generateExpressStarter,
+  generateAdminStarter,
   generateAuthServer,
   configureAuthLocalEnv,
   generateDockerCompose,
@@ -121,10 +124,14 @@ export async function runCLI(
     await deps.generateExpressStarter({ root });
   }
 
+  if (answers.includeAdmin === true && answers.adminMode === "source") {
+    await deps.generateAdminStarter({ root });
+  }
+
   let sharedConfig: SharedConfig = {};
 
-  if (answers.authMode === "local") {
-    await deps.generateAuthServer({ root }, "local");
+  if (answers.authMode === "source") {
+    await deps.generateAuthServer({ root }, "source");
 
     sharedConfig = await deps.configureAuthLocalEnv(root);
   }
@@ -136,7 +143,7 @@ export async function runCLI(
       includeAdmin: answers.includeAdmin,
     });
 
-    if (answers.authMode === "docker") {
+    if (answers.authMode === "image") {
       sharedConfig = dockerShared;
     }
   }

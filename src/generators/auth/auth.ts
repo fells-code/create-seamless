@@ -8,18 +8,18 @@ const AUTH_PORT = 5312;
 
 export async function generateAuthServer(
   context: any,
-  mode: "local" | "docker" | Symbol,
+  mode: "image" | "source" | Symbol,
 ) {
   const { root } = context;
 
-  if (mode === "local") {
-    await setupLocalAuth(root);
+  if (mode === "source") {
+    await setupSourceAuth(root);
   } else {
-    await setupDockerAuth(root);
+    await setupImageAuth(root);
   }
 }
 
-async function setupLocalAuth(root: string) {
+async function setupSourceAuth(root: string) {
   const authDir = path.join(root, "auth");
 
   console.log("Cloning SeamlessAuth server...");
@@ -38,7 +38,7 @@ async function setupLocalAuth(root: string) {
   console.log("Auth server ready in /auth");
 }
 
-async function setupDockerAuth(root: string) {
+async function setupImageAuth(root: string) {
   console.log("Creating docker-compose for SeamlessAuth...");
 
   const dockerCompose = `
@@ -60,5 +60,5 @@ services:
     dockerCompose.trim() + "\n",
   );
 
-  console.log("Docker setup ready.");
+  console.log("Image setup ready.");
 }

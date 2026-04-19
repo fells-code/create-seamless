@@ -8,7 +8,7 @@ export function generateSeamlessConfig(
     projectName?: string;
     webFramework: string;
     apiFramework: string;
-    authMode: "local" | "docker";
+    authMode: "image" | "source";
     adminMode: "image" | "source";
   },
 ) {
@@ -29,10 +29,10 @@ export function generateSeamlessConfig(
       auth: {
         mode: options.authMode,
         image:
-          options.authMode === "docker"
+          options.authMode === "image"
             ? "ghcr.io/fells-code/seamless-auth-api:latest"
             : null,
-        path: options.authMode === "local" ? "./auth" : null,
+        path: options.authMode === "source" ? "./auth" : null,
       },
       admin: {
         mode: options.adminMode,

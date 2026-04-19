@@ -21,7 +21,7 @@ function createAnswers(
     webFramework: "react",
     api: true,
     apiFramework: "express",
-    authMode: "local",
+    authMode: "source",
     useDocker: false,
     includeAdmin: true,
     adminMode: "image",
@@ -42,6 +42,9 @@ function createInitOverrides(
     }),
     generateExpressStarter: vi.fn(async ({ root }: { root: string }) => {
       calls.push(`api:${root}`);
+    }),
+    generateAdminStarter: vi.fn(async ({ root }: { root: string }) => {
+      calls.push(`admin:${root}`);
     }),
     generateAuthServer: vi.fn(async (_context, mode) => {
       calls.push(`auth:${String(mode)}`);
@@ -72,7 +75,7 @@ function createInitOverrides(
 }
 
 describe("runCLI", () => {
-  it("runs the local init flow using injected dependencies", async () => {
+  it("runs the source auth init flow using injected dependencies", async () => {
     const cwd = createTempDir();
 
     try {
@@ -88,7 +91,7 @@ describe("runCLI", () => {
       expect(calls).toEqual([
         `web:${realProjectRoot}`,
         `api:${realProjectRoot}`,
-        "auth:local",
+        "auth:source",
         "configure-auth-local",
         "configure-api",
         "configure-web",
@@ -107,21 +110,76 @@ describe("runCLI", () => {
           projectName: "my-app",
           webFramework: "react",
           apiFramework: "express",
-          authMode: "local",
+          authMode: "source",
           adminMode: "image",
         }),
+      );
+      expect(overrides.generateAdminStarter).not.toHaveBeenCalled();
+    } finally {
+      cleanupTempDir(cwd);
+    }
+  });
+
+  it("clones the admin source when source mode is selected", async () => {
+    const cwd = createTempDir();
+
+    try {
+      const answers = createAnswers({
+        adminMode: "source",
+      });
+      const { overrides, calls } = createInitOverrides(answers);
+
+      await withCwd(cwd, () => runCLI("admin-source-app", overrides));
+
+      const projectRoot = fs.realpathSync(path.join(cwd, "admin-source-app"));
+
+      expect(calls).toContain(`admin:${projectRoot}`);
+      expect(overrides.generateAdminStarter).toHaveBeenCalledWith({
+        root: projectRoot,
+      });
+      expect(overrides.generateDockerCompose).not.toHaveBeenCalled();
+    } finally {
+      cleanupTempDir(cwd);
+    }
+  });
+
+  it("passes admin source mode through to docker compose generation", async () => {
+    const cwd = createTempDir();
+
+    try {
+      const answers = createAnswers({
+        authMode: "image",
+        adminMode: "source",
+        useDocker: true,
+      });
+      const { overrides } = createInitOverrides(answers);
+
+      await withCwd(cwd, () => runCLI("admin-docker-app", overrides));
+
+      const projectRoot = fs.realpathSync(path.join(cwd, "admin-docker-app"));
+
+      expect(overrides.generateAdminStarter).toHaveBeenCalledWith({
+        root: projectRoot,
+      });
+      expect(overrides.generateDockerCompose).toHaveBeenCalledWith(
+        projectRoot,
+        {
+          authMode: "image",
+          adminMode: "source",
+          includeAdmin: true,
+        },
       );
     } finally {
       cleanupTempDir(cwd);
     }
   });
 
-  it("uses docker shared config when docker mode is enabled", async () => {
+  it("uses image auth shared config when image mode is enabled", async () => {
     const cwd = createTempDir();
 
     try {
       const answers = createAnswers({
-        authMode: "docker",
+        authMode: "image",
         useDocker: true,
       });
       const { overrides } = createInitOverrides(answers);
@@ -136,7 +194,7 @@ describe("runCLI", () => {
       expect(overrides.generateDockerCompose).toHaveBeenCalledWith(
         realProjectRoot,
         {
-          authMode: "docker",
+          authMode: "image",
           adminMode: "image",
           includeAdmin: true,
         },
