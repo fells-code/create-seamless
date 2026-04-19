@@ -5,6 +5,8 @@ import { runCheck } from "./commands/check.js";
 import { printHelp } from "./commands/help.js";
 import pkg from "../package.json" with { type: "json" };
 import { runBootstrapAdmin } from "./commands/bootstrapAdmin.js";
+import { deploy } from "./commands/deploy.js";
+import { destroy } from "./commands/destroy.js";
 
 export const VERSION = pkg.version;
 const args = process.argv.slice(2);
@@ -24,6 +26,16 @@ async function main() {
 
   if (command === "-v" || command === "--version") {
     console.log(VERSION);
+    return;
+  }
+
+  if (command === "deploy") {
+    await deploy();
+    return;
+  }
+
+  if (command === "destroy") {
+    await destroy();
     return;
   }
 
