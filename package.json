@@ -20,6 +20,8 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run",
     "clean": "rm -rf dist",
     "prepublishOnly": "npm run build"
   },
@@ -38,6 +40,7 @@
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
     "@types/node": "^24.10.13",
+    "vitest": "^4.0.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   }
