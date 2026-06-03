@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with create-seamless
+description: Report a problem with seamless-cli
 title: "[Bug]: "
 labels: ["bug"]
 assignees: []
@@ -13,8 +13,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: create-seamless version
-      description: Output of `create-seamless --version`
+      label: seamless-cli version
+      description: Output of `seamless-cli --version`
       placeholder: "0.4.0"
     validations:
       required: true
