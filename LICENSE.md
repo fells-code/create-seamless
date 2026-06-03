@@ -1,6 +1,6 @@
 # License
 
-Create Seamless ("create-seamless) is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.
+Seamless CLI ("seamless-cli") is licensed under the **GNU Affero General Public License v3.0 (AGPL-3.0-only)**.
 
 - SPDX: `AGPL-3.0-only`
 
