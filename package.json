@@ -1,19 +1,18 @@
 {
-  "name": "create-seamless",
+  "name": "seamless-cli",
   "version": "0.1.2",
-  "description": "The starter script for Seamless Auth",
-  "homepage": "https://github.com/fells-code/create-seamless#readme",
+  "description": "The Seamless Auth command-line interface",
+  "homepage": "https://github.com/fells-code/seamless-cli#readme",
   "bugs": {
-    "url": "https://github.com/fells-code/create-seamless/issues"
+    "url": "https://github.com/fells-code/seamless-cli/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/fells-code/create-seamless.git"
+    "url": "git+https://github.com/fells-code/seamless-cli.git"
   },
   "license": "AGPL-3.0-only",
   "author": "Fells Code, LLC",
   "bin": {
-    "create-seamless": "dist/index.js",
     "seamless": "dist/index.js"
   },
   "type": "module",

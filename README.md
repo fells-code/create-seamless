@@ -1,9 +1,9 @@
-# create-seamless
+# Seamless CLI
 
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL3-yellow.svg)](LICENSE)
-[![npm version](https://img.shields.io/npm/v/create-seamless.svg?style=flat)](https://www.npmjs.com/package/create-seamless)
+[![npm version](https://img.shields.io/npm/v/seamless-cli.svg?style=flat)](https://www.npmjs.com/package/seamless-cli)
 
-`create-seamless` is a CLI for bootstrapping applications with Seamless Auth, an open source, passwordless authentication system.
+Seamless CLI is a command-line tool for bootstrapping applications with Seamless Auth, an open source, passwordless authentication system.
 
 It guides you through creating a fully working authentication stack with a web app, API, and auth server that are already connected and ready to run.
 
@@ -14,13 +14,13 @@ It guides you through creating a fully working authentication stack with a web a
 Run the CLI with `npx`:
 
 ```bash
-npx create-seamless my-app
+npx seamless-cli init my-app
 ```
 
 Or run it in your current directory:
 
 ```bash
-npx create-seamless
+npx seamless-cli init
 ```
 
 You’ll be guided through a short setup process where you can choose:
@@ -122,7 +122,7 @@ npm run dev
 
 ## What is configured for you
 
-create-seamless handles the parts that are usually difficult to get right:
+Seamless CLI handles the parts that are usually difficult to get right:
 
 - Shared API service tokens
 - JWT signing configuration
@@ -136,7 +136,7 @@ Everything is aligned across services so the system works immediately after setu
 
 ## Included projects
 
-create-seamless pulls from the following repositories:
+Seamless CLI pulls from the following repositories:
 
 - Seamless Auth API
   [https://github.com/fells-code/seamless-auth-api](https://github.com/fells-code/seamless-auth-api)
@@ -169,7 +169,7 @@ Seamless Auth is built around a few principles:
 - Production-shaped local development
 - Explicit configuration over hidden behavior
 
-create-seamless exists to make this setup fast and repeatable.
+Seamless CLI exists to make this setup fast and repeatable.
 
 ---
 
@@ -178,6 +178,50 @@ create-seamless exists to make this setup fast and repeatable.
 - Node.js 18 or newer
 - npm or pnpm
 - Docker (optional)
+
+---
+
+## Testing local CLI changes
+
+From the repository root, build the CLI and link the local package:
+
+```bash
+npm install
+npm run build
+npm link
+```
+
+Then run the linked command:
+
+```bash
+seamless --version
+seamless --help
+```
+
+When you are done testing, remove the global link:
+
+```bash
+npm unlink -g seamless-cli
+```
+
+To smoke test the package artifact before publishing:
+
+```bash
+npm run build
+TARBALL=$(npm pack --pack-destination /tmp)
+TEST_DIR=$(mktemp -d)
+
+cd "$TEST_DIR"
+npm install "/tmp/$TARBALL"
+npm exec -- seamless --version
+npm exec -- seamless --help
+```
+
+If npm cache permissions block local testing, use a writable temporary cache:
+
+```bash
+npm --cache /tmp/npm-cache exec -- seamless --version
+```
 
 ---
 

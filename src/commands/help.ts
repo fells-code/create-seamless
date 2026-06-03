@@ -2,9 +2,9 @@ import { VERSION } from "../index.js";
 
 export function printHelp() {
   console.log(`
-create-seamless v${VERSION}
+seamless v${VERSION}
 
-Seamless Auth CLI — scaffold and manage full-stack authentication systems.
+Seamless CLI — scaffold and manage full-stack authentication systems.
 
 ────────────────────────────────────────────
 
