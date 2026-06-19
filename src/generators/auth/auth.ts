@@ -1,10 +1,16 @@
 import fs from "fs";
 import path from "path";
+import { parseEnvString } from "../../core/env.js";
 import { runCommand } from "../../core/exec.js";
-import { writeEnv } from "../../utils/writeEnv.js";
+import { fetchEnvExample } from "../../core/fetch.js";
+import { POSTGRES_IMAGE, SEAMLESS_AUTH_API_IMAGE } from "../../core/images.js";
+import {
+  buildAuthEnv,
+  configureAuthLocalEnv,
+  envToDockerBlock,
+} from "../docker/docker.js";
 
 const AUTH_REPO = "https://github.com/fells-code/seamless-auth-api";
-const AUTH_PORT = 5312;
 
 export async function generateAuthServer(
   context: any,
@@ -13,10 +19,10 @@ export async function generateAuthServer(
   const { root } = context;
 
   if (mode === "local") {
-    await setupLocalAuth(root);
-  } else {
-    await setupDockerAuth(root);
+    return await setupLocalAuth(root);
   }
+
+  return await setupDockerAuth(root);
 }
 
 async function setupLocalAuth(root: string) {
@@ -28,31 +34,52 @@ async function setupLocalAuth(root: string) {
 
   console.log("Writing auth environment...");
 
-  writeEnv(authDir, {
-    PORT: AUTH_PORT,
-    NODE_ENV: "development",
-    AUTH_MODE: "server",
-    ISSUER: `http://localhost:${AUTH_PORT}`,
-  });
+  const shared = await configureAuthLocalEnv(root);
 
   console.log("Auth server ready in /auth");
+  return shared;
 }
 
 async function setupDockerAuth(root: string) {
   console.log("Creating docker-compose for SeamlessAuth...");
 
+  const raw = await fetchEnvExample();
+  const parsed = parseEnvString(raw);
+  const { env, shared } = buildAuthEnv(parsed, "docker");
+  const envBlock = envToDockerBlock(env);
+
   const dockerCompose = `
 services:
+  db:
+    image: ${POSTGRES_IMAGE}
+    container_name: seamless-db
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: myuser
+      POSTGRES_PASSWORD: mypassword
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
   auth:
-    image: ghcr.io/fells-code/seamless-auth-api:v0.1.2
+    image: ${SEAMLESS_AUTH_API_IMAGE}
     container_name: seamless-auth
     ports:
       - "5312:5312"
     environment:
-      PORT: 5312
-      NODE_ENV: development
-      AUTH_MODE: server
-      ISSUER: http://localhost:5312
+${envBlock}
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:
 `;
 
   fs.writeFileSync(
@@ -61,4 +88,5 @@ services:
   );
 
   console.log("Docker setup ready.");
+  return shared;
 }

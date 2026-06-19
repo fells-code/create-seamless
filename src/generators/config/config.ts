@@ -1,6 +1,10 @@
 import fs from "fs";
 import path from "path";
 import { VERSION } from "../../index.js";
+import {
+  SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE,
+  SEAMLESS_AUTH_API_IMAGE,
+} from "../../core/images.js";
 
 export function generateSeamlessConfig(
   root: string,
@@ -28,17 +32,14 @@ export function generateSeamlessConfig(
       },
       auth: {
         mode: options.authMode,
-        image:
-          options.authMode === "docker"
-            ? "ghcr.io/fells-code/seamless-auth-api:latest"
-            : null,
+        image: options.authMode === "docker" ? SEAMLESS_AUTH_API_IMAGE : null,
         path: options.authMode === "local" ? "./auth" : null,
       },
       admin: {
         mode: options.adminMode,
         image:
           options.adminMode === "image"
-            ? "ghcr.io/fells-code/seamless-auth-admin-dashboard:latest"
+            ? SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE
             : null,
         path: options.adminMode === "source" ? "./admin" : null,
       },
