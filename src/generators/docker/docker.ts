@@ -4,6 +4,11 @@ import { fetchEnvExample } from "../../core/fetch.js";
 import { parseEnv, parseEnvString } from "../../core/env.js";
 import { generateSecret } from "../../core/secrets.js";
 import { generateJWKS } from "../../core/jwks.js";
+import {
+  POSTGRES_IMAGE,
+  SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE,
+  SEAMLESS_AUTH_API_IMAGE,
+} from "../../core/images.js";
 
 export async function generateDockerCompose(
   root: string,
@@ -40,7 +45,7 @@ async function buildCompose(
     compose: `
 services:
   db:
-    image: postgres:16
+    image: ${POSTGRES_IMAGE}
     container_name: seamless-db
     ports:
       - "5432:5432"
@@ -50,6 +55,11 @@ services:
       POSTGRES_DB: postgres
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U myuser -d postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
 ${authBlock}
 
@@ -87,7 +97,8 @@ async function authService(mode: "local" | "docker", root: string) {
       - ./auth:/app
       - /app/node_modules
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 `,
       shared,
     };
@@ -115,8 +126,10 @@ function apiService(shared: any) {
       - ./api:/app
       - /app/node_modules
     depends_on:
-      - db
-      - auth
+      db:
+        condition: service_healthy
+      auth:
+        condition: service_started
 `;
 }
 
@@ -148,14 +161,15 @@ async function authServiceDocker() {
   return {
     service: `
   auth:
-    image: ghcr.io/fells-code/seamless-auth-api:latest
+    image: ${SEAMLESS_AUTH_API_IMAGE}
     container_name: seamless-auth
     ports:
       - "5312:5312"
     environment:
 ${envBlock}
     depends_on:
-      - db
+      db:
+        condition: service_healthy
 `,
     shared,
   };
@@ -182,7 +196,7 @@ function adminService(mode: "image" | "source") {
 
   return `
   admin:
-    image: ghcr.io/fells-code/seamless-auth-admin-dashboard:latest
+    image: ${SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE}
     container_name: admin
     ports:
       - "5174:80"
@@ -193,9 +207,13 @@ function adminService(mode: "image" | "source") {
 `;
 }
 
-function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
+export function buildAuthEnv(
+  env: Record<string, string>,
+  mode: "local" | "docker",
+) {
   const apiToken = generateSecret(32);
   const bootstrapSecret = generateSecret(32);
+  const kid = "dev-main";
 
   env.SEAMLESS_BOOTSTRAP_ENABLED = "true";
   env.SEAMLESS_BOOTSTRAP_SECRET = bootstrapSecret;
@@ -204,30 +222,16 @@ function buildAuthEnv(env: Record<string, string>, mode: "local" | "docker") {
   env.NODE_ENV = "development";
 
   env.AUTH_MODE = "server";
-  env.ISSUER = "http://auth:5312";
+  env.ISSUER =
+    mode === "docker" ? "http://auth:5312" : "http://localhost:5312";
 
   env.DB_HOST = mode === "docker" ? "db" : "localhost";
   env.DB_PORT = "5432";
 
   env.API_SERVICE_TOKEN = apiToken;
 
-  let kid = "main";
-  env.JWKS_ACTIVE_KID = kid;
-
-  if (mode === "docker") {
-    const jwks = buildJWKSConfig();
-
-    kid = jwks.kid;
-
-    env.SEAMLESS_JWKS_ACTIVE_KID = jwks.kid;
-    env.JWKS_ACTIVE_KID = jwks.kid;
-
-    env[`SEAMLESS_JWKS_KEY_${jwks.kid}_PRIVATE`] = jwks.privateKey;
-    env.JWKS_PUBLIC_KEYS = jwks.publicJwksJson;
-  }
-
   env.APP_ORIGINS = "http://localhost:3000";
-  env.ORIGINS = "http://localhost:5173";
+  env.ORIGINS = "http://localhost:5173,http://localhost:5174";
 
   return {
     env,
@@ -246,7 +250,7 @@ export function envToDockerBlock(env: Record<string, string>) {
         return `      ${k}: |\n${indentMultiline(v, 8)}`;
       }
 
-      return `      ${k}: ${v}`;
+      return `      ${k}: ${JSON.stringify(v)}`;
     })
     .join("\n");
 }
@@ -325,6 +329,6 @@ export function extractSharedFromExistingEnv(root: string) {
 
   return {
     apiToken: env.API_SERVICE_TOKEN,
-    kid: env.JWKS_ACTIVE_KID || "main",
+    kid: env.SEAMLESS_JWKS_ACTIVE_KID || env.JWKS_ACTIVE_KID || "dev-main",
   };
 }

@@ -5,10 +5,7 @@ import { generateReactStarter } from "../generators/frontend/react.js";
 import { generateExpressStarter } from "../generators/backend/express.js";
 import { generateAuthServer } from "../generators/auth/auth.js";
 import { configureApiEnv, configureWebEnv } from "../core/configure.js";
-import {
-  configureAuthLocalEnv,
-  generateDockerCompose,
-} from "../generators/docker/docker.js";
+import { generateDockerCompose } from "../generators/docker/docker.js";
 import { printSuccessOutput } from "../core/output.js";
 import { generateSeamlessConfig } from "../generators/config/config.js";
 
@@ -51,9 +48,7 @@ export async function runCLI(projectName?: string) {
   let sharedConfig: any = {};
 
   if (answers.authMode === "local") {
-    await generateAuthServer({ root }, "local");
-
-    sharedConfig = await configureAuthLocalEnv(root);
+    sharedConfig = await generateAuthServer({ root }, "local");
   }
 
   if (answers.useDocker) {
