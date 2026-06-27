@@ -36,12 +36,18 @@ services:
     ports:
       - '5312:5312'
     environment:
-      NODE_ENV: test
+      # `development` (not `test`): the API's JWKS endpoint only serves the
+      # auto-generated dev public key when NODE_ENV === 'development', even though
+      # signing treats any non-production env as dev. Running as development keeps
+      # JWKS publication working so the adapter/SDKs can verify tokens.
+      NODE_ENV: development
       PORT: '5312'
       APP_NAME: Seamless Verify
       APP_ID: seamless-verify
       APP_ORIGINS: http://localhost:3000,http://localhost:5173
-      ISSUER: http://localhost:5312
+      # Must equal the adapter's AUTH_SERVER_URL: the adapter validates the `iss`
+      # claim on API-signed tokens against the URL it reaches the API on.
+      ISSUER: http://auth-api:5312
       DEFAULT_ROLES: user
       AVAILABLE_ROLES: user,admin
       LOGIN_METHODS: passkey,magic_link,email_otp,phone_otp
