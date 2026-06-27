@@ -1,0 +1,93 @@
+# Conformance stack for `seamless verify`.
+# Brings up Postgres + the auth API + the Express adapter from local source
+# (paths supplied by the verify command via env) so the Playwright harness can
+# drive every auth flow. NODE_ENV=test enables the API's external-delivery seam
+# so OTP / magic-link tokens are returned in responses (no real email/SMS).
+#
+# Required env (the `seamless verify` command writes these into .env.verify):
+#   SEAMLESS_API_DIR      absolute path to seamless-auth-api source
+#   SEAMLESS_ADAPTER_DIR  absolute path to the express adapter source
+#   API_SERVICE_TOKEN     shared secret between API and adapter
+#   JWKS_KID              key id the adapter expects (must match the API's active kid)
+#   SEAMLESS_BOOTSTRAP_SECRET  bearer secret for POST /bootstrap/admin-invite
+
+name: seamless-verify
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: seamless
+      POSTGRES_PASSWORD: seamless
+      POSTGRES_DB: seamless_auth
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U seamless -d seamless_auth']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  auth-api:
+    # Built with the production Dockerfile (compiles dist/), but run with
+    # NODE_ENV=test so signing keys auto-generate and prod-only env (JWKS keys)
+    # is skipped. validateEnvs.sh gates startup on the env below.
+    build:
+      context: ${SEAMLESS_API_DIR}
+      dockerfile: Dockerfile
+    ports:
+      - '5312:5312'
+    environment:
+      NODE_ENV: test
+      PORT: '5312'
+      APP_NAME: Seamless Verify
+      APP_ID: seamless-verify
+      APP_ORIGINS: http://localhost:3000,http://localhost:5173
+      ISSUER: http://localhost:5312
+      DEFAULT_ROLES: user
+      AVAILABLE_ROLES: user,admin
+      LOGIN_METHODS: passkey,magic_link,email_otp,phone_otp
+      DB_LOGGING: 'false'
+      ACCESS_TOKEN_TTL: 15m
+      REFRESH_TOKEN_TTL: 1h
+      RATE_LIMIT: '100000'
+      DELAY_AFTER: '100000'
+      RPID: localhost
+      ORIGINS: http://localhost:5173,http://localhost:3000
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_USER: seamless
+      DB_PASSWORD: seamless
+      DB_NAME: seamless_auth
+      API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
+      SEAMLESS_BOOTSTRAP_ENABLED: 'true'
+      SEAMLESS_BOOTSTRAP_SECRET: ${SEAMLESS_BOOTSTRAP_SECRET}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'node', 'dist/healthCheck.js']
+      interval: 3s
+      timeout: 5s
+      retries: 40
+
+  adapter:
+    build:
+      context: ${SEAMLESS_ADAPTER_DIR}
+    ports:
+      - '3000:3000'
+    environment:
+      NODE_ENV: development
+      PORT: '3000'
+      AUTH_SERVER_URL: http://auth-api:5312
+      APP_ORIGIN: http://localhost:3000
+      UI_ORIGINS: http://localhost:5173
+      API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
+      COOKIE_SIGNING_KEY: ${API_SERVICE_TOKEN}
+      JWKS_KID: ${JWKS_KID}
+      DB_HOST: postgres
+      DB_PORT: '5432'
+      DB_USER: seamless
+      DB_PASSWORD: seamless
+      DB_NAME: seamless_app
+    depends_on:
+      auth-api:
+        condition: service_healthy
