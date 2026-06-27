@@ -13,6 +13,7 @@ USAGE
   seamless init [project-name]
   seamless check
   seamless bootstrap-admin [email]
+  seamless verify [--filter=<flow>] [--keep-up]
   seamless --help
   seamless --version
 
@@ -31,6 +32,11 @@ COMMANDS
 
   check
     Validate project setup, Docker, and running services
+
+  verify [--filter=<flow>] [--keep-up]
+    Stand up the auth stack and run the conformance suite across every
+    auth flow (API + SDK paths). Requires Docker. Set SEAMLESS_API_DIR and
+    SEAMLESS_ADAPTER_DIR to local source checkouts.
 
   bootstrap-admin [email]
     Create a bootstrap admin invite

@@ -1,6 +1,8 @@
+import { SEAMLESS_AUTH_API_VERSION } from "./images.js";
+
 export async function fetchEnvExample(): Promise<string> {
   const url =
-    "https://raw.githubusercontent.com/fells-code/seamless-auth-api/main/.env.example";
+    `https://raw.githubusercontent.com/fells-code/seamless-auth-api/${SEAMLESS_AUTH_API_VERSION}/.env.example`;
 
   const res = await fetch(url);
 
