@@ -33,10 +33,14 @@ COMMANDS
   check
     Validate project setup, Docker, and running services
 
-  verify [--api-only] [--filter=<flow>] [--keep-up]
+  verify [--local] [--api-only] [--filter=<flow>] [--keep-up]
     Stand up the auth stack and run the conformance suite across the API and
     the cookie (adapter) paths. Requires Docker. Builds the auth server from
     a sibling seamless-auth-api checkout (override with SEAMLESS_API_DIR).
+
+    --local builds and links the local @seamless-auth/* SDK source (sibling
+    seamless-auth-server, override with SEAMLESS_SERVER_DIR) instead of the
+    published npm packages — so you can catch SDK regressions before publishing.
 
   bootstrap-admin [email]
     Create a bootstrap admin invite
