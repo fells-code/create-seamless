@@ -1,7 +1,10 @@
 // Shared config + helpers for the conformance harness.
 
+import { randomInt, randomUUID } from 'crypto';
+
 export const API_URL = process.env.SEAMLESS_API_URL ?? 'http://localhost:5312';
 export const ADAPTER_URL = process.env.SEAMLESS_ADAPTER_URL ?? 'http://localhost:3000';
+export const REACT_URL = process.env.SEAMLESS_REACT_URL ?? 'http://localhost:5173';
 
 // Must match the API's API_SERVICE_TOKEN so the harness can mint M2M tokens.
 export const API_SERVICE_TOKEN =
@@ -20,26 +23,22 @@ export const EXTERNAL_DELIVERY = {
 
 const runId = process.env.SEAMLESS_RUN_ID ?? String(Date.now());
 
-let emailCounter = 0;
+// A random suffix (not just a module-level counter) keeps emails unique even
+// though Playwright re-evaluates this module per spec file, which resets the
+// counter — duplicate emails otherwise collide on the API's per-email OTP limit.
 export function uniqueEmail(prefix = 'verify'): string {
-  emailCounter += 1;
-  return `${prefix}.${runId}.${emailCounter}@example.test`;
+  return `${prefix}.${runId}.${randomUUID().slice(0, 8)}@example.test`;
 }
 
 // Distinct client IP per actor so the API's per-IP rate limiters see separate
 // buckets (honored only alongside a valid service token — see client.ts).
-let ipCounter = 0;
+// Random (not a module-level counter) to survive per-file module re-evaluation.
 export function uniqueClientIp(): string {
-  ipCounter += 1;
-  const n = ipCounter;
-  return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
+  return `10.${randomInt(256)}.${randomInt(256)}.${randomInt(1, 255)}`;
 }
 
-// Valid-format US numbers, seeded by runId so they don't collide across runs.
-const phoneSeed = Number(runId) || 1_000_000;
-let phoneCounter = 0;
+// Valid-format US numbers (415 area, 7-digit subscriber). Random so they stay
+// unique across runs and across per-file module resets without a shared counter.
 export function uniquePhone(): string {
-  phoneCounter += 1;
-  const subscriber = 2_000_000 + ((phoneSeed + phoneCounter) % 7_000_000);
-  return `+1415${subscriber}`;
+  return `+1415${2_000_000 + randomInt(7_000_000)}`;
 }
