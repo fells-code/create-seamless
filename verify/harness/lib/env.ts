@@ -7,6 +7,11 @@ export const ADAPTER_URL = process.env.SEAMLESS_ADAPTER_URL ?? 'http://localhost
 export const API_SERVICE_TOKEN =
   process.env.SEAMLESS_API_SERVICE_TOKEN ?? 'verify-dev-service-token';
 
+// Must match the API's SEAMLESS_BOOTSTRAP_SECRET so the harness can mint the
+// first admin invite (bootstrap-promotion flow).
+export const BOOTSTRAP_SECRET =
+  process.env.SEAMLESS_BOOTSTRAP_SECRET ?? 'verify-dev-bootstrap-secret';
+
 // Non-production seam: makes the API return OTP / magic-link tokens in the
 // response `delivery` object instead of sending real email/SMS.
 export const EXTERNAL_DELIVERY = {
@@ -28,4 +33,13 @@ export function uniqueClientIp(): string {
   ipCounter += 1;
   const n = ipCounter;
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
+}
+
+// Valid-format US numbers, seeded by runId so they don't collide across runs.
+const phoneSeed = Number(runId) || 1_000_000;
+let phoneCounter = 0;
+export function uniquePhone(): string {
+  phoneCounter += 1;
+  const subscriber = 2_000_000 + ((phoneSeed + phoneCounter) % 7_000_000);
+  return `+1415${subscriber}`;
 }
