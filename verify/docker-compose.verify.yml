@@ -105,10 +105,34 @@ services:
   # SDK's `${apiHost}/auth/*` calls hit the adapter's mount. Browser-visible URL,
   # so API_URL is the host-mapped adapter (localhost:3000), not the compose host.
   # Gated behind the `react` profile so the api/adapter-only runs skip the build.
+  #
+  # The inline Dockerfile mirrors the starter's own Dockerfile, but additionally
+  # installs a locally-built @seamless-auth/react tarball when present (--local
+  # mode packs it into ./react-vendor; that dir is empty otherwise → published SDK).
   react:
     profiles: ['react']
     build:
       context: ${SEAMLESS_REACT_DIR}
+      additional_contexts:
+        sdk: ./react-vendor
+      dockerfile_inline: |
+        FROM node:20-slim AS builder
+        WORKDIR /app
+        COPY package.json package-lock.json ./
+        RUN npm ci
+        COPY . .
+        COPY --from=sdk . /tmp/sdk/
+        RUN if ls /tmp/sdk/seamless-auth-react-*.tgz >/dev/null 2>&1; then \
+              npm install /tmp/sdk/seamless-auth-react-*.tgz; \
+            fi
+        RUN npm run build
+        FROM nginx:alpine
+        COPY ./nginx.conf /etc/nginx/conf.d/default.conf
+        COPY --from=builder /app/dist /usr/share/nginx/html
+        COPY entrypoint.sh /entrypoint.sh
+        RUN chmod +x /entrypoint.sh
+        EXPOSE 80
+        CMD ["/entrypoint.sh"]
     ports:
       - '5173:80'
     environment:

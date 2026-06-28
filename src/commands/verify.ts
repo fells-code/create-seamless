@@ -73,6 +73,22 @@ function resolveReactDir(): string {
 }
 
 const VENDOR_DIR = path.join(VERIFY_DIR, "adapter-app", "vendor");
+const REACT_VENDOR_DIR = path.join(VERIFY_DIR, "react-vendor");
+
+// The React client SDK (@seamless-auth/react). Defaults to a sibling checkout;
+// override with SEAMLESS_REACT_SDK_DIR. Only needed for --local browser runs.
+function resolveReactSdkDir(): string {
+  const candidate =
+    process.env.SEAMLESS_REACT_SDK_DIR ??
+    path.resolve(REPO_ROOT, "..", "seamless-auth-react");
+  if (!fs.existsSync(path.join(candidate, "package.json"))) {
+    throw new Error(
+      `Could not find @seamless-auth/react at ${candidate}.\n` +
+        "  Set SEAMLESS_REACT_SDK_DIR to its local checkout (needed for --local browser runs).",
+    );
+  }
+  return candidate;
+}
 
 // The local server SDK (@seamless-auth/core + /express). Defaults to a sibling
 // checkout; override with SEAMLESS_SERVER_DIR. Only needed for --local.
@@ -89,9 +105,20 @@ function resolveServerDir(): string {
 }
 
 function cleanVendor(): void {
-  for (const f of fs.readdirSync(VENDOR_DIR)) {
-    if (f.endsWith(".tgz")) fs.rmSync(path.join(VENDOR_DIR, f));
+  for (const dir of [VENDOR_DIR, REACT_VENDOR_DIR]) {
+    for (const f of fs.readdirSync(dir)) {
+      if (f.endsWith(".tgz")) fs.rmSync(path.join(dir, f));
+    }
   }
+}
+
+// Build + pack the local @seamless-auth/react into ./react-vendor so the react
+// service installs it over the published version (--local browser runs).
+async function packLocalReactSdk(env: NodeJS.ProcessEnv): Promise<void> {
+  const sdkDir = resolveReactSdkDir();
+  console.log(kleur.cyan("→ Building & packing local @seamless-auth/react…"));
+  await runCommand("npm", ["run", "build"], sdkDir, env);
+  await runCommand("npm", ["pack", "--pack-destination", REACT_VENDOR_DIR], sdkDir, env);
 }
 
 async function packLocalSdks(env: NodeJS.ProcessEnv): Promise<void> {
@@ -152,9 +179,10 @@ export async function runVerify(args: string[] = []): Promise<void> {
 
   let failed = false;
   try {
-    // The adapter image installs local @seamless-auth/* tarballs only when present.
+    // The adapter / react images install local @seamless-auth/* tarballs when present.
     cleanVendor();
     if (opts.local) await packLocalSdks(env);
+    if (opts.local && opts.react) await packLocalReactSdk(env);
 
     // Fresh volumes each run → deterministic system_config seed (e.g. LOGIN_METHODS).
     console.log(kleur.cyan("→ Cleaning any previous stack…"));
