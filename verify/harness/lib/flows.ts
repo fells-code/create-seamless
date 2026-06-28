@@ -27,6 +27,40 @@ export async function registerEmail(ctx: APIRequestContext, email: string): Prom
   return body.token as string;
 }
 
+/** Register a new user with email + phone; returns the ephemeral (pre-auth) token. */
+export async function registerWithPhone(
+  ctx: APIRequestContext,
+  email: string,
+  phone: string,
+): Promise<string> {
+  const res = await ctx.post('/registration/register', {
+    headers: EXTERNAL_DELIVERY,
+    data: { email, phone },
+  });
+  expect(res.ok(), `register ${email} -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  const body = await res.json();
+  expect(body.token, 'register returns an ephemeral token').toBeTruthy();
+  return body.token as string;
+}
+
+/** Generate a phone OTP and return the raw code via the external-delivery seam. */
+export async function requestPhoneOtp(ctx: APIRequestContext, ephemeral: string): Promise<string> {
+  const res = await ctx.get('/otp/generate-phone-otp', {
+    headers: { ...bearer(ephemeral), ...EXTERNAL_DELIVERY },
+  });
+  expect(res.ok(), `generate-phone-otp -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  const code = (await res.json())?.delivery?.token;
+  expect(code, 'external delivery returns the phone OTP code').toBeTruthy();
+  return String(code);
+}
+
+export function verifyPhoneOtp(ctx: APIRequestContext, ephemeral: string, code: string) {
+  return ctx.post('/otp/verify-phone-otp', {
+    headers: bearer(ephemeral),
+    data: { verificationToken: code },
+  });
+}
+
 /** Generate an email OTP and return the raw code via the external-delivery seam. */
 export async function requestEmailOtp(ctx: APIRequestContext, ephemeral: string): Promise<string> {
   const res = await ctx.get('/otp/generate-email-otp', {
