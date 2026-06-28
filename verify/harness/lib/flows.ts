@@ -1,6 +1,6 @@
 import { APIRequestContext, expect } from '@playwright/test';
 
-import { EXTERNAL_DELIVERY } from './env';
+import { BOOTSTRAP_SECRET, EXTERNAL_DELIVERY } from './env';
 
 export interface SessionTokens {
   token: string; // signed access token
@@ -36,6 +36,41 @@ export async function registerWithPhone(
   const res = await ctx.post('/registration/register', {
     headers: EXTERNAL_DELIVERY,
     data: { email, phone },
+  });
+  expect(res.ok(), `register ${email} -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  const body = await res.json();
+  expect(body.token, 'register returns an ephemeral token').toBeTruthy();
+  return body.token as string;
+}
+
+/**
+ * Mint the one-time bootstrap admin invite (returns the raw invite token via
+ * the external-delivery seam). Only succeeds before any admin exists — the API
+ * gates re-use with 410, so this assumes a fresh DB (what `seamless verify` runs).
+ */
+export async function createBootstrapInvite(
+  ctx: APIRequestContext,
+  email: string,
+): Promise<string> {
+  const res = await ctx.post('/internal/bootstrap/admin-invite', {
+    headers: { Authorization: `Bearer ${BOOTSTRAP_SECRET}`, ...EXTERNAL_DELIVERY },
+    data: { email },
+  });
+  expect(res.ok(), `bootstrap invite -> ${res.status()} ${await res.text()}`).toBeTruthy();
+  const token = (await res.json())?.data?.token;
+  expect(token, 'bootstrap invite returns a token via external delivery').toBeTruthy();
+  return String(token);
+}
+
+/** Register a user carrying a bootstrap invite token; returns the ephemeral token. */
+export async function registerWithBootstrapToken(
+  ctx: APIRequestContext,
+  email: string,
+  bootstrapToken: string,
+): Promise<string> {
+  const res = await ctx.post('/registration/register', {
+    headers: EXTERNAL_DELIVERY,
+    data: { email, bootstrapToken },
   });
   expect(res.ok(), `register ${email} -> ${res.status()} ${await res.text()}`).toBeTruthy();
   const body = await res.json();
