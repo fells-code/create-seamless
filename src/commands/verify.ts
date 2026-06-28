@@ -17,14 +17,18 @@ interface VerifyOptions {
   local: boolean;
   keepUp: boolean;
   apiOnly: boolean;
+  react: boolean;
   grep?: string;
 }
 
 function parseArgs(args: string[]): VerifyOptions {
+  const apiOnly = args.includes("--api-only");
   return {
     local: args.includes("--local"),
     keepUp: args.includes("--keep-up"),
-    apiOnly: args.includes("--api-only"),
+    apiOnly,
+    // The browser layer runs by default; --no-react (or --api-only) skips it.
+    react: !apiOnly && !args.includes("--no-react"),
     grep: args.find((a) => a.startsWith("--filter="))?.split("=")[1],
   };
 }
@@ -48,6 +52,21 @@ function resolveApiDir(): string {
     throw new Error(
       `Could not find the seamless-auth-api source at ${candidate}.\n` +
         "  Set SEAMLESS_API_DIR to its local checkout.",
+    );
+  }
+  return candidate;
+}
+
+// The React starter app, served at :5173 and pointed at the adapter. Defaults to
+// a sibling checkout; override with SEAMLESS_REACT_DIR. Only needed for browser runs.
+function resolveReactDir(): string {
+  const candidate =
+    process.env.SEAMLESS_REACT_DIR ??
+    path.resolve(REPO_ROOT, "..", "seamless-auth-starter-react");
+  if (!fs.existsSync(path.join(candidate, "package.json"))) {
+    throw new Error(
+      `Could not find seamless-auth-starter-react at ${candidate}.\n` +
+        "  Set SEAMLESS_REACT_DIR to its local checkout, or run with --no-react.",
     );
   }
   return candidate;
@@ -101,6 +120,7 @@ export async function runVerify(args: string[] = []): Promise<void> {
 
   ensureDocker();
   const apiDir = resolveApiDir();
+  const reactDir = opts.react ? resolveReactDir() : undefined;
 
   const serviceToken = process.env.API_SERVICE_TOKEN ?? "verify-dev-service-token";
   const env: NodeJS.ProcessEnv = {
@@ -115,11 +135,20 @@ export async function runVerify(args: string[] = []): Promise<void> {
     SEAMLESS_API_URL: "http://localhost:5312",
     SEAMLESS_ADAPTER_URL: "http://localhost:3000",
     ...(opts.apiOnly ? {} : { SEAMLESS_VERIFY_ADAPTER: "1" }),
+    ...(reactDir
+      ? {
+          SEAMLESS_REACT_DIR: reactDir,
+          SEAMLESS_REACT_URL: "http://localhost:5173",
+          SEAMLESS_VERIFY_REACT: "1",
+        }
+      : {}),
   };
 
-  const services = opts.apiOnly
-    ? ["postgres", "auth-api"]
-    : ["postgres", "auth-api", "adapter"];
+  const services = ["postgres", "auth-api"];
+  if (!opts.apiOnly) services.push("adapter");
+  if (opts.react) services.push("react");
+  // The react service is behind a compose profile so non-browser runs skip its build.
+  const profileArgs = opts.react ? ["--profile", "react"] : [];
 
   let failed = false;
   try {
@@ -129,22 +158,27 @@ export async function runVerify(args: string[] = []): Promise<void> {
 
     // Fresh volumes each run → deterministic system_config seed (e.g. LOGIN_METHODS).
     console.log(kleur.cyan("→ Cleaning any previous stack…"));
-    await compose(env, "down", "-v").catch(() => undefined);
+    await compose(env, ...profileArgs, "down", "-v").catch(() => undefined);
 
     console.log(kleur.cyan(`→ Building & starting the stack (${services.join(", ")})…`));
-    await compose(env, "up", "-d", "--build", ...services);
+    await compose(env, ...profileArgs, "up", "-d", "--build", ...services);
 
     if (!fs.existsSync(path.join(HARNESS_DIR, "node_modules"))) {
       console.log(kleur.cyan("→ Installing harness dependencies…"));
       await runCommand("npm", ["install"], HARNESS_DIR, env);
     }
+    if (opts.react) {
+      console.log(kleur.cyan("→ Ensuring the Chromium browser is installed…"));
+      await runCommand("npx", ["playwright", "install", "chromium"], HARNESS_DIR, env);
+    }
 
     console.log(kleur.cyan("→ Running the conformance harness…\n"));
-    const passthrough: string[] = [];
-    if (opts.apiOnly) passthrough.push("--project=api");
+    const projects = ["api"];
+    if (!opts.apiOnly) projects.push("adapter");
+    if (opts.react) projects.push("react");
+    const passthrough: string[] = projects.flatMap((p) => ["--project", p]);
     if (opts.grep) passthrough.push("--grep", opts.grep);
-    const testArgs = passthrough.length ? ["test", "--", ...passthrough] : ["test"];
-    await runCommand("npm", testArgs, HARNESS_DIR, env);
+    await runCommand("npm", ["test", "--", ...passthrough], HARNESS_DIR, env);
 
     console.log(kleur.green("\n✔ Conformance passed.\n"));
   } catch (err) {
@@ -152,11 +186,12 @@ export async function runVerify(args: string[] = []): Promise<void> {
     console.log(kleur.red(`\n✖ Conformance failed: ${(err as Error).message}\n`));
   } finally {
     if (opts.keepUp) {
+      const profileHint = opts.react ? "--profile react " : "";
       console.log(kleur.dim("Stack left running (--keep-up). Tear down with:"));
-      console.log(kleur.dim(`  docker compose -f ${COMPOSE_FILE} down -v\n`));
+      console.log(kleur.dim(`  docker compose -f ${COMPOSE_FILE} ${profileHint}down -v\n`));
     } else {
       console.log(kleur.cyan("→ Tearing down…"));
-      await compose(env, "down", "-v").catch(() => undefined);
+      await compose(env, ...profileArgs, "down", "-v").catch(() => undefined);
     }
   }
 
