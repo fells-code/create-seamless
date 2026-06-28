@@ -43,3 +43,18 @@ export async function enterOtp(page: Page, code: string): Promise<void> {
   await boxes.first().click();
   await page.keyboard.type(code);
 }
+
+/** Sign in an existing verified user through the email one-time-code path. */
+export async function signInWithEmailOtp(page: Page, email: string): Promise<void> {
+  await gotoSignIn(page);
+  await page.locator('#identifier').fill(email);
+  await page.getByRole('button', { name: 'Login', exact: true }).click();
+
+  await page.getByRole('button', { name: /Email Code/ }).click();
+  await expect(page.getByRole('heading', { name: 'Verify Your Email' })).toBeVisible();
+
+  await enterOtp(page, await readCapturedCode(email));
+  await page.getByRole('button', { name: /Verify & Continue/ }).click();
+  await expect(page.getByText('You are signed in')).toBeVisible();
+}
+
