@@ -35,3 +35,23 @@ export async function loginViaEmailOtp(ctx: APIRequestContext, email: string): P
   res = await ctx.post('/auth/otp/verify-login-email-otp', { data: { verificationToken: code } });
   expect(res.ok(), `verify-login-email-otp -> ${res.status()}`).toBeTruthy();
 }
+
+export async function loginViaMagicLink(ctx: APIRequestContext, email: string): Promise<void> {
+  let res = await ctx.post('/auth/login', { data: { identifier: email } });
+  expect(res.ok(), `login -> ${res.status()}`).toBeTruthy();
+
+  res = await ctx.get('/auth/magic-link');
+  expect(res.ok(), `magic-link request -> ${res.status()}`).toBeTruthy();
+  const token = await readCapturedCode(ctx, email);
+
+  // Polling before the link is verified must return 204 (still waiting).
+  const pending = await ctx.get('/auth/magic-link/check');
+  expect(pending.status(), 'poll before verify is 204').toBe(204);
+
+  res = await ctx.get(`/auth/magic-link/verify/${token}`);
+  expect(res.ok(), `verify magic link -> ${res.status()}`).toBeTruthy();
+
+  // Polling after verification issues the session (device binding must match).
+  const completed = await ctx.get('/auth/magic-link/check');
+  expect(completed.status(), 'poll after verify issues a session').toBe(200);
+}
