@@ -1,0 +1,53 @@
+import cookieParser from "cookie-parser";
+import express from "express";
+import createSeamlessAuthServer from "@seamless-auth/express";
+
+// The adapter strips OTP/magic-link secrets before responding to the browser, so
+// the conformance harness can't read codes from responses. These handlers receive
+// the raw delivery payloads and stash them for the harness to read via /__captured.
+const captured = new Map();
+const ok = (channel) => ({ accepted: true, provider: "capture", channel });
+
+const handlers = {
+  async sendOtpEmail({ to, token }) {
+    captured.set(to, { token: String(token) });
+    return ok("email");
+  },
+  async sendOtpSms({ to, token }) {
+    captured.set(to, { token: String(token) });
+    return ok("sms");
+  },
+  async sendMagicLinkEmail({ to, token, magicLinkUrl }) {
+    captured.set(to, { token, magicLinkUrl });
+    return ok("email");
+  },
+  async sendBootstrapInviteEmail({ to, token, inviteUrl }) {
+    captured.set(to, { token, inviteUrl });
+    return ok("email");
+  },
+};
+
+const app = express();
+app.use(express.json());
+app.use(cookieParser());
+
+app.get("/", (_req, res) => res.json({ ok: true }));
+app.get("/__captured/:email", (req, res) =>
+  res.json(captured.get(req.params.email) ?? null),
+);
+
+app.use(
+  "/auth",
+  createSeamlessAuthServer({
+    authServerUrl: process.env.AUTH_SERVER_URL,
+    cookieSecret: process.env.COOKIE_SIGNING_KEY,
+    serviceSecret: process.env.API_SERVICE_TOKEN,
+    issuer: process.env.APP_ORIGIN,
+    audience: process.env.AUTH_SERVER_URL,
+    jwksKid: process.env.JWKS_KID,
+    messaging: { handlers, defaults: { appName: "Seamless Verify" } },
+  }),
+);
+
+const port = Number(process.env.PORT ?? 3000);
+app.listen(port, () => console.log(`verify adapter listening on :${port}`));

@@ -16,6 +16,7 @@ const HARNESS_DIR = path.join(VERIFY_DIR, "harness");
 interface VerifyOptions {
   released: boolean;
   keepUp: boolean;
+  apiOnly: boolean;
   grep?: string;
 }
 
@@ -23,6 +24,7 @@ function parseArgs(args: string[]): VerifyOptions {
   return {
     released: args.includes("--released"),
     keepUp: args.includes("--keep-up"),
+    apiOnly: args.includes("--api-only"),
     grep: args.find((a) => a.startsWith("--filter="))?.split("=")[1],
   };
 }
@@ -37,16 +39,22 @@ function ensureDocker(): void {
   }
 }
 
-function resolveSourceDirs(): { apiDir: string; adapterDir: string } {
-  const apiDir = process.env.SEAMLESS_API_DIR;
-  const adapterDir = process.env.SEAMLESS_ADAPTER_DIR;
-  if (!apiDir || !adapterDir) {
+// The auth API is built from local source. Defaults to a sibling checkout so a
+// linked CLI works without extra config; override with SEAMLESS_API_DIR.
+function resolveApiDir(): string {
+  const candidate =
+    process.env.SEAMLESS_API_DIR ?? path.resolve(REPO_ROOT, "..", "seamless-auth-api");
+  if (!fs.existsSync(path.join(candidate, "package.json"))) {
     throw new Error(
-      "Set SEAMLESS_API_DIR and SEAMLESS_ADAPTER_DIR to local source checkouts.\n" +
-        "  (Released-mode auto-clone lands in a later milestone.)",
+      `Could not find the seamless-auth-api source at ${candidate}.\n` +
+        "  Set SEAMLESS_API_DIR to its local checkout.",
     );
   }
-  return { apiDir, adapterDir };
+  return candidate;
+}
+
+function compose(env: NodeJS.ProcessEnv, ...args: string[]): Promise<void> {
+  return runCommand("docker", ["compose", "-f", COMPOSE_FILE, ...args], VERIFY_DIR, env);
 }
 
 export async function runVerify(args: string[] = []): Promise<void> {
@@ -58,13 +66,12 @@ export async function runVerify(args: string[] = []): Promise<void> {
   }
 
   ensureDocker();
-  const { apiDir, adapterDir } = resolveSourceDirs();
+  const apiDir = resolveApiDir();
 
   const serviceToken = process.env.API_SERVICE_TOKEN ?? "verify-dev-service-token";
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     SEAMLESS_API_DIR: apiDir,
-    SEAMLESS_ADAPTER_DIR: adapterDir,
     API_SERVICE_TOKEN: serviceToken,
     JWKS_KID: process.env.JWKS_KID ?? "dev-main",
     SEAMLESS_BOOTSTRAP_SECRET:
@@ -72,17 +79,22 @@ export async function runVerify(args: string[] = []): Promise<void> {
     // consumed by the harness
     SEAMLESS_API_SERVICE_TOKEN: serviceToken,
     SEAMLESS_API_URL: "http://localhost:5312",
+    SEAMLESS_ADAPTER_URL: "http://localhost:3000",
+    ...(opts.apiOnly ? {} : { SEAMLESS_VERIFY_ADAPTER: "1" }),
   };
+
+  const services = opts.apiOnly
+    ? ["postgres", "auth-api"]
+    : ["postgres", "auth-api", "adapter"];
 
   let failed = false;
   try {
-    console.log(kleur.cyan("→ Building & starting the stack (postgres + auth-api)…"));
-    await runCommand(
-      "docker",
-      ["compose", "-f", COMPOSE_FILE, "up", "-d", "--build", "postgres", "auth-api"],
-      VERIFY_DIR,
-      env,
-    );
+    // Fresh volumes each run → deterministic system_config seed (e.g. LOGIN_METHODS).
+    console.log(kleur.cyan("→ Cleaning any previous stack…"));
+    await compose(env, "down", "-v").catch(() => undefined);
+
+    console.log(kleur.cyan(`→ Building & starting the stack (${services.join(", ")})…`));
+    await compose(env, "up", "-d", "--build", ...services);
 
     if (!fs.existsSync(path.join(HARNESS_DIR, "node_modules"))) {
       console.log(kleur.cyan("→ Installing harness dependencies…"));
@@ -90,8 +102,10 @@ export async function runVerify(args: string[] = []): Promise<void> {
     }
 
     console.log(kleur.cyan("→ Running the conformance harness…\n"));
-    const testArgs = ["test", "--", "--project=api"];
-    if (opts.grep) testArgs.push("--grep", opts.grep);
+    const passthrough: string[] = [];
+    if (opts.apiOnly) passthrough.push("--project=api");
+    if (opts.grep) passthrough.push("--grep", opts.grep);
+    const testArgs = passthrough.length ? ["test", "--", ...passthrough] : ["test"];
     await runCommand("npm", testArgs, HARNESS_DIR, env);
 
     console.log(kleur.green("\n✔ Conformance passed.\n"));
@@ -104,12 +118,7 @@ export async function runVerify(args: string[] = []): Promise<void> {
       console.log(kleur.dim(`  docker compose -f ${COMPOSE_FILE} down -v\n`));
     } else {
       console.log(kleur.cyan("→ Tearing down…"));
-      await runCommand(
-        "docker",
-        ["compose", "-f", COMPOSE_FILE, "down", "-v"],
-        VERIFY_DIR,
-        env,
-      ).catch(() => undefined);
+      await compose(env, "down", "-v").catch(() => undefined);
     }
   }
 
