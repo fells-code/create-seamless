@@ -1,6 +1,6 @@
 import { APIRequestContext, request as playwrightRequest } from '@playwright/test';
 
-import { API_SERVICE_TOKEN, API_URL, uniqueClientIp, uniqueEmail } from './env';
+import { ADAPTER_URL, API_SERVICE_TOKEN, API_URL, uniqueClientIp, uniqueEmail } from './env';
 import { mintServiceToken } from './serviceToken';
 
 export interface Actor {
@@ -21,5 +21,12 @@ export async function newApiActor(prefix = 'verify'): Promise<Actor> {
     },
   });
 
+  return { email: uniqueEmail(prefix), ctx, dispose: () => ctx.dispose() };
+}
+
+// A browser-like actor for the cookie path: a context bound to the adapter that
+// persists cookies across requests (the adapter handles service tokens internally).
+export async function newAdapterActor(prefix = 'verify'): Promise<Actor> {
+  const ctx = await playwrightRequest.newContext({ baseURL: ADAPTER_URL });
   return { email: uniqueEmail(prefix), ctx, dispose: () => ctx.dispose() };
 }
