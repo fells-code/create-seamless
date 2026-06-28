@@ -29,3 +29,10 @@ export function uniqueClientIp(): string {
   const n = ipCounter;
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
 }
+
+// Valid-format US numbers in the 555-01xx fictional range.
+let phoneCounter = 0;
+export function uniquePhone(): string {
+  phoneCounter += 1;
+  return `+1${4155550100 + phoneCounter}`;
+}
