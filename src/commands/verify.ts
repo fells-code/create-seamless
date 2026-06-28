@@ -14,7 +14,7 @@ const COMPOSE_FILE = path.join(VERIFY_DIR, "docker-compose.verify.yml");
 const HARNESS_DIR = path.join(VERIFY_DIR, "harness");
 
 interface VerifyOptions {
-  released: boolean;
+  local: boolean;
   keepUp: boolean;
   apiOnly: boolean;
   grep?: string;
@@ -22,7 +22,7 @@ interface VerifyOptions {
 
 function parseArgs(args: string[]): VerifyOptions {
   return {
-    released: args.includes("--released"),
+    local: args.includes("--local"),
     keepUp: args.includes("--keep-up"),
     apiOnly: args.includes("--api-only"),
     grep: args.find((a) => a.startsWith("--filter="))?.split("=")[1],
@@ -53,17 +53,51 @@ function resolveApiDir(): string {
   return candidate;
 }
 
+const VENDOR_DIR = path.join(VERIFY_DIR, "adapter-app", "vendor");
+
+// The local server SDK (@seamless-auth/core + /express). Defaults to a sibling
+// checkout; override with SEAMLESS_SERVER_DIR. Only needed for --local.
+function resolveServerDir(): string {
+  const candidate =
+    process.env.SEAMLESS_SERVER_DIR ?? path.resolve(REPO_ROOT, "..", "seamless-auth-server");
+  if (!fs.existsSync(path.join(candidate, "pnpm-workspace.yaml"))) {
+    throw new Error(
+      `Could not find seamless-auth-server at ${candidate}.\n` +
+        "  Set SEAMLESS_SERVER_DIR to its local checkout (needed for --local).",
+    );
+  }
+  return candidate;
+}
+
+function cleanVendor(): void {
+  for (const f of fs.readdirSync(VENDOR_DIR)) {
+    if (f.endsWith(".tgz")) fs.rmSync(path.join(VENDOR_DIR, f));
+  }
+}
+
+async function packLocalSdks(env: NodeJS.ProcessEnv): Promise<void> {
+  const serverDir = resolveServerDir();
+  console.log(kleur.cyan("→ Building & packing local @seamless-auth/* (core, express)…"));
+  await runCommand("pnpm", ["--filter", "@seamless-auth/core", "build"], serverDir, env);
+  await runCommand("pnpm", ["--filter", "@seamless-auth/express", "build"], serverDir, env);
+  for (const pkg of ["@seamless-auth/core", "@seamless-auth/express"]) {
+    await runCommand(
+      "pnpm",
+      ["--filter", pkg, "pack", "--pack-destination", VENDOR_DIR],
+      serverDir,
+      env,
+    );
+  }
+}
+
 function compose(env: NodeJS.ProcessEnv, ...args: string[]): Promise<void> {
   return runCommand("docker", ["compose", "-f", COMPOSE_FILE, ...args], VERIFY_DIR, env);
 }
 
 export async function runVerify(args: string[] = []): Promise<void> {
   const opts = parseArgs(args);
-  console.log(kleur.bold("\nSeamless Verify — auth conformance\n"));
-
-  if (opts.released) {
-    console.log(kleur.yellow("--released mode is not implemented yet; running --local.\n"));
-  }
+  console.log(kleur.bold("\nSeamless Verify — auth conformance"));
+  console.log(kleur.dim(`SDK: ${opts.local ? "local (built from source)" : "released (npm)"}\n`));
 
   ensureDocker();
   const apiDir = resolveApiDir();
@@ -89,6 +123,10 @@ export async function runVerify(args: string[] = []): Promise<void> {
 
   let failed = false;
   try {
+    // The adapter image installs local @seamless-auth/* tarballs only when present.
+    cleanVendor();
+    if (opts.local) await packLocalSdks(env);
+
     // Fresh volumes each run → deterministic system_config seed (e.g. LOGIN_METHODS).
     console.log(kleur.cyan("→ Cleaning any previous stack…"));
     await compose(env, "down", "-v").catch(() => undefined);
