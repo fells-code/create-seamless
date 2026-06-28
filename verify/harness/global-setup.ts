@@ -1,6 +1,6 @@
 import { request as playwrightRequest } from '@playwright/test';
 
-import { ADAPTER_URL, API_URL } from './lib/env';
+import { ADAPTER_URL, API_URL, REACT_URL } from './lib/env';
 
 async function waitForHealth(url: string, name: string, timeoutMs = 120_000): Promise<void> {
   const ctx = await playwrightRequest.newContext();
@@ -31,5 +31,8 @@ export default async function globalSetup(): Promise<void> {
   await waitForHealth(`${API_URL}/health/status`, 'auth-api');
   if (process.env.SEAMLESS_VERIFY_ADAPTER === '1') {
     await waitForHealth(`${ADAPTER_URL}/`, 'adapter');
+  }
+  if (process.env.SEAMLESS_VERIFY_REACT === '1') {
+    await waitForHealth(`${REACT_URL}/health`, 'react');
   }
 }

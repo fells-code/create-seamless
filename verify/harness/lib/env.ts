@@ -2,6 +2,7 @@
 
 export const API_URL = process.env.SEAMLESS_API_URL ?? 'http://localhost:5312';
 export const ADAPTER_URL = process.env.SEAMLESS_ADAPTER_URL ?? 'http://localhost:3000';
+export const REACT_URL = process.env.SEAMLESS_REACT_URL ?? 'http://localhost:5173';
 
 // Must match the API's API_SERVICE_TOKEN so the harness can mint M2M tokens.
 export const API_SERVICE_TOKEN =

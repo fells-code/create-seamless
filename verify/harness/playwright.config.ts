@@ -1,8 +1,10 @@
-import { defineConfig } from '@playwright/test';
+import { defineConfig, devices } from '@playwright/test';
+
+import { REACT_URL } from './lib/env';
 
 // One runner, multiple projects. `api` and `adapter` hit HTTP directly (no
-// browser); `react` (added in M2) drives chromium. global-setup health-gates
-// the stack before any project runs.
+// browser); `react` drives chromium against the starter SPA. global-setup
+// health-gates the stack before any project runs.
 export default defineConfig({
   testDir: '.',
   globalSetup: './global-setup.ts',
@@ -18,5 +20,10 @@ export default defineConfig({
   projects: [
     { name: 'api', testMatch: /api\/.*\.spec\.ts$/ },
     { name: 'adapter', testMatch: /adapter\/.*\.spec\.ts$/ },
+    {
+      name: 'react',
+      testMatch: /react\/.*\.spec\.ts$/,
+      use: { ...devices['Desktop Chrome'], baseURL: REACT_URL },
+    },
   ],
 });
