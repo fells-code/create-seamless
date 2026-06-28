@@ -87,6 +87,8 @@ services:
       PORT: '3000'
       AUTH_SERVER_URL: http://auth-api:5312
       APP_ORIGIN: http://localhost:3000
+      # Browser origin allowed by CORS (the React app, served below).
+      WEB_ORIGIN: http://localhost:5173
       API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
       COOKIE_SIGNING_KEY: ${API_SERVICE_TOKEN}
       JWKS_KID: ${JWKS_KID}
@@ -95,6 +97,27 @@ services:
         condition: service_healthy
     healthcheck:
       test: ['CMD', 'curl', '-fsS', 'http://localhost:3000/']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  # React starter app (built SPA on nginx), pointed at the adapter so the React
+  # SDK's `${apiHost}/auth/*` calls hit the adapter's mount. Browser-visible URL,
+  # so API_URL is the host-mapped adapter (localhost:3000), not the compose host.
+  # Gated behind the `react` profile so the api/adapter-only runs skip the build.
+  react:
+    profiles: ['react']
+    build:
+      context: ${SEAMLESS_REACT_DIR}
+    ports:
+      - '5173:80'
+    environment:
+      API_URL: http://localhost:3000
+    depends_on:
+      adapter:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost/health']
       interval: 3s
       timeout: 3s
       retries: 20

@@ -1,4 +1,5 @@
 import cookieParser from "cookie-parser";
+import cors from "cors";
 import express from "express";
 import createSeamlessAuthServer from "@seamless-auth/express";
 
@@ -28,6 +29,14 @@ const handlers = {
 };
 
 const app = express();
+// The React app (browser) calls the adapter cross-origin with credentials, so
+// CORS must echo its origin and allow cookies. WEB_ORIGIN is the React app host.
+app.use(
+  cors({
+    origin: process.env.WEB_ORIGIN ?? "http://localhost:5173",
+    credentials: true,
+  }),
+);
 app.use(express.json());
 app.use(cookieParser());
 
