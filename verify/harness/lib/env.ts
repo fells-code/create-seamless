@@ -7,6 +7,11 @@ export const ADAPTER_URL = process.env.SEAMLESS_ADAPTER_URL ?? 'http://localhost
 export const API_SERVICE_TOKEN =
   process.env.SEAMLESS_API_SERVICE_TOKEN ?? 'verify-dev-service-token';
 
+// Must match the API's SEAMLESS_BOOTSTRAP_SECRET so the harness can mint the
+// first admin invite (bootstrap-promotion flow).
+export const BOOTSTRAP_SECRET =
+  process.env.SEAMLESS_BOOTSTRAP_SECRET ?? 'verify-dev-bootstrap-secret';
+
 // Non-production seam: makes the API return OTP / magic-link tokens in the
 // response `delivery` object instead of sending real email/SMS.
 export const EXTERNAL_DELIVERY = {
