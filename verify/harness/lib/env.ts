@@ -30,9 +30,11 @@ export function uniqueClientIp(): string {
   return `10.${(n >> 16) & 255}.${(n >> 8) & 255}.${n & 255}`;
 }
 
-// Valid-format US numbers in the 555-01xx fictional range.
+// Valid-format US numbers, seeded by runId so they don't collide across runs.
+const phoneSeed = Number(runId) || 1_000_000;
 let phoneCounter = 0;
 export function uniquePhone(): string {
   phoneCounter += 1;
-  return `+1${4155550100 + phoneCounter}`;
+  const subscriber = 2_000_000 + ((phoneSeed + phoneCounter) % 7_000_000);
+  return `+1415${subscriber}`;
 }
