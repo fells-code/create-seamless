@@ -70,7 +70,7 @@ services:
       # authorizationUrl is browser/harness-visible (localhost); token/userInfo are
       # called server-side from the container, so they go via host.docker.internal.
       MOCK_CLIENT_SECRET: mock-secret
-      OAUTH_PROVIDERS: '[{"id":"mock","name":"Mock OIDC","enabled":true,"clientId":"mock-client","clientSecretEnv":"MOCK_CLIENT_SECRET","authorizationUrl":"http://localhost:9000/authorize","tokenUrl":"http://host.docker.internal:9000/token","userInfoUrl":"http://host.docker.internal:9000/userinfo","scopes":["openid","email"],"redirectUri":"http://localhost:5173/oauth/callback","redirectUris":["http://localhost:5173/oauth/callback"],"subjectJsonPath":"sub","emailJsonPath":"email","emailVerifiedJsonPath":"email_verified","nameJsonPath":"name","allowSignup":true,"accountLinking":"email"}]'
+      OAUTH_PROVIDERS: '[{"id":"mock","name":"Mock OIDC","enabled":true,"clientId":"mock-client","clientSecretEnv":"MOCK_CLIENT_SECRET","authorizationUrl":"http://localhost:9000/authorize","tokenUrl":"http://host.docker.internal:9000/token","userInfoUrl":"http://host.docker.internal:9000/userinfo","scopes":["openid","email"],"redirectUri":"http://localhost:5173/oauth/callback","redirectUris":["http://localhost:5173/oauth/callback"],"allowSignup":true,"accountLinking":"email"}]'
     extra_hosts:
       - 'host.docker.internal:host-gateway'
     depends_on:
