@@ -2,8 +2,8 @@ import { createHash, randomUUID } from 'crypto';
 import { createServer, IncomingMessage, Server, ServerResponse } from 'http';
 
 // Minimal OIDC identity provider for the OAuth conformance flow. The API only uses
-// the authorization code, the token exchange (PKCE), and userinfo — it does not
-// validate id_token signatures — so /authorize, /token, /userinfo is all we need.
+// the authorization code, the token exchange (PKCE), and userinfo (it does not
+// validate id_token signatures), so /authorize, /token, /userinfo is all we need.
 
 interface PendingCode {
   codeChallenge?: string;
