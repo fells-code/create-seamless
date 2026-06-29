@@ -50,7 +50,7 @@ services:
       ISSUER: http://auth-api:5312
       DEFAULT_ROLES: user
       AVAILABLE_ROLES: user,admin
-      LOGIN_METHODS: passkey,magic_link,email_otp,phone_otp
+      LOGIN_METHODS: passkey,magic_link,email_otp,phone_otp,oauth
       DB_LOGGING: 'false'
       ACCESS_TOKEN_TTL: 15m
       REFRESH_TOKEN_TTL: 1h
@@ -66,6 +66,13 @@ services:
       API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
       SEAMLESS_BOOTSTRAP_ENABLED: 'true'
       SEAMLESS_BOOTSTRAP_SECRET: ${SEAMLESS_BOOTSTRAP_SECRET}
+      # OAuth: a single "mock" provider backed by the harness's in-process OIDC.
+      # authorizationUrl is browser/harness-visible (localhost); token/userInfo are
+      # called server-side from the container, so they go via host.docker.internal.
+      MOCK_CLIENT_SECRET: mock-secret
+      OAUTH_PROVIDERS: '[{"id":"mock","name":"Mock OIDC","enabled":true,"clientId":"mock-client","clientSecretEnv":"MOCK_CLIENT_SECRET","authorizationUrl":"http://localhost:9000/authorize","tokenUrl":"http://host.docker.internal:9000/token","userInfoUrl":"http://host.docker.internal:9000/userinfo","scopes":["openid","email"],"redirectUri":"http://localhost:5173/oauth/callback","redirectUris":["http://localhost:5173/oauth/callback"],"subjectJsonPath":"sub","emailJsonPath":"email","emailVerifiedJsonPath":"email_verified","nameJsonPath":"name","allowSignup":true,"accountLinking":"email"}]'
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
     depends_on:
       postgres:
         condition: service_healthy
