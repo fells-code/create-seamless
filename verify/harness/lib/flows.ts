@@ -171,3 +171,34 @@ export function listSessions(ctx: APIRequestContext, accessToken: string) {
 export function logout(ctx: APIRequestContext, accessToken: string) {
   return ctx.delete('/logout', { headers: bearer(accessToken) });
 }
+
+/**
+ * Full OAuth login against the mock IdP: start the flow, follow the authorize
+ * redirect to obtain the code (the mock mints a fresh user), then exchange it at
+ * the callback for a session. `pathPrefix` is '' for the API, '/auth' for the adapter.
+ */
+export async function oauthLogin(
+  ctx: APIRequestContext,
+  providerId = 'mock',
+  pathPrefix = '',
+): Promise<SessionTokens & { email?: string }> {
+  const start = await ctx.post(`${pathPrefix}/oauth/${providerId}/start`, { data: {} });
+  expect(start.ok(), `oauth start -> ${start.status()} ${await start.text()}`).toBeTruthy();
+  const { authorizationUrl } = await start.json();
+
+  const authorize = await ctx.get(authorizationUrl, { maxRedirects: 0 });
+  expect(authorize.status(), `authorize redirects with a code (got ${authorize.status()})`).toBe(
+    302,
+  );
+  const redirected = new URL(authorize.headers()['location']);
+  const code = redirected.searchParams.get('code');
+  const state = redirected.searchParams.get('state');
+  expect(code, 'authorize returns an auth code').toBeTruthy();
+
+  const callback = await ctx.post(`${pathPrefix}/oauth/${providerId}/callback`, {
+    data: { code, state },
+  });
+  expect(callback.ok(), `oauth callback -> ${callback.status()} ${await callback.text()}`).toBeTruthy();
+  const body = await callback.json();
+  return { token: body.token, refreshToken: body.refreshToken, sub: body.sub, email: body.email };
+}
