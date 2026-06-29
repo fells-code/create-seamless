@@ -1,6 +1,7 @@
 import { request as playwrightRequest } from '@playwright/test';
 
-import { ADAPTER_URL, API_URL, REACT_URL } from './lib/env';
+import { ADAPTER_URL, API_URL, MOCK_OIDC_PORT, REACT_URL } from './lib/env';
+import { startMockOidc } from './mock-oidc';
 
 async function waitForHealth(url: string, name: string, timeoutMs = 120_000): Promise<void> {
   const ctx = await playwrightRequest.newContext();
@@ -28,6 +29,12 @@ async function waitForHealth(url: string, name: string, timeoutMs = 120_000): Pr
 }
 
 export default async function globalSetup(): Promise<void> {
+  // In-process mock OIDC provider for the OAuth flow (the API reaches it via
+  // host.docker.internal; the harness drives /authorize via localhost).
+  startMockOidc(MOCK_OIDC_PORT);
+  // eslint-disable-next-line no-console
+  console.log(`✔ mock OIDC listening (:${MOCK_OIDC_PORT})`);
+
   await waitForHealth(`${API_URL}/health/status`, 'auth-api');
   if (process.env.SEAMLESS_VERIFY_ADAPTER === '1') {
     await waitForHealth(`${ADAPTER_URL}/`, 'adapter');
