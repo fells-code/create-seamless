@@ -31,6 +31,8 @@ jobs:
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      HUSKY: '0'
     steps:
       - name: Checkout seamless-cli
         uses: actions/checkout@v4
@@ -71,9 +73,23 @@ jobs:
         with:
           node-version: 20
 
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Build the CLI
         working-directory: seamless-cli
         run: npm ci && npm run build
+
+      # --local builds the SDKs from source on the host (server via pnpm, the React
+      # SDK via npm), so those repos need their dependencies installed first. The
+      # api / adapter / starter are built inside Docker and don't need host installs.
+      - name: Install SDK dependencies
+        if: ${{ inputs.local }}
+        run: |
+          (cd seamless-auth-server && pnpm install --frozen-lockfile)
+          (cd seamless-auth-react && npm ci)
 
       # Pre-install the harness deps + chromium (with system libs) so the run uses
       # them; `seamless verify` would otherwise install the browser without OS deps.
