@@ -14,6 +14,7 @@ export default defineConfig({
   workers: 1,
   reporter: [
     ['list'],
+    ['./lib/matrixReporter.ts'],
     ['junit', { outputFile: 'results/junit.xml' }],
     ['html', { outputFolder: 'results/html', open: 'never' }],
   ],
