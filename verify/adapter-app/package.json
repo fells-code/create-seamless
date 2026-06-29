@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Minimal adopter backend for the conformance harness — real @seamless-auth/express with a capture transport.",
   "dependencies": {
-    "@seamless-auth/express": "0.6.0-beta.20260629083811",
+    "@seamless-auth/express": "^0.6.0",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
     "express": "^4.19.2"

@@ -93,5 +93,5 @@ Modes and sibling repos:
 - **Adapter OTP limiter**: the adapter funnels all OTP through one client IP, so the API's per-IP OTP
   limiter (10 per 15 minutes, hardcoded) bounds adapter / react OTP traffic. Keep specs off it where
   possible (for example, magic-link login instead of a second email-OTP round trip).
-- **Version pins**: [verify/adapter-app](verify/adapter-app) pins a specific `@seamless-auth/express`
-  version and the starter pins `@seamless-auth/react`. Bump these when new versions publish.
+- **Version pins**: [verify/adapter-app](verify/adapter-app) pins `@seamless-auth/express` and the
+  starter pins `@seamless-auth/react`. Bump these when new versions publish.
