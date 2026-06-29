@@ -1,0 +1,13 @@
+# Daily smoke against the published @seamless-auth/* packages (no --local).
+name: released-smoke
+
+on:
+  schedule:
+    - cron: '0 7 * * *'
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    uses: ./.github/workflows/verify-conformance.yml
+    with:
+      local: false
