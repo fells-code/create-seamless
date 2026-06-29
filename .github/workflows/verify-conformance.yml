@@ -1,0 +1,101 @@
+# Reusable cross-repo conformance run. Checks out the whole ecosystem as siblings,
+# then runs `seamless verify` (the api/adapter/react matrix) against it. Callers in
+# each repo pass their own PR ref so a change in one repo is tested against the
+# others at their default branch.
+name: verify-conformance
+
+on:
+  workflow_call:
+    inputs:
+      local:
+        description: Build the SDKs from source (true) or use published packages (false).
+        type: boolean
+        default: true
+      cli-ref:
+        type: string
+        default: ''
+      api-ref:
+        type: string
+        default: ''
+      server-ref:
+        type: string
+        default: ''
+      react-ref:
+        type: string
+        default: ''
+      starter-ref:
+        type: string
+        default: ''
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout seamless-cli
+        uses: actions/checkout@v4
+        with:
+          repository: fells-code/seamless-cli
+          ref: ${{ inputs.cli-ref }}
+          path: seamless-cli
+
+      - name: Checkout seamless-auth-api
+        uses: actions/checkout@v4
+        with:
+          repository: fells-code/seamless-auth-api
+          ref: ${{ inputs.api-ref }}
+          path: seamless-auth-api
+
+      - name: Checkout seamless-auth-server
+        uses: actions/checkout@v4
+        with:
+          repository: fells-code/seamless-auth-server
+          ref: ${{ inputs.server-ref }}
+          path: seamless-auth-server
+
+      - name: Checkout seamless-auth-react
+        uses: actions/checkout@v4
+        with:
+          repository: fells-code/seamless-auth-react
+          ref: ${{ inputs.react-ref }}
+          path: seamless-auth-react
+
+      - name: Checkout seamless-auth-starter-react
+        uses: actions/checkout@v4
+        with:
+          repository: fells-code/seamless-auth-starter-react
+          ref: ${{ inputs.starter-ref }}
+          path: seamless-auth-starter-react
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build the CLI
+        working-directory: seamless-cli
+        run: npm ci && npm run build
+
+      # Pre-install the harness deps + chromium (with system libs) so the run uses
+      # them; `seamless verify` would otherwise install the browser without OS deps.
+      - name: Install harness + browser
+        working-directory: seamless-cli/verify/harness
+        run: |
+          npm install
+          npx playwright install --with-deps chromium
+
+      - name: Run seamless verify
+        working-directory: seamless-cli
+        env:
+          SEAMLESS_API_DIR: ${{ github.workspace }}/seamless-auth-api
+          SEAMLESS_SERVER_DIR: ${{ github.workspace }}/seamless-auth-server
+          SEAMLESS_REACT_SDK_DIR: ${{ github.workspace }}/seamless-auth-react
+          SEAMLESS_REACT_DIR: ${{ github.workspace }}/seamless-auth-starter-react
+        run: node dist/index.js verify ${{ inputs.local && '--local' || '' }}
+
+      - name: Upload conformance report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: conformance-report
+          path: seamless-cli/verify/harness/results/
+          if-no-files-found: ignore
