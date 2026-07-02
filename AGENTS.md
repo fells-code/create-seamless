@@ -55,7 +55,7 @@ Modes and sibling repos:
   default uses the published packages.
 - The sibling repos are resolved relative to this repo, overridable with `SEAMLESS_API_DIR`,
   `SEAMLESS_SERVER_DIR`, `SEAMLESS_REACT_SDK_DIR` (the React SDK), and `SEAMLESS_REACT_DIR` (the
-  starter app).
+  `react-vite` web template, defaulting to `../seamless-templates/templates/web/react-vite`).
 - Useful flags: `--api-only`, `--no-react`, `--filter <grep>`, `--keep-up`.
 
 ## Important Folders
@@ -90,7 +90,7 @@ Modes and sibling repos:
 ## Known Maintenance Traps
 
 - **Sibling-repo branches**: the server's integration branch is `dev` (its `main` lags), so the verify
-  CI workflow defaults the server checkout to `dev`. The api, react, and starter use `main`.
+  CI workflow defaults the server checkout to `dev`. The api, react SDK, and seamless-templates use `main`.
 - **`--local` needs SDK dependencies**: it builds the server (pnpm) and the React SDK (npm) from source
   on the host, so those repos must have their dependencies installed first. CI installs them explicitly.
 - **OAuth mock networking**: the in-process mock OIDC is reached by the browser and harness via
@@ -100,4 +100,6 @@ Modes and sibling repos:
   limiter (10 per 15 minutes, hardcoded) bounds adapter / react OTP traffic. Keep specs off it where
   possible (for example, magic-link login instead of a second email-OTP round trip).
 - **Version pins**: [verify/adapter-app](verify/adapter-app) pins `@seamless-auth/express` and the
-  starter pins `@seamless-auth/react`. Bump these when new versions publish.
+  `react-vite` template pins `@seamless-auth/react`. Bump these when new versions publish.
+- **Templates ref**: the CLI scaffolds from `seamless-templates` at `SEAMLESS_TEMPLATES_REF`
+  ([src/core/images.ts](src/core/images.ts)); bump it when a new templates release publishes.

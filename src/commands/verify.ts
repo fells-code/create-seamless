@@ -57,16 +57,19 @@ function resolveApiDir(): string {
   return candidate;
 }
 
-// The React starter app, served at :5173 and pointed at the adapter. Defaults to
-// a sibling checkout; override with SEAMLESS_REACT_DIR. Only needed for browser runs.
+// The React web template, served at :5173 and pointed at the adapter. Defaults to the
+// react-vite template inside a sibling seamless-templates checkout; override with
+// SEAMLESS_REACT_DIR. Only needed for browser runs.
+// TODO(#1): resolve this from the registry so every web template is conformance-tested,
+// not just react-vite.
 function resolveReactDir(): string {
   const candidate =
     process.env.SEAMLESS_REACT_DIR ??
-    path.resolve(REPO_ROOT, "..", "seamless-auth-starter-react");
+    path.resolve(REPO_ROOT, "..", "seamless-templates", "templates", "web", "react-vite");
   if (!fs.existsSync(path.join(candidate, "package.json"))) {
     throw new Error(
-      `Could not find seamless-auth-starter-react at ${candidate}.\n` +
-        "  Set SEAMLESS_REACT_DIR to its local checkout, or run with --no-react.",
+      `Could not find the react-vite web template at ${candidate}.\n` +
+        "  Set SEAMLESS_REACT_DIR to a local template checkout, or run with --no-react.",
     );
   }
   return candidate;
