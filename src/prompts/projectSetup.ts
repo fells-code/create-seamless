@@ -31,16 +31,38 @@ function toOptions(templates: RegistryEntry[], kind: TemplateKind): Option[] {
   }));
 }
 
-export async function runProjectSetupPrompts(templates: RegistryEntry[]) {
-  const webTemplateId = (await select({
-    message: "Web framework",
-    options: toOptions(templates, "web"),
-  })) as string;
+interface Preselect {
+  webTemplateId?: string;
+  apiTemplateId?: string;
+}
 
-  const apiTemplateId = (await select({
-    message: "Backend framework",
-    options: toOptions(templates, "api"),
-  })) as string;
+function labelFor(templates: RegistryEntry[], id: string): string {
+  return templates.find((t) => t.id === id)?.label ?? id;
+}
+
+export async function runProjectSetupPrompts(
+  templates: RegistryEntry[],
+  preselect: Preselect = {},
+) {
+  let webTemplateId = preselect.webTemplateId;
+  if (webTemplateId) {
+    console.log(`Web example: ${labelFor(templates, webTemplateId)}`);
+  } else {
+    webTemplateId = (await select({
+      message: "Web example",
+      options: toOptions(templates, "web"),
+    })) as string;
+  }
+
+  let apiTemplateId = preselect.apiTemplateId;
+  if (apiTemplateId) {
+    console.log(`Backend: ${labelFor(templates, apiTemplateId)}`);
+  } else {
+    apiTemplateId = (await select({
+      message: "Backend framework",
+      options: toOptions(templates, "api"),
+    })) as string;
+  }
 
   const authMode = (await select({
     message: "How would you like to run SeamlessAuth?",

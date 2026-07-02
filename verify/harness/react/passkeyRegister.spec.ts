@@ -1,7 +1,7 @@
 import { expect, test } from '../lib/fixtures';
 import { addVirtualAuthenticator, registerWithPasskey } from '../lib/reactFlows';
 
-test.describe('passkey registration (react, browser)', () => {
+test.describe('passkey registration (react, browser)', { tag: '@login' }, () => {
   test('register, then enroll a passkey via a virtual authenticator -> signed in', async ({
     page,
     context,

@@ -29,8 +29,12 @@ async function main() {
   }
 
   if (command === "init") {
-    const projectName = args[1];
-    await runCLI(projectName);
+    const rest = args.slice(1);
+    const aliases = rest
+      .filter((a) => a.startsWith("--"))
+      .map((a) => a.replace(/^--+/, ""));
+    const projectName = rest.find((a) => !a.startsWith("--"));
+    await runCLI(projectName, aliases);
     return;
   }
 
