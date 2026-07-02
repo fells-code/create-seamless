@@ -5,6 +5,11 @@ import { parseEnv, parseEnvString } from "../../core/env.js";
 import { generateSecret } from "../../core/secrets.js";
 import { generateJWKS } from "../../core/jwks.js";
 import {
+  buildOAuthAuthEnv,
+  withLoginMethod,
+  type CollectedOAuthProvider,
+} from "../../core/oauthProviders.js";
+import {
   POSTGRES_IMAGE,
   SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE,
   SEAMLESS_AUTH_API_IMAGE,
@@ -16,6 +21,7 @@ export async function generateDockerCompose(
     authMode: "local" | "docker";
     adminMode: "image" | "source";
     includeAdmin: boolean | symbol;
+    oauth?: CollectedOAuthProvider[];
   },
 ) {
   const { compose, shared } = await buildCompose(options, root);
@@ -34,12 +40,13 @@ async function buildCompose(
     authMode: "local" | "docker";
     adminMode: "image" | "source";
     includeAdmin: boolean | symbol;
+    oauth?: CollectedOAuthProvider[];
   },
   root: string,
 ) {
-  const { authMode, adminMode, includeAdmin } = options;
+  const { authMode, adminMode, includeAdmin, oauth } = options;
 
-  const { service: authBlock, shared } = await authService(authMode, root);
+  const { service: authBlock, shared } = await authService(authMode, root, oauth);
 
   return {
     compose: `
@@ -75,9 +82,13 @@ volumes:
     shared,
   };
 }
-async function authService(mode: "local" | "docker", root: string) {
+async function authService(
+  mode: "local" | "docker",
+  root: string,
+  oauth: CollectedOAuthProvider[] = [],
+) {
   if (mode === "local") {
-    const shared = await configureAuthLocalEnv(root);
+    const shared = await configureAuthLocalEnv(root, oauth);
 
     return {
       service: `
@@ -104,7 +115,7 @@ async function authService(mode: "local" | "docker", root: string) {
     };
   }
 
-  return await authServiceDocker();
+  return await authServiceDocker(oauth);
 }
 
 function apiService(shared: any) {
@@ -147,14 +158,19 @@ function webService() {
       - /app/node_modules
     depends_on:
       - api
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
 `;
 }
 
-async function authServiceDocker() {
+async function authServiceDocker(oauth: CollectedOAuthProvider[] = []) {
   const raw = await fetchEnvExample();
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "docker");
+  const { env, shared } = buildAuthEnv(parsed, "docker", oauth);
 
   const envBlock = envToDockerBlock(env);
 
@@ -210,6 +226,7 @@ function adminService(mode: "image" | "source") {
 export function buildAuthEnv(
   env: Record<string, string>,
   mode: "local" | "docker",
+  oauth: CollectedOAuthProvider[] = [],
 ) {
   const apiToken = generateSecret(32);
   const bootstrapSecret = generateSecret(32);
@@ -230,8 +247,22 @@ export function buildAuthEnv(
 
   env.API_SERVICE_TOKEN = apiToken;
 
+  // Dedicated secrets the auth server otherwise leaves empty (falling back to the
+  // service token). Generate real ones so a scaffolded stack is production-shaped.
+  env.REFRESH_TOKEN_LOOKUP_SECRET = generateSecret(32);
+  env.TOTP_SECRET_ENCRYPTION_KEY = generateSecret(32);
+
   env.APP_ORIGINS = "http://localhost:3000";
   env.ORIGINS = "http://localhost:5173,http://localhost:5174";
+
+  // When the OAuth template collected providers, wire them into the auth server
+  // (OAUTH_PROVIDERS, per-provider secret env vars, OAUTH_STATE_SECRET) and enable
+  // the oauth login method.
+  if (oauth.length > 0) {
+    const { env: oauthEnv } = buildOAuthAuthEnv(oauth);
+    Object.assign(env, oauthEnv);
+    env.LOGIN_METHODS = withLoginMethod(env.LOGIN_METHODS, "oauth");
+  }
 
   return {
     env,
@@ -287,7 +318,10 @@ export function buildJWKSConfig() {
   };
 }
 
-export async function configureAuthLocalEnv(root: string) {
+export async function configureAuthLocalEnv(
+  root: string,
+  oauth: CollectedOAuthProvider[] = [],
+) {
   const authDir = path.join(root, "auth");
   const envExamplePath = path.join(authDir, ".env.example");
   const envPath = path.join(authDir, ".env");
@@ -300,7 +334,7 @@ export async function configureAuthLocalEnv(root: string) {
 
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "local");
+  const { env, shared } = buildAuthEnv(parsed, "local", oauth);
 
   writeEnvFile(envPath, env);
 
