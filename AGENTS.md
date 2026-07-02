@@ -23,8 +23,14 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
 
 ## Commands
 
-- **init** ([src/commands/init.ts](src/commands/init.ts)) scaffolds a project from the generators in
-  `src/generators/*` (frontend, backend, auth, docker, config), driven by `src/prompts/`.
+- **init** ([src/commands/init.ts](src/commands/init.ts)) scaffolds a project, driven by
+  `src/prompts/`. The web and api starters come from the registry-driven template source
+  ([src/core/templates.ts](src/core/templates.ts)): it reads `registry.json` from the
+  `fells-code/seamless-templates` monorepo (pinned by `SEAMLESS_TEMPLATES_REF` in
+  [src/core/images.ts](src/core/images.ts)), downloads the selected templates, and applies each
+  template's `template.json` env contract. The auth, docker, and config pieces are still generated
+  locally in `src/generators/*`. Override the template source for development with
+  `SEAMLESS_TEMPLATES_DIR` (a local checkout) or `SEAMLESS_TEMPLATES_REF` (a different ref).
 - **check** health-checks a running stack.
 - **bootstrap-admin** mints the first admin invite.
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
@@ -55,8 +61,8 @@ Modes and sibling repos:
 ## Important Folders
 
 - [src/commands](src/commands): one file per CLI command
-- [src/generators](src/generators): project scaffolding (frontend, backend, auth, docker, config)
-- [src/core](src/core): shared helpers (exec, env, fetch, secrets, paths, package manager, output)
+- [src/generators](src/generators): locally generated scaffolding (auth, docker, config)
+- [src/core](src/core): shared helpers (templates, exec, env, fetch, secrets, paths, package manager, output)
 - [src/prompts](src/prompts): interactive setup prompts (`@clack/prompts`)
 - [src/utils](src/utils): repo and env-file helpers
 - [verify](verify): the conformance harness (shipped with the package)
