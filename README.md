@@ -141,13 +141,12 @@ Seamless CLI pulls from the following repositories:
 - Seamless Auth API
   [https://github.com/fells-code/seamless-auth-api](https://github.com/fells-code/seamless-auth-api)
 
-- Seamless Auth React Starter
-  [https://github.com/fells-code/seamless-auth-starter-react](https://github.com/fells-code/seamless-auth-starter-react)
+- Seamless Templates (the frontend and API starters)
+  [https://github.com/fells-code/seamless-templates](https://github.com/fells-code/seamless-templates)
 
-- Seamless Auth API Starter
-  [https://github.com/fells-code/seamless-auth-starter-express](https://github.com/fells-code/seamless-auth-starter-express)
-
-Each project can be used independently, but the CLI connects them into a working system.
+The starters live in the templates monorepo and are listed in its registry, so the set of
+frameworks the CLI offers grows there. Each project can be used independently, but the CLI connects
+them into a working system.
 
 ---
 

@@ -23,8 +23,14 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
 
 ## Commands
 
-- **init** ([src/commands/init.ts](src/commands/init.ts)) scaffolds a project from the generators in
-  `src/generators/*` (frontend, backend, auth, docker, config), driven by `src/prompts/`.
+- **init** ([src/commands/init.ts](src/commands/init.ts)) scaffolds a project, driven by
+  `src/prompts/`. The web and api starters come from the registry-driven template source
+  ([src/core/templates.ts](src/core/templates.ts)): it reads `registry.json` from the
+  `fells-code/seamless-templates` monorepo (pinned by `SEAMLESS_TEMPLATES_REF` in
+  [src/core/images.ts](src/core/images.ts)), downloads the selected templates, and applies each
+  template's `template.json` env contract. The auth, docker, and config pieces are still generated
+  locally in `src/generators/*`. Override the template source for development with
+  `SEAMLESS_TEMPLATES_DIR` (a local checkout) or `SEAMLESS_TEMPLATES_REF` (a different ref).
 - **check** health-checks a running stack.
 - **bootstrap-admin** mints the first admin invite.
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
@@ -49,14 +55,14 @@ Modes and sibling repos:
   default uses the published packages.
 - The sibling repos are resolved relative to this repo, overridable with `SEAMLESS_API_DIR`,
   `SEAMLESS_SERVER_DIR`, `SEAMLESS_REACT_SDK_DIR` (the React SDK), and `SEAMLESS_REACT_DIR` (the
-  starter app).
+  `react-vite` web template, defaulting to `../seamless-templates/templates/web/react-vite`).
 - Useful flags: `--api-only`, `--no-react`, `--filter <grep>`, `--keep-up`.
 
 ## Important Folders
 
 - [src/commands](src/commands): one file per CLI command
-- [src/generators](src/generators): project scaffolding (frontend, backend, auth, docker, config)
-- [src/core](src/core): shared helpers (exec, env, fetch, secrets, paths, package manager, output)
+- [src/generators](src/generators): locally generated scaffolding (auth, docker, config)
+- [src/core](src/core): shared helpers (templates, exec, env, fetch, secrets, paths, package manager, output)
 - [src/prompts](src/prompts): interactive setup prompts (`@clack/prompts`)
 - [src/utils](src/utils): repo and env-file helpers
 - [verify](verify): the conformance harness (shipped with the package)
@@ -84,7 +90,7 @@ Modes and sibling repos:
 ## Known Maintenance Traps
 
 - **Sibling-repo branches**: the server's integration branch is `dev` (its `main` lags), so the verify
-  CI workflow defaults the server checkout to `dev`. The api, react, and starter use `main`.
+  CI workflow defaults the server checkout to `dev`. The api, react SDK, and seamless-templates use `main`.
 - **`--local` needs SDK dependencies**: it builds the server (pnpm) and the React SDK (npm) from source
   on the host, so those repos must have their dependencies installed first. CI installs them explicitly.
 - **OAuth mock networking**: the in-process mock OIDC is reached by the browser and harness via
@@ -94,4 +100,6 @@ Modes and sibling repos:
   limiter (10 per 15 minutes, hardcoded) bounds adapter / react OTP traffic. Keep specs off it where
   possible (for example, magic-link login instead of a second email-OTP round trip).
 - **Version pins**: [verify/adapter-app](verify/adapter-app) pins `@seamless-auth/express` and the
-  starter pins `@seamless-auth/react`. Bump these when new versions publish.
+  `react-vite` template pins `@seamless-auth/react`. Bump these when new versions publish.
+- **Templates ref**: the CLI scaffolds from `seamless-templates` at `SEAMLESS_TEMPLATES_REF`
+  ([src/core/images.ts](src/core/images.ts)); bump it when a new templates release publishes.
