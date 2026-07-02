@@ -40,6 +40,11 @@ export interface TemplateManifest {
     project?: string;
     flows?: string[];
   };
+  // Optional interactive setup the CLI runs for this template. `oauth` triggers the
+  // OAuth provider prompts and wires the chosen providers into the auth server.
+  setup?: {
+    oauth?: boolean;
+  };
   requires?: { cliMin?: string };
 }
 
