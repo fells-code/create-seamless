@@ -107,7 +107,9 @@ jobs:
           SEAMLESS_API_DIR: ${{ github.workspace }}/seamless-auth-api
           SEAMLESS_SERVER_DIR: ${{ github.workspace }}/seamless-auth-server
           SEAMLESS_REACT_SDK_DIR: ${{ github.workspace }}/seamless-auth-react
-          SEAMLESS_REACT_DIR: ${{ github.workspace }}/seamless-templates/templates/web/react-vite
+          # Point at the whole templates checkout so verify enumerates the registry
+          # and conformance-tests every web template, each scoped to its own flows.
+          SEAMLESS_TEMPLATES_DIR: ${{ github.workspace }}/seamless-templates
         run: node dist/index.js verify ${{ inputs.local && '--local' || '' }}
 
       - name: Upload conformance report
