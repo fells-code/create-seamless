@@ -17,7 +17,7 @@ import {
 const AUTH_SERVER_URL = "http://localhost:5312";
 const API_URL = "http://localhost:3000";
 
-export async function runCLI(projectName?: string) {
+export async function runCLI(projectName?: string, aliases: string[] = []) {
   const cwd = process.cwd();
 
   let root = cwd;
@@ -44,7 +44,8 @@ export async function runCLI(projectName?: string) {
   }
 
   const source = await openTemplateSource();
-  const answers = await runProjectSetupPrompts(source.registry.templates);
+  const preselect = resolveTemplateAliases(aliases, source.registry.templates);
+  const answers = await runProjectSetupPrompts(source.registry.templates, preselect);
 
   const findEntry = (id: string): RegistryEntry => {
     const entry = source.registry.templates.find((t) => t.id === id);
@@ -117,4 +118,52 @@ export async function runCLI(projectName?: string) {
     authMode: answers.authMode,
     useDocker: answers.useDocker,
   });
+}
+
+export interface TemplatePreselect {
+  webTemplateId?: string;
+  apiTemplateId?: string;
+}
+
+// Resolves `--<alias>` flags (e.g. --oauth) to specific templates from the registry,
+// so a matching layer's prompt can be skipped. Aliases live in the registry, so no
+// per-flag code is needed here. Unknown or conflicting flags are hard errors.
+function resolveTemplateAliases(
+  aliases: string[],
+  templates: RegistryEntry[],
+): TemplatePreselect {
+  const preselect: TemplatePreselect = {};
+
+  for (const alias of aliases) {
+    const entry = templates.find(
+      (t) => t.alias === alias && t.status !== "coming-soon",
+    );
+    if (!entry) {
+      const available = templates
+        .filter((t) => t.alias && t.status !== "coming-soon")
+        .map((t) => `--${t.alias}`)
+        .join(", ");
+      throw new Error(
+        `Unknown option "--${alias}". Available template flags: ${available || "(none)"}.`,
+      );
+    }
+
+    if (entry.kind === "web") {
+      if (preselect.webTemplateId && preselect.webTemplateId !== entry.id) {
+        throw new Error(
+          `Conflicting web template flags: --${alias} cannot combine with another web example.`,
+        );
+      }
+      preselect.webTemplateId = entry.id;
+    } else if (entry.kind === "api") {
+      if (preselect.apiTemplateId && preselect.apiTemplateId !== entry.id) {
+        throw new Error(
+          `Conflicting api template flags: --${alias} cannot combine with another api example.`,
+        );
+      }
+      preselect.apiTemplateId = entry.id;
+    }
+  }
+
+  return preselect;
 }

@@ -10,7 +10,7 @@ Seamless CLI — scaffold and manage full-stack authentication systems.
 
 USAGE
 
-  seamless init [project-name]
+  seamless init [project-name] [--<example>]
   seamless check
   seamless bootstrap-admin [email]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
@@ -29,6 +29,10 @@ COMMANDS
 
     With a name:
       • Creates new directory
+
+    With an example flag (e.g. --oauth):
+      • Scaffolds that use-case starter and skips the web prompt
+      • Run an unknown flag to see the available examples
 
   check
     Validate project setup, Docker, and running services
@@ -93,6 +97,9 @@ EXAMPLES
 
   seamless init my-app
     → Create new project in ./my-app
+
+  seamless init --oauth my-app
+    → Create ./my-app from the OAuth example starter
 
   seamless my-app
     → Shortcut for init

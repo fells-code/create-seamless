@@ -1,7 +1,7 @@
 import { expect, test } from '../lib/fixtures';
 import { enterOtp, readCapturedCode } from '../lib/reactFlows';
 
-test.describe('registration (react, browser)', () => {
+test.describe('registration (react, browser)', { tag: '@login' }, () => {
   test('register with just an email -> verify email OTP -> signed in', async ({ page, actor }) => {
     await page.goto('/login');
     await expect(page.getByRole('heading', { name: 'Create Account' })).toBeVisible();
