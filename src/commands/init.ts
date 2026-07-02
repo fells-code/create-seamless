@@ -13,6 +13,8 @@ import {
   type RegistryEntry,
   type TemplateManifest,
 } from "../core/templates.js";
+import { runOAuthSetupPrompts } from "../prompts/oauthSetup.js";
+import type { CollectedOAuthProvider } from "../core/oauthProviders.js";
 
 const AUTH_SERVER_URL = "http://localhost:5312";
 const API_URL = "http://localhost:3000";
@@ -55,8 +57,9 @@ export async function runCLI(projectName?: string, aliases: string[] = []) {
     return entry;
   };
 
-  // Resolve the chosen templates, then place their files. Env wiring waits until the
-  // shared auth config (tokens, key id) exists below.
+  // Resolve the chosen templates (read manifests) before writing anything, so every
+  // prompt finishes before files are placed. Env wiring waits until the shared auth
+  // config (tokens, key id) exists below.
   const selected: { entry: RegistryEntry; manifest: TemplateManifest; dir: string }[] =
     [];
   for (const id of [answers.webTemplateId, answers.apiTemplateId]) {
@@ -64,16 +67,26 @@ export async function runCLI(projectName?: string, aliases: string[] = []) {
     const manifest = await source.readManifest(entry);
     assertCliSupports(manifest, entry.label);
     const dir = path.join(root, manifest.targetDir);
+    selected.push({ entry, manifest, dir });
+  }
 
+  // Templates can opt into OAuth setup (manifest setup.oauth). Collect providers now,
+  // before scaffolding, so the auth server can be wired up with them below.
+  const webSelection = selected.find((s) => s.entry.kind === "web");
+  let oauthProviders: CollectedOAuthProvider[] = [];
+  if (webSelection?.manifest.setup?.oauth) {
+    oauthProviders = await runOAuthSetupPrompts();
+  }
+
+  for (const { entry, dir } of selected) {
     console.log(`Adding ${entry.label} starter...`);
     await source.copyInto(entry, dir);
-    selected.push({ entry, manifest, dir });
   }
 
   let sharedConfig: any = {};
 
   if (answers.authMode === "local") {
-    sharedConfig = await generateAuthServer({ root }, "local");
+    sharedConfig = await generateAuthServer({ root }, "local", oauthProviders);
   }
 
   if (answers.useDocker) {
@@ -81,6 +94,7 @@ export async function runCLI(projectName?: string, aliases: string[] = []) {
       authMode: answers.authMode,
       adminMode: answers.adminMode,
       includeAdmin: answers.includeAdmin,
+      oauth: oauthProviders,
     });
 
     if (answers.authMode === "docker") {
@@ -118,6 +132,36 @@ export async function runCLI(projectName?: string, aliases: string[] = []) {
     authMode: answers.authMode,
     useDocker: answers.useDocker,
   });
+
+  printOAuthNextSteps(oauthProviders);
+}
+
+// Summarizes the OAuth wiring after scaffolding: which providers are ready and which
+// still need credentials, plus the redirect URI to register with each provider.
+function printOAuthNextSteps(providers: CollectedOAuthProvider[]) {
+  if (providers.length === 0) return;
+
+  const ready = providers
+    .filter((p) => p.clientId && p.clientSecret)
+    .map((p) => p.catalog.label);
+  const pending = providers
+    .filter((p) => !p.clientId || !p.clientSecret)
+    .map((p) => p.catalog.label);
+
+  console.log("\nOAuth providers");
+  if (ready.length) {
+    console.log(`  Enabled: ${ready.join(", ")}`);
+  }
+  if (pending.length) {
+    console.log(`  Needs credentials before use: ${pending.join(", ")}`);
+    console.log(
+      "  Add the client id/secret in the auth environment (OAUTH_PROVIDERS and the",
+    );
+    console.log('  matching *_CLIENT_SECRET), then set that provider\'s "enabled" to true.');
+  }
+  console.log(
+    "  Register this redirect URI with each provider: http://localhost:5173/oauth/callback",
+  );
 }
 
 export interface TemplatePreselect {
