@@ -5,7 +5,7 @@ import {
   registerWithPasskey,
 } from '../lib/reactFlows';
 
-test.describe('passkey login (react, browser)', () => {
+test.describe('passkey login (react, browser)', { tag: '@login' }, () => {
   test('a registered passkey signs the user back in', async ({ page, context, actor }) => {
     await addVirtualAuthenticator(context, page);
 

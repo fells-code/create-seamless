@@ -1,6 +1,6 @@
 import { expect, test } from '../lib/fixtures';
 
-test.describe('OAuth login (react, browser)', () => {
+test.describe('OAuth login (react, browser)', { tag: '@oauth' }, () => {
   test('continue with a provider -> IdP redirect -> signed in', async ({ page }) => {
     await page.goto('/login');
 

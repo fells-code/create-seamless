@@ -6,7 +6,7 @@ import { fileURLToPath } from "url";
 import kleur from "kleur";
 
 import { runCommand } from "../core/exec.js";
-import type { Registry } from "../core/templates.js";
+import type { Registry, TemplateManifest } from "../core/templates.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -67,18 +67,38 @@ function resolveTemplatesRoot(): string {
   );
 }
 
-// The web template served at :5173 and pointed at the adapter. Only needed for browser
-// runs. Resolution order: an explicit SEAMLESS_REACT_DIR (a direct template path, used by
-// CI), otherwise the web template discovered from the registry.
-// TODO(#1b): run the browser suite against every web template in the registry, not just
-// the first one, once templates can each declare how they build and serve.
-function resolveReactDir(): string {
+// A web template to conformance-test: its served source and the flow tags to run.
+interface WebTemplate {
+  id: string;
+  dir: string;
+  flows?: string[];
+}
+
+function readTemplateFlows(dir: string): string[] | undefined {
+  const manifestPath = path.join(dir, "template.json");
+  if (!fs.existsSync(manifestPath)) return undefined;
+  try {
+    const manifest = JSON.parse(
+      fs.readFileSync(manifestPath, "utf-8"),
+    ) as TemplateManifest;
+    return manifest.verify?.flows;
+  } catch {
+    return undefined;
+  }
+}
+
+// The web templates to build, serve, and drive. Each is served at :5173 in turn and
+// pointed at the adapter. Resolution order: an explicit SEAMLESS_REACT_DIR (a single
+// template path, used by CI), otherwise every runnable web template in the registry.
+function resolveWebTemplates(): WebTemplate[] {
   const override = process.env.SEAMLESS_REACT_DIR;
   if (override) {
     if (!fs.existsSync(path.join(override, "package.json"))) {
       throw new Error(`SEAMLESS_REACT_DIR=${override} has no package.json.`);
     }
-    return override;
+    return [
+      { id: path.basename(override), dir: override, flows: readTemplateFlows(override) },
+    ];
   }
 
   const root = resolveTemplatesRoot();
@@ -98,22 +118,22 @@ function resolveReactDir(): string {
     throw new Error("The templates registry has no runnable web templates.");
   }
 
-  const chosen = webTemplates[0];
-  if (webTemplates.length > 1) {
-    console.log(
-      kleur.yellow(
-        `Note: the registry has ${webTemplates.length} web templates; verify currently runs only "${chosen.id}" (multi-template verify is pending, #1b).`,
-      ),
-    );
-  }
+  return webTemplates.map((t) => {
+    const dir = path.resolve(root, t.path);
+    if (!fs.existsSync(path.join(dir, "package.json"))) {
+      throw new Error(
+        `Web template "${t.id}" resolved to ${dir}, which has no package.json.`,
+      );
+    }
+    return { id: t.id, dir, flows: readTemplateFlows(dir) };
+  });
+}
 
-  const dir = path.resolve(root, chosen.path);
-  if (!fs.existsSync(path.join(dir, "package.json"))) {
-    throw new Error(
-      `Web template "${chosen.id}" resolved to ${dir}, which has no package.json.`,
-    );
-  }
-  return dir;
+// A manifest's verify.flows (e.g. ["oauth"]) becomes a Playwright grep over the
+// matching spec tags (e.g. "@oauth"). No flows means run the whole suite.
+function flowsToGrep(flows?: string[]): string | undefined {
+  if (!flows || flows.length === 0) return undefined;
+  return flows.map((f) => `@${f}`).join("|");
 }
 
 const VENDOR_DIR = path.join(VERIFY_DIR, "adapter-app", "vendor");
@@ -184,6 +204,23 @@ function compose(env: NodeJS.ProcessEnv, ...args: string[]): Promise<void> {
   return runCommand("docker", ["compose", "-f", COMPOSE_FILE, ...args], VERIFY_DIR, env);
 }
 
+// Runs a set of Playwright projects, optionally narrowed by a grep. Returns true on
+// pass, false on failure, so one layer failing does not abort the others.
+async function runProjects(
+  env: NodeJS.ProcessEnv,
+  projects: string[],
+  grep: string | undefined,
+): Promise<boolean> {
+  const passthrough = projects.flatMap((p) => ["--project", p]);
+  if (grep) passthrough.push("--grep", grep);
+  try {
+    await runCommand("npm", ["test", "--", ...passthrough], HARNESS_DIR, env);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export async function runVerify(args: string[] = []): Promise<void> {
   const opts = parseArgs(args);
   console.log(kleur.bold("\nSeamless Verify — auth conformance"));
@@ -191,10 +228,10 @@ export async function runVerify(args: string[] = []): Promise<void> {
 
   ensureDocker();
   const apiDir = resolveApiDir();
-  const reactDir = opts.react ? resolveReactDir() : undefined;
+  const webTemplates = opts.react ? resolveWebTemplates() : [];
 
   const serviceToken = process.env.API_SERVICE_TOKEN ?? "verify-dev-service-token";
-  const env: NodeJS.ProcessEnv = {
+  const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     SEAMLESS_API_DIR: apiDir,
     API_SERVICE_TOKEN: serviceToken,
@@ -205,65 +242,83 @@ export async function runVerify(args: string[] = []): Promise<void> {
     SEAMLESS_API_SERVICE_TOKEN: serviceToken,
     SEAMLESS_API_URL: "http://localhost:5312",
     SEAMLESS_ADAPTER_URL: "http://localhost:3000",
-    ...(opts.apiOnly ? {} : { SEAMLESS_VERIFY_ADAPTER: "1" }),
-    ...(reactDir
-      ? {
-          SEAMLESS_REACT_DIR: reactDir,
-          SEAMLESS_REACT_URL: "http://localhost:5173",
-          SEAMLESS_VERIFY_REACT: "1",
-        }
-      : {}),
   };
 
-  const services = ["postgres", "auth-api"];
-  if (!opts.apiOnly) services.push("adapter");
-  if (opts.react) services.push("react");
-  // The react service is behind a compose profile so non-browser runs skip its build.
-  const profileArgs = opts.react ? ["--profile", "react"] : [];
+  // The base stack (no browser layer). The react service is added per template below.
+  const baseServices = ["postgres", "auth-api"];
+  if (!opts.apiOnly) baseServices.push("adapter");
 
   let failed = false;
   try {
     // The adapter / react images install local @seamless-auth/* tarballs when present.
     cleanVendor();
-    if (opts.local) await packLocalSdks(env);
-    if (opts.local && opts.react) await packLocalReactSdk(env);
+    if (opts.local) await packLocalSdks(baseEnv);
+    if (opts.local && opts.react) await packLocalReactSdk(baseEnv);
 
     // Fresh volumes each run → deterministic system_config seed (e.g. LOGIN_METHODS).
     console.log(kleur.cyan("→ Cleaning any previous stack…"));
-    await compose(env, ...profileArgs, "down", "-v").catch(() => undefined);
+    await compose(baseEnv, "--profile", "react", "down", "-v").catch(() => undefined);
 
-    console.log(kleur.cyan(`→ Building & starting the stack (${services.join(", ")})…`));
-    await compose(env, ...profileArgs, "up", "-d", "--build", ...services);
+    console.log(kleur.cyan(`→ Building & starting the stack (${baseServices.join(", ")})…`));
+    await compose(baseEnv, "up", "-d", "--build", ...baseServices);
 
     if (!fs.existsSync(path.join(HARNESS_DIR, "node_modules"))) {
       console.log(kleur.cyan("→ Installing harness dependencies…"));
-      await runCommand("npm", ["install"], HARNESS_DIR, env);
+      await runCommand("npm", ["install"], HARNESS_DIR, baseEnv);
     }
     if (opts.react) {
       console.log(kleur.cyan("→ Ensuring the Chromium browser is installed…"));
-      await runCommand("npx", ["playwright", "install", "chromium"], HARNESS_DIR, env);
+      await runCommand("npx", ["playwright", "install", "chromium"], HARNESS_DIR, baseEnv);
     }
 
-    console.log(kleur.cyan("→ Running the conformance harness…\n"));
-    const projects = ["api"];
-    if (!opts.apiOnly) projects.push("adapter");
-    if (opts.react) projects.push("react");
-    const passthrough: string[] = projects.flatMap((p) => ["--project", p]);
-    if (opts.grep) passthrough.push("--grep", opts.grep);
-    await runCommand("npm", ["test", "--", ...passthrough], HARNESS_DIR, env);
+    // API and adapter layers are template-independent, so they run once.
+    const apiEnv: NodeJS.ProcessEnv = {
+      ...baseEnv,
+      ...(opts.apiOnly ? {} : { SEAMLESS_VERIFY_ADAPTER: "1" }),
+    };
+    const apiProjects = ["api"];
+    if (!opts.apiOnly) apiProjects.push("adapter");
+    console.log(kleur.cyan("→ Running the API / adapter conformance…\n"));
+    if (!(await runProjects(apiEnv, apiProjects, opts.grep))) failed = true;
 
-    console.log(kleur.green("\n✔ Conformance passed.\n"));
+    // The browser layer runs once per web template, each pointed at its own source
+    // and scoped to the flows its manifest declares (all flows when unset).
+    for (const tmpl of webTemplates) {
+      const reactEnv: NodeJS.ProcessEnv = {
+        ...baseEnv,
+        SEAMLESS_REACT_DIR: tmpl.dir,
+        SEAMLESS_REACT_URL: "http://localhost:5173",
+        SEAMLESS_VERIFY_REACT: "1",
+      };
+      const grep = opts.grep ?? flowsToGrep(tmpl.flows);
+      console.log(
+        kleur.bold(
+          `\n→ Web template: ${tmpl.id}${grep ? ` (flows: ${grep})` : " (all flows)"}\n`,
+        ),
+      );
+      await compose(reactEnv, "--profile", "react", "up", "-d", "--build", "react");
+      if (!(await runProjects(reactEnv, ["react"], grep))) failed = true;
+      // Remove the react container so the next template rebuilds from its own source.
+      await compose(reactEnv, "--profile", "react", "rm", "-sf", "react").catch(
+        () => undefined,
+      );
+    }
+
+    if (failed) {
+      console.log(kleur.red("\n✖ Conformance failed.\n"));
+    } else {
+      console.log(kleur.green("\n✔ Conformance passed.\n"));
+    }
   } catch (err) {
     failed = true;
     console.log(kleur.red(`\n✖ Conformance failed: ${(err as Error).message}\n`));
   } finally {
     if (opts.keepUp) {
-      const profileHint = opts.react ? "--profile react " : "";
       console.log(kleur.dim("Stack left running (--keep-up). Tear down with:"));
-      console.log(kleur.dim(`  docker compose -f ${COMPOSE_FILE} ${profileHint}down -v\n`));
+      console.log(kleur.dim(`  docker compose -f ${COMPOSE_FILE} --profile react down -v\n`));
     } else {
       console.log(kleur.cyan("→ Tearing down…"));
-      await compose(env, ...profileArgs, "down", "-v").catch(() => undefined);
+      await compose(baseEnv, "--profile", "react", "down", "-v").catch(() => undefined);
     }
   }
 

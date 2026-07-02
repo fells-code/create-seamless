@@ -2,7 +2,7 @@ import { expect, test } from '../lib/fixtures';
 import { registerAndVerifyEmail } from '../lib/flows';
 import { gotoSignIn, readCapturedCode } from '../lib/reactFlows';
 
-test.describe('magic link login (react, browser)', () => {
+test.describe('magic link login (react, browser)', { tag: '@login' }, () => {
   test('request a magic link, open it in a second tab -> original tab authenticates', async ({
     page,
     context,
