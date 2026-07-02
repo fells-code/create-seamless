@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import kleur from "kleur";
 
 import { runCommand } from "../core/exec.js";
+import type { Registry } from "../core/templates.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
@@ -57,22 +58,62 @@ function resolveApiDir(): string {
   return candidate;
 }
 
-// The React web template, served at :5173 and pointed at the adapter. Defaults to the
-// react-vite template inside a sibling seamless-templates checkout; override with
-// SEAMLESS_REACT_DIR. Only needed for browser runs.
-// TODO(#1): resolve this from the registry so every web template is conformance-tested,
-// not just react-vite.
+// The seamless-templates checkout the web template is resolved from. Defaults to a
+// sibling checkout; override with SEAMLESS_TEMPLATES_DIR.
+function resolveTemplatesRoot(): string {
+  return (
+    process.env.SEAMLESS_TEMPLATES_DIR ??
+    path.resolve(REPO_ROOT, "..", "seamless-templates")
+  );
+}
+
+// The web template served at :5173 and pointed at the adapter. Only needed for browser
+// runs. Resolution order: an explicit SEAMLESS_REACT_DIR (a direct template path, used by
+// CI), otherwise the web template discovered from the registry.
+// TODO(#1b): run the browser suite against every web template in the registry, not just
+// the first one, once templates can each declare how they build and serve.
 function resolveReactDir(): string {
-  const candidate =
-    process.env.SEAMLESS_REACT_DIR ??
-    path.resolve(REPO_ROOT, "..", "seamless-templates", "templates", "web", "react-vite");
-  if (!fs.existsSync(path.join(candidate, "package.json"))) {
+  const override = process.env.SEAMLESS_REACT_DIR;
+  if (override) {
+    if (!fs.existsSync(path.join(override, "package.json"))) {
+      throw new Error(`SEAMLESS_REACT_DIR=${override} has no package.json.`);
+    }
+    return override;
+  }
+
+  const root = resolveTemplatesRoot();
+  const registryPath = path.join(root, "registry.json");
+  if (!fs.existsSync(registryPath)) {
     throw new Error(
-      `Could not find the react-vite web template at ${candidate}.\n` +
-        "  Set SEAMLESS_REACT_DIR to a local template checkout, or run with --no-react.",
+      `Could not find the templates registry at ${registryPath}.\n` +
+        "  Set SEAMLESS_TEMPLATES_DIR (or SEAMLESS_REACT_DIR to a template path), or run with --no-react.",
     );
   }
-  return candidate;
+
+  const registry = JSON.parse(fs.readFileSync(registryPath, "utf-8")) as Registry;
+  const webTemplates = (registry.templates ?? []).filter(
+    (t) => t.kind === "web" && t.status !== "coming-soon",
+  );
+  if (webTemplates.length === 0) {
+    throw new Error("The templates registry has no runnable web templates.");
+  }
+
+  const chosen = webTemplates[0];
+  if (webTemplates.length > 1) {
+    console.log(
+      kleur.yellow(
+        `Note: the registry has ${webTemplates.length} web templates; verify currently runs only "${chosen.id}" (multi-template verify is pending, #1b).`,
+      ),
+    );
+  }
+
+  const dir = path.resolve(root, chosen.path);
+  if (!fs.existsSync(path.join(dir, "package.json"))) {
+    throw new Error(
+      `Web template "${chosen.id}" resolved to ${dir}, which has no package.json.`,
+    );
+  }
+  return dir;
 }
 
 const VENDOR_DIR = path.join(VERIFY_DIR, "adapter-app", "vendor");
