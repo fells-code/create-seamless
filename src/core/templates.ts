@@ -16,6 +16,8 @@ export interface RegistryEntry {
   kind: TemplateKind;
   framework: string;
   label: string;
+  // Short flag name for `seamless init --<alias>` (e.g. "oauth"). Optional.
+  alias?: string;
   status: TemplateStatus;
   path: string;
 }
@@ -31,6 +33,12 @@ export interface TemplateManifest {
   env?: {
     fromExample?: string;
     set?: Record<string, string>;
+  };
+  // How `seamless verify` conformance-tests this template (consumed by the verify
+  // command): which Playwright project drives it and which flow tags to run.
+  verify?: {
+    project?: string;
+    flows?: string[];
   };
   requires?: { cliMin?: string };
 }
