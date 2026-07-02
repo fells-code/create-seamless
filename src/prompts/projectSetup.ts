@@ -1,28 +1,46 @@
 import { confirm, select } from "@clack/prompts";
 
-type WebFramework = "react";
-type ApiFramework = "express";
+import type { RegistryEntry, TemplateKind } from "../core/templates.js";
+
 type AuthMode = "local" | "docker";
 type AdminMode = "image" | "source";
 
-export async function runProjectSetupPrompts() {
-  const webFramework = (await select({
-    message: "Web framework",
-    options: [
-      { value: "react", label: "React (Vite)" },
-      { value: "next", label: "Next.js (coming soon)", disabled: true },
-    ],
-  })) as WebFramework;
+interface Option {
+  value: string;
+  label: string;
+  disabled?: boolean;
+}
 
-  const apiFramework = (await select({
+// Builds the framework choices for one layer (web or api) from the registry, so
+// adding a template is a registry edit, not a code change here. coming-soon
+// templates show as disabled; beta templates are selectable but labelled.
+function toOptions(templates: RegistryEntry[], kind: TemplateKind): Option[] {
+  const forKind = templates.filter((t) => t.kind === kind);
+  if (forKind.length === 0) {
+    throw new Error(`The template registry has no ${kind} templates.`);
+  }
+  return forKind.map((t) => ({
+    value: t.id,
+    label:
+      t.status === "coming-soon"
+        ? `${t.label} (coming soon)`
+        : t.status === "beta"
+          ? `${t.label} (beta)`
+          : t.label,
+    disabled: t.status === "coming-soon",
+  }));
+}
+
+export async function runProjectSetupPrompts(templates: RegistryEntry[]) {
+  const webTemplateId = (await select({
+    message: "Web framework",
+    options: toOptions(templates, "web"),
+  })) as string;
+
+  const apiTemplateId = (await select({
     message: "Backend framework",
-    options: [
-      { value: "express", label: "Express" },
-      { value: "fastify", label: "Fastify (coming soon)", disabled: true },
-      { value: "fastAPI", label: "FastAPI (coming soon)", disabled: true },
-      { value: "axum", label: "Rust Axum (coming soon)", disabled: true },
-    ],
-  })) as ApiFramework;
+    options: toOptions(templates, "api"),
+  })) as string;
 
   const authMode = (await select({
     message: "How would you like to run SeamlessAuth?",
@@ -61,8 +79,6 @@ export async function runProjectSetupPrompts() {
     })) as AdminMode;
   }
 
-  let useDocker = true;
-
   if (authMode === "local") {
     const confirmDocker = await confirm({
       message:
@@ -79,10 +95,10 @@ export async function runProjectSetupPrompts() {
 
   return {
     web: true,
-    webFramework,
+    webTemplateId,
 
     api: true,
-    apiFramework,
+    apiTemplateId,
 
     authMode,
     useDocker: true,
