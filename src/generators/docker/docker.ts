@@ -88,7 +88,10 @@ async function authService(
   oauth: CollectedOAuthProvider[] = [],
 ) {
   if (mode === "local") {
-    const shared = await configureAuthLocalEnv(root, oauth);
+    // auth/.env was already written by generateAuthServer (with its secrets and any
+    // OAuth config). Read those values back rather than regenerating, which would mint
+    // a new API_SERVICE_TOKEN that no longer matches the one the API was given.
+    const shared = extractSharedFromExistingEnv(root);
 
     return {
       service: `
