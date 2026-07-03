@@ -32,6 +32,8 @@ COMMANDS
 
     With an example flag (e.g. --oauth):
       • Scaffolds that use-case starter and skips the web prompt
+      • --oauth also prompts for OIDC providers (Google, GitHub, Microsoft,
+        GitLab) and wires the ones you configure into the auth server
       • Run an unknown flag to see the available examples
 
   check
@@ -82,7 +84,7 @@ GETTING STARTED
 
 WHAT YOU GET
 
-  • Web application (React starter)
+  • Web application (React starter, or a use-case example like --oauth)
   • API server (Express)
   • SeamlessAuth server (Docker or local)
   • Admin dashboard (Docker or source)

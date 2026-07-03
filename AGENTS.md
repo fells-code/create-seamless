@@ -31,6 +31,13 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
   template's `template.json` env contract. The auth, docker, and config pieces are still generated
   locally in `src/generators/*`. Override the template source for development with
   `SEAMLESS_TEMPLATES_DIR` (a local checkout) or `SEAMLESS_TEMPLATES_REF` (a different ref).
+  - A `--<alias>` flag (e.g. `seamless init --oauth`) preselects the template whose registry
+    `alias` matches, skipping the web prompt. Aliases live in the registry, so no per-flag code.
+  - A template can declare `setup.oauth` in its `template.json` to trigger the OAuth provider
+    prompts ([src/prompts/oauthSetup.ts](src/prompts/oauthSetup.ts), catalog in
+    [src/core/oauthProviders.ts](src/core/oauthProviders.ts)). The chosen providers are wired into
+    the auth server env (`OAUTH_PROVIDERS`, per-provider `*_CLIENT_SECRET`, the `oauth` login
+    method) by `buildAuthEnv` in [src/generators/docker/docker.ts](src/generators/docker/docker.ts).
 - **check** health-checks a running stack.
 - **bootstrap-admin** mints the first admin invite.
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
@@ -74,6 +81,13 @@ Modes and sibling repos:
 - **Releases use Changesets.** A user-facing change needs a changeset (`npm run changeset`). A push to
   `main` opens a "version packages" PR that bumps the version and writes `CHANGELOG.md`; merging that
   PR publishes to npm. Do not hand-edit the version or `CHANGELOG.md`.
+- **npm publish token.** The release workflow publishes with the `NPM_TOKEN` repo secret. It must be a
+  classic **Automation** token (full publish rights, bypasses 2FA) owned by an account with publish
+  access to `seamless-cli`; a granular token restricted to a package allowlist cannot create or
+  publish it and the registry returns a confusing `E404` on the `PUT`.
+- **Templates ref bump.** Shipping a change that depends on a new templates release is a two-step,
+  cross-repo dance: release `seamless-templates` first, then bump `SEAMLESS_TEMPLATES_REF`
+  ([src/core/images.ts](src/core/images.ts)) to that tag.
 - **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`, `test:`, `docs:`).
 - **Do not use em dashes** in public-facing text: commit messages, code comments, PR and issue
   descriptions, changesets, and docs. Use a comma, parentheses, or a separate sentence instead.
