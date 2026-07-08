@@ -73,7 +73,9 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version-file: '.nvmrc'
+          # Reusable workflow: it checks out sibling repos into subpaths, so there
+          # is no single repo .nvmrc to read here. Pin the Node major directly.
+          node-version: 24
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
