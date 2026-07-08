@@ -221,6 +221,166 @@ async function runProjects(
   }
 }
 
+// A seamless package exercised by the run, reported so the summary records exactly
+// what was tested. `version` is a source version (local build) or a declared pin
+// (released images), depending on mode.
+interface PackageVersion {
+  name: string;
+  version: string;
+}
+
+function readJson(file: string): Record<string, unknown> | undefined {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf-8")) as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
+}
+
+function readPkgVersion(pkgJsonPath: string): string | undefined {
+  const version = readJson(pkgJsonPath)?.version;
+  return typeof version === "string" ? version : undefined;
+}
+
+function readDepVersion(pkgJsonPath: string, dep: string): string | undefined {
+  const deps = readJson(pkgJsonPath)?.dependencies as Record<string, string> | undefined;
+  return deps?.[dep];
+}
+
+// Best-effort collection of the seamless package versions under test. Never throws:
+// version reporting must not be able to fail a run, so every lookup is guarded and a
+// missing manifest just drops that line.
+function collectPackageVersions(
+  opts: VerifyOptions,
+  apiDir: string,
+  webTemplates: WebTemplate[],
+): PackageVersion[] {
+  const versions: PackageVersion[] = [];
+  const push = (name: string, version: string | undefined): void => {
+    if (version) versions.push({ name, version });
+  };
+
+  // The auth API is always built from local source, in both modes.
+  push("seamless-auth-api", readPkgVersion(path.join(apiDir, "package.json")));
+
+  if (opts.local) {
+    // Local: the exact source versions that were built and packed.
+    try {
+      const serverDir = resolveServerDir();
+      push("@seamless-auth/core", readPkgVersion(path.join(serverDir, "packages", "core", "package.json")));
+      push("@seamless-auth/express", readPkgVersion(path.join(serverDir, "packages", "express", "package.json")));
+    } catch {
+      // Server checkout unavailable; leave the SDK lines out rather than fail.
+    }
+    if (opts.react) {
+      try {
+        push("@seamless-auth/react", readPkgVersion(path.join(resolveReactSdkDir(), "package.json")));
+      } catch {
+        // React SDK checkout unavailable.
+      }
+    }
+  } else {
+    // Released: the pins the adapter and web images build against.
+    push(
+      "@seamless-auth/express",
+      readDepVersion(path.join(VERIFY_DIR, "adapter-app", "package.json"), "@seamless-auth/express"),
+    );
+    const reactPins = new Set<string>();
+    for (const tmpl of webTemplates) {
+      const pin = readDepVersion(path.join(tmpl.dir, "package.json"), "@seamless-auth/react");
+      if (pin) reactPins.add(pin);
+    }
+    for (const pin of reactPins) push("@seamless-auth/react", pin);
+  }
+
+  return versions;
+}
+
+// One conformance layer's outcome, collected as it runs so the final report can be
+// printed in one place instead of scattered through the live output.
+interface LayerResult {
+  label: string;
+  ok: boolean;
+  durationMs: number;
+}
+
+// Times a single layer, records its outcome, and returns its pass/fail.
+async function runLayer(
+  results: LayerResult[],
+  label: string,
+  run: () => Promise<boolean>,
+): Promise<boolean> {
+  const started = Date.now();
+  const ok = await run();
+  results.push({ label, ok, durationMs: Date.now() - started });
+  return ok;
+}
+
+function formatDuration(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const seconds = ms / 1000;
+  if (seconds < 60) return `${seconds.toFixed(1)}s`;
+  const mins = Math.floor(seconds / 60);
+  const rem = Math.round(seconds % 60);
+  return `${mins}m ${rem}s`;
+}
+
+// The consolidated end-of-run report: one line per layer plus an overall verdict,
+// printed last so it stays on screen without scrolling back through phase output.
+function printSummary(
+  results: LayerResult[],
+  packages: PackageVersion[],
+  opts: VerifyOptions,
+  failed: boolean,
+  setupError: Error | undefined,
+  elapsedMs: number,
+): void {
+  const rule = kleur.dim("─".repeat(56));
+  const sdk = opts.local ? "local (built from source)" : "released (npm)";
+
+  console.log(`\n${rule}`);
+  console.log(kleur.bold("  Seamless Verify — summary"));
+  console.log(kleur.dim(`  SDK: ${sdk}  ·  ${formatDuration(elapsedMs)} total`));
+
+  if (packages.length > 0) {
+    console.log(rule);
+    console.log(kleur.bold("  Packages"));
+    const nameWidth = Math.max(...packages.map((p) => p.name.length));
+    for (const p of packages) {
+      console.log(`    ${p.name.padEnd(nameWidth)}  ${kleur.dim(p.version)}`);
+    }
+  }
+
+  console.log(rule);
+
+  if (results.length === 0) {
+    console.log(kleur.dim("  No conformance layers ran."));
+  } else {
+    const width = Math.max(...results.map((r) => r.label.length));
+    for (const r of results) {
+      const icon = r.ok ? kleur.green("✔") : kleur.red("✖");
+      const padded = r.label.padEnd(width);
+      const label = r.ok ? padded : kleur.red(padded);
+      console.log(`  ${icon}  ${label}  ${kleur.dim(formatDuration(r.durationMs))}`);
+    }
+  }
+
+  console.log(rule);
+  if (setupError) {
+    console.log(kleur.red(`  ✖ Verify aborted: ${setupError.message}`));
+  } else if (failed) {
+    const failedCount = results.filter((r) => !r.ok).length;
+    console.log(
+      kleur.red(
+        `  ✖ Conformance failed — ${failedCount} of ${results.length} layer(s) failed.`,
+      ),
+    );
+  } else {
+    console.log(kleur.green(`  ✔ Conformance passed — ${results.length} layer(s).`));
+  }
+  console.log(`${rule}\n`);
+}
+
 export async function runVerify(args: string[] = []): Promise<void> {
   const opts = parseArgs(args);
   console.log(kleur.bold("\nSeamless Verify — auth conformance"));
@@ -229,6 +389,7 @@ export async function runVerify(args: string[] = []): Promise<void> {
   ensureDocker();
   const apiDir = resolveApiDir();
   const webTemplates = opts.react ? resolveWebTemplates() : [];
+  const packageVersions = collectPackageVersions(opts, apiDir, webTemplates);
 
   const serviceToken = process.env.API_SERVICE_TOKEN ?? "verify-dev-service-token";
   const baseEnv: NodeJS.ProcessEnv = {
@@ -249,6 +410,9 @@ export async function runVerify(args: string[] = []): Promise<void> {
   if (!opts.apiOnly) baseServices.push("adapter");
 
   let failed = false;
+  let setupError: Error | undefined;
+  const results: LayerResult[] = [];
+  const startedAt = Date.now();
   try {
     // The adapter / react images install local @seamless-auth/* tarballs when present.
     cleanVendor();
@@ -278,8 +442,11 @@ export async function runVerify(args: string[] = []): Promise<void> {
     };
     const apiProjects = ["api"];
     if (!opts.apiOnly) apiProjects.push("adapter");
+    const apiLabel = opts.apiOnly ? "API" : "API / adapter";
     console.log(kleur.cyan("→ Running the API / adapter conformance…\n"));
-    if (!(await runProjects(apiEnv, apiProjects, opts.grep))) failed = true;
+    if (!(await runLayer(results, apiLabel, () => runProjects(apiEnv, apiProjects, opts.grep)))) {
+      failed = true;
+    }
 
     // The browser layer runs once per web template, each pointed at its own source
     // and scoped to the flows its manifest declares (all flows when unset).
@@ -291,27 +458,25 @@ export async function runVerify(args: string[] = []): Promise<void> {
         SEAMLESS_VERIFY_REACT: "1",
       };
       const grep = opts.grep ?? flowsToGrep(tmpl.flows);
+      const label = `Web · ${tmpl.id}${grep ? ` (${grep})` : " (all flows)"}`;
       console.log(
         kleur.bold(
           `\n→ Web template: ${tmpl.id}${grep ? ` (flows: ${grep})` : " (all flows)"}\n`,
         ),
       );
       await compose(reactEnv, "--profile", "react", "up", "-d", "--build", "react");
-      if (!(await runProjects(reactEnv, ["react"], grep))) failed = true;
+      if (!(await runLayer(results, label, () => runProjects(reactEnv, ["react"], grep)))) {
+        failed = true;
+      }
       // Remove the react container so the next template rebuilds from its own source.
       await compose(reactEnv, "--profile", "react", "rm", "-sf", "react").catch(
         () => undefined,
       );
     }
-
-    if (failed) {
-      console.log(kleur.red("\n✖ Conformance failed.\n"));
-    } else {
-      console.log(kleur.green("\n✔ Conformance passed.\n"));
-    }
   } catch (err) {
     failed = true;
-    console.log(kleur.red(`\n✖ Conformance failed: ${(err as Error).message}\n`));
+    setupError = err as Error;
+    console.log(kleur.red(`\n✖ Conformance failed: ${setupError.message}\n`));
   } finally {
     if (opts.keepUp) {
       console.log(kleur.dim("Stack left running (--keep-up). Tear down with:"));
@@ -320,6 +485,8 @@ export async function runVerify(args: string[] = []): Promise<void> {
       console.log(kleur.cyan("→ Tearing down…"));
       await compose(baseEnv, "--profile", "react", "down", "-v").catch(() => undefined);
     }
+    // Printed last so the consolidated report stays on screen after teardown noise.
+    printSummary(results, packageVersions, opts, failed, setupError, Date.now() - startedAt);
   }
 
   if (failed) process.exit(1);
