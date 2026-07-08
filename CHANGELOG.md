@@ -1,5 +1,11 @@
 # seamless-cli
 
+## 0.5.2
+
+### Patch Changes
+
+- 9992373: Bump the pinned `seamless-templates` ref to `v0.2.3`, so `seamless init` scaffolds the templates that ship `@seamless-auth/react` `^0.4.0` (TOTP support) and `@seamless-auth/express` `^0.7.0`.
+
 ## 0.5.1
 
 ### Patch Changes
