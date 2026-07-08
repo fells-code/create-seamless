@@ -11,6 +11,45 @@ This repository is the Seamless Auth command-line tool (published as `seamless-c
 Use this file as the fast path. The verify harness has its own moving parts under
 [verify/](verify) (a Docker Compose stack plus a Playwright harness).
 
+## Working Standards (fells-code baseline)
+
+These rules apply to every repository in the fells-code org. Repo-specific
+guidance may extend them but must not contradict them.
+
+### Attribution
+- Commit and open PRs solely under the repository owner's identity. Never
+  commit under an agent or assistant identity.
+- Never attribute work to an AI assistant: no `Co-Authored-By: Claude` (or any
+  assistant) trailers, no "Generated with" / "Created with Claude" notes, and no
+  assistant branding or emoji anywhere in commit messages, PR or issue titles
+  and descriptions, changesets, code comments, or docs.
+
+### Comments
+- Comment only when the code genuinely needs explaining: a non-obvious reason, a
+  gotcha, or an invariant. Never narrate what the code plainly does.
+
+### TODOs
+- Every `TODO`/`FIXME` must reference a ticket, e.g. `// TODO(#123): ...`.
+  Do not leave a bare TODO. If no ticket exists, create one first.
+
+### Commits & branches
+- Conventional Commits (`feat:`, `fix:`, `chore:`, `docs:`, `ci:`, `test:`).
+- Descriptive branch names (`feat/...`, `fix/...`); never a `claude/` or other
+  tool-generated prefix.
+
+### Public-facing text
+- No em dashes in commit messages, code comments, PR or issue text, changesets,
+  or docs. Use a comma, parentheses, or a separate sentence.
+
+### Before declaring work done
+- All code quality checks must pass before you open a PR or call the work done:
+  tests, linting, type checks, and formatting. Run them and report the real
+  output; do not open a PR while any check is failing.
+- Typical commands: `npm run typecheck`, `npm run lint`, `npm run format:check`
+  (or `npm run format`), and `npm test`. Never claim a change works without
+  running them.
+- Match the surrounding code's style, naming, and comment density.
+
 ## Start Here
 
 - Install dependencies: `npm install`
@@ -78,6 +117,7 @@ Modes and sibling repos:
 ## Conventions
 
 - **TypeScript, ESM** (`"type": "module"`). Local imports use `.js` extensions (NodeNext resolution).
+- Commit, comment, TODO, and attribution rules live in Working Standards above.
 - **Releases use Changesets.** A user-facing change needs a changeset (`npm run changeset`). A push to
   `main` opens a "version packages" PR that bumps the version and writes `CHANGELOG.md`; merging that
   PR publishes to npm. Do not hand-edit the version or `CHANGELOG.md`.
@@ -88,12 +128,6 @@ Modes and sibling repos:
 - **Templates ref bump.** Shipping a change that depends on a new templates release is a two-step,
   cross-repo dance: release `seamless-templates` first, then bump `SEAMLESS_TEMPLATES_REF`
   ([src/core/images.ts](src/core/images.ts)) to that tag.
-- **Commits**: Conventional Commits (`feat:`, `fix:`, `chore:`, `ci:`, `test:`, `docs:`).
-- **Do not use em dashes** in public-facing text: commit messages, code comments, PR and issue
-  descriptions, changesets, and docs. Use a comma, parentheses, or a separate sentence instead.
-- Keep comments minimal. Comment only when the code genuinely needs explaining (a non-obvious reason
-  or a gotcha); do not narrate what the code plainly does.
-
 ## Before You Finish A Change
 
 - Run `npm run build` (the root package's only build step).
