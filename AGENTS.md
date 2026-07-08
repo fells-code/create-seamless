@@ -42,8 +42,12 @@ guidance may extend them but must not contradict them.
   or docs. Use a comma, parentheses, or a separate sentence.
 
 ### Before declaring work done
-- Run the repo's checks (typecheck, lint, format, tests) and report real output.
-  Never claim a change works without running them.
+- All code quality checks must pass before you open a PR or call the work done:
+  tests, linting, type checks, and formatting. Run them and report the real
+  output; do not open a PR while any check is failing.
+- Typical commands: `npm run typecheck`, `npm run lint`, `npm run format:check`
+  (or `npm run format`), and `npm test`. Never claim a change works without
+  running them.
 - Match the surrounding code's style, naming, and comment density.
 
 ## Start Here
