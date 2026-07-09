@@ -137,8 +137,8 @@ Modes and sibling repos:
 
 ## Known Maintenance Traps
 
-- **Sibling-repo branches**: the server's integration branch is `dev` (its `main` lags), so the verify
-  CI workflow defaults the server checkout to `dev`. The api, react SDK, and seamless-templates use `main`.
+- **Sibling-repo branches**: every sibling repo (api, server, react SDK, seamless-templates) is checked out
+  at its default branch (`main`) when no explicit `*-ref` is passed to the verify CI workflow.
 - **`--local` needs SDK dependencies**: it builds the server (pnpm) and the React SDK (npm) from source
   on the host, so those repos must have their dependencies installed first. CI installs them explicitly.
 - **OAuth mock networking**: the in-process mock OIDC is reached by the browser and harness via
