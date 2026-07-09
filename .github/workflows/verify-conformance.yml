@@ -52,9 +52,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: fells-code/seamless-auth-server
-          # The server's integration branch is `dev` (where fixes land and the beta
-          # publishes from); its `main` lags. Default to `dev` when no ref is passed.
-          ref: ${{ inputs.server-ref || 'dev' }}
+          ref: ${{ inputs.server-ref }}
           path: seamless-auth-server
 
       - name: Checkout seamless-auth-react
