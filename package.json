@@ -23,6 +23,7 @@
     "build": "tsc",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist",
+    "test": "vitest run",
     "changeset": "changeset",
     "version-packages": "changeset version",
     "release:stable": "npm run build && changeset publish",
@@ -46,6 +47,7 @@
     "@types/adm-zip": "^0.5.7",
     "@types/node": "^24.10.13",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.7"
   }
 }
