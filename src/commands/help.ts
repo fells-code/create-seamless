@@ -14,6 +14,7 @@ USAGE
   seamless check
   seamless bootstrap-admin [email]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
+  seamless profile <list|add|use|remove>
   seamless --help
   seamless --version
 
@@ -35,6 +36,25 @@ COMMANDS
       • --oauth also prompts for OIDC providers (Google, GitHub, Microsoft,
         GitLab) and wires the ones you configure into the auth server
       • Run an unknown flag to see the available examples
+
+  profile <list|add|use|remove>
+    Manage the Seamless Auth instances the CLI targets, stored as named
+    profiles in ~/.config/seamless/config.json (respects XDG_CONFIG_HOME).
+
+    profile list
+      • Show configured profiles; the active one is marked with *
+
+    profile add <name> --instance-url <url> [--identifier-type email|phone]
+      • Create or update a profile (prompts interactively if flags are omitted)
+
+    profile use <name>
+      • Switch the active profile for subsequent commands
+
+    profile remove <name>
+      • Delete a profile
+
+    The active profile can also be chosen per command with --profile <name> or
+    the SEAMLESS_PROFILE environment variable.
 
   check
     Validate project setup, Docker, and running services

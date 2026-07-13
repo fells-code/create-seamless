@@ -6,6 +6,7 @@ import { printHelp } from "./commands/help.js";
 import pkg from "../package.json" with { type: "json" };
 import { runBootstrapAdmin } from "./commands/bootstrapAdmin.js";
 import { runVerify } from "./commands/verify.js";
+import { runProfile } from "./commands/profile.js";
 
 export const VERSION = pkg.version;
 const args = process.argv.slice(2);
@@ -51,6 +52,11 @@ async function main() {
 
   if (command === "verify") {
     await runVerify(args.slice(1));
+    return;
+  }
+
+  if (command === "profile") {
+    await runProfile(args.slice(1));
     return;
   }
 
