@@ -11,6 +11,7 @@ import {
   upsertProfile,
   type IdentifierType,
 } from "../core/config.js";
+import { deleteTokens, KeychainUnavailableError } from "../core/keychain.js";
 
 export async function runProfile(args: string[]): Promise<void> {
   const sub = args[0];
@@ -27,7 +28,7 @@ export async function runProfile(args: string[]): Promise<void> {
       profileUse(rest);
       return;
     case "remove":
-      profileRemove(rest);
+      await profileRemove(rest);
       return;
     default:
       console.error(
@@ -145,18 +146,36 @@ function profileUse(rest: string[]): void {
   console.log(kleur.green(`Active profile set to "${name}".`));
 }
 
-function profileRemove(rest: string[]): void {
+async function profileRemove(rest: string[]): Promise<void> {
   const name = rest[0];
   if (!name) {
     console.error(kleur.red("Usage: seamless profile remove <name>"));
     process.exit(1);
   }
 
+  const profile = loadConfig().profiles[name];
+
   try {
     removeProfile(name);
   } catch (err) {
     console.error(kleur.red((err as Error).message));
     process.exit(1);
+  }
+
+  if (profile) {
+    try {
+      await deleteTokens(profile);
+    } catch (err) {
+      if (err instanceof KeychainUnavailableError) {
+        console.log(
+          kleur.dim("No keychain available; no stored tokens to clear."),
+        );
+      } else {
+        console.log(
+          kleur.yellow(`Could not clear stored tokens: ${(err as Error).message}`),
+        );
+      }
+    }
   }
 
   console.log(kleur.green(`Profile "${name}" removed.`));
