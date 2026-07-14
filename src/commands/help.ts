@@ -21,6 +21,9 @@ USAGE
   seamless sessions [list]
   seamless sessions revoke <id | --all>
   seamless config <get|set|roles|diff|apply>
+  seamless users <list|delete|credentials|prepare-device-replacement>
+  seamless org <list|create|get|update>
+  seamless org members <list|add|update|remove>
   seamless --help
   seamless --version
 
@@ -106,6 +109,30 @@ COMMANDS
 
     config apply <file> [--dry-run]
       • Apply a local JSON config file after a confirmation prompt
+
+  users <list|delete|credentials|prepare-device-replacement>
+    Admin user management (requires an admin role).
+
+    users list [--limit <n>] [--offset <n>] [--json]
+      • List users
+    users delete <id>
+      • Delete a user (asks for confirmation)
+    users credentials <id> [--json]
+      • Show a user's registered credentials
+    users prepare-device-replacement <id> [--keep-sessions] [--keep-passkeys] [--keep-totp]
+      • Admin-assisted account recovery (needs an elevated session)
+
+  org <list|create|get|update>, org members <list|add|update|remove>
+    Admin organization management (requires an admin role).
+
+    org list [--json]
+    org create <name> [--slug <slug>]
+    org get <id> [--json]
+    org update <id> [--name <name>] [--slug <slug>]
+    org members list <orgId> [--json]
+    org members add <orgId> (--user <id> | --email <email>) [--roles a,b] [--scopes a,b]
+    org members update <orgId> <userId> [--roles a,b] [--scopes a,b]
+    org members remove <orgId> <userId>
 
   check
     Validate project setup, Docker, and running services
