@@ -20,6 +20,7 @@ USAGE
   seamless logout [--all] [--profile <name>]
   seamless sessions [list]
   seamless sessions revoke <id | --all>
+  seamless config <get|set|roles|diff|apply>
   seamless --help
   seamless --version
 
@@ -85,6 +86,26 @@ COMMANDS
   sessions revoke <id | --all>
     Revoke one session by id, or every session with --all. Revoking the current
     session (or --all) prompts for confirmation and then clears local tokens.
+
+  config <get|set|roles|diff|apply>
+    Read and write the instance system configuration (requires an admin role).
+
+    config get [key] [--json]
+      • Print the whole config or a single key
+
+    config set <key> <value>
+      • Update one key; the value is parsed as JSON, falling back to a string
+        (for example: config set access_token_ttl 15m,
+        config set login_methods '["email_otp","passkey"]')
+
+    config roles [--json]
+      • List the instance's available roles
+
+    config diff <file>
+      • Show how a local JSON config file differs from the instance
+
+    config apply <file> [--dry-run]
+      • Apply a local JSON config file after a confirmation prompt
 
   check
     Validate project setup, Docker, and running services
