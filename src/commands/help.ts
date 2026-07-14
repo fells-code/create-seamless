@@ -18,6 +18,8 @@ USAGE
   seamless login [identifier] [--identifier <email>] [--profile <name>]
   seamless whoami [--profile <name>]
   seamless logout [--all] [--profile <name>]
+  seamless sessions [list]
+  seamless sessions revoke <id | --all>
   seamless --help
   seamless --version
 
@@ -75,6 +77,14 @@ COMMANDS
   logout [--all]
     End the current session on the instance and clear the local keychain tokens.
     --all revokes every session for the user before clearing local tokens.
+
+  sessions [list]
+    List the active sessions for the logged-in user, with the current session
+    marked. Shows the session id, device or user agent, IP, and last-used time.
+
+  sessions revoke <id | --all>
+    Revoke one session by id, or every session with --all. Revoking the current
+    session (or --all) prompts for confirmation and then clears local tokens.
 
   check
     Validate project setup, Docker, and running services

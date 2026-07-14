@@ -10,6 +10,7 @@ import { runProfile } from "./commands/profile.js";
 import { runLogin } from "./commands/login.js";
 import { runWhoami } from "./commands/whoami.js";
 import { runLogout } from "./commands/logout.js";
+import { runSessions } from "./commands/sessions.js";
 
 export const VERSION = pkg.version;
 const args = process.argv.slice(2);
@@ -75,6 +76,11 @@ async function main() {
 
   if (command === "logout") {
     await runLogout(args.slice(1));
+    return;
+  }
+
+  if (command === "sessions") {
+    await runSessions(args.slice(1));
     return;
   }
 
