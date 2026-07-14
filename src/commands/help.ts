@@ -15,6 +15,7 @@ USAGE
   seamless bootstrap-admin [email]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
   seamless profile <list|add|use|remove>
+  seamless login [identifier] [--identifier <email>] [--profile <name>]
   seamless --help
   seamless --version
 
@@ -55,6 +56,15 @@ COMMANDS
 
     The active profile can also be chosen per command with --profile <name> or
     the SEAMLESS_PROFILE environment variable.
+
+  login [identifier]
+    Log in to the active profile's Seamless Auth instance using email OTP.
+    Prompts for the identifier (or pass it positionally or with --identifier)
+    and the code sent to your inbox, then stores the session in the OS keychain.
+
+    --profile <name>
+      • Log in against a specific profile instead of the active one
+      • Also selectable with the SEAMLESS_PROFILE environment variable
 
   check
     Validate project setup, Docker, and running services
