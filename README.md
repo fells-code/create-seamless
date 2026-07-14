@@ -120,6 +120,139 @@ npm run dev
 
 ---
 
+## Authenticating against an instance
+
+Beyond scaffolding, the CLI can log in to a Seamless Auth instance (self-hosted, a managed
+tenant, or local dev) and call its authenticated and admin endpoints from the terminal. It talks
+to the instance directly over Bearer and JSON, so no server or contract changes are required.
+
+### Profiles
+
+The CLI targets instances through named profiles stored at `~/.config/seamless/config.json`
+(respecting `XDG_CONFIG_HOME`). Profiles hold no secrets; tokens live in the OS keychain (see
+below). Pick the active profile per command with `--profile <name>` or the `SEAMLESS_PROFILE`
+environment variable, otherwise the `default` profile is used.
+
+```bash
+# Add a profile (prompts if you omit the flags)
+seamless profile add prod --instance-url https://auth.example.com
+seamless profile add local --instance-url http://localhost:5312
+
+seamless profile list          # active profile is marked with *
+seamless profile use local     # switch the active profile
+seamless profile remove local  # delete a profile (also clears its keychain tokens)
+```
+
+`instanceUrl` is normalized: the trailing slash is stripped and `https` is required for any host
+other than `localhost`, `127.0.0.1`, or `::1`.
+
+### Logging in
+
+Login uses email OTP: you paste the code from your inbox, so nothing needs to be delivered to the
+CLI and no service token is required.
+
+```bash
+seamless login                       # prompts for the identifier, then the code
+seamless login you@example.com       # identifier as an argument
+seamless login --identifier you@example.com --profile prod
+```
+
+The command honors the instance's advertised login methods, caps local retries so it does not trip
+the OTP rate limiter, and refreshes the code automatically if the five minute window lapses.
+
+### Identity and sessions
+
+```bash
+seamless whoami                 # sub, email, roles, active profile, and instance URL
+seamless logout                 # end the current session and clear local tokens
+seamless logout --all           # revoke every session for the user, then clear local tokens
+
+seamless sessions               # list active sessions (current one marked)
+seamless sessions revoke <id>   # revoke one session (confirms if it is the current one)
+seamless sessions revoke --all  # revoke every session (confirms, then clears local tokens)
+```
+
+### Configuration as code
+
+Read and write the instance system configuration (requires an admin role). This turns the
+dashboard's config panel into something you can version, diff, and apply in CI.
+
+```bash
+seamless config get                       # print the whole config
+seamless config get access_token_ttl      # print a single key
+seamless config get --json > config.json  # capture as JSON
+
+# Values are parsed as JSON, falling back to a string, so every shape works:
+seamless config set access_token_ttl 15m
+seamless config set rate_limit 250
+seamless config set passkey_login_fallback_enabled false
+seamless config set login_methods '["email_otp","passkey"]'
+
+seamless config roles                     # list the instance's roles
+
+seamless config diff config.json          # show how a local file differs from the instance
+seamless config apply config.json --dry-run   # preview the delta
+seamless config apply config.json             # apply after a confirmation prompt
+```
+
+`apply` sends only the changed keys and ignores read-only or unknown keys, so a full config
+captured with `config get --json` can be edited and applied directly. Token TTLs, origins, login
+methods, and the WebAuthn RP id are all readable and writable.
+
+### Admin: users and organizations
+
+Manage users and organizations from the terminal (requires an admin role).
+
+```bash
+seamless users list --limit 50 --offset 0
+seamless users delete <id>                 # confirms first
+seamless users credentials <id>            # registered credentials for a user
+seamless users prepare-device-replacement <id>   # admin-assisted recovery
+
+seamless org list
+seamless org create "Acme Inc" --slug acme
+seamless org get <id>
+seamless org update <id> --name "Acme" --slug acme
+
+seamless org members list <orgId>
+seamless org members add <orgId> --email person@example.com --roles member,billing
+seamless org members update <orgId> <userId> --roles admin
+seamless org members remove <orgId> <userId>
+```
+
+A non-admin user receives a clear permission error rather than a stack trace.
+
+### Token storage and the keychain
+
+The refresh token is the durable secret, so sessions are stored in the operating system keychain,
+never in a plaintext file:
+
+- macOS: Keychain
+- Windows: Credential Manager
+- Linux: Secret Service (libsecret, for example GNOME Keyring or KWallet)
+
+Tokens are keyed per profile (by name and instance URL) so multiple instances never collide, and
+they are removed when you log out or remove the profile. Access tokens are refreshed transparently:
+on a `401` the CLI rotates the pair via `/refresh`, stores the new tokens, and retries once. A
+rotated or reused refresh token clears the local session and prompts a fresh login.
+
+### Headless and CI
+
+When no OS keychain is available (for example a headless CI runner), the CLI does not fall back to
+a plaintext file. Instead, set `SEAMLESS_REFRESH_TOKEN` to a valid refresh token and the CLI will
+use it to obtain an access token for the run:
+
+```bash
+export SEAMLESS_PROFILE=prod
+export SEAMLESS_REFRESH_TOKEN=<refresh-token>
+seamless whoami
+```
+
+Because `/refresh` rotates the refresh token on every call, this path is best for a single
+invocation; the rotated token is held only in memory for that process.
+
+---
+
 ## What is configured for you
 
 Seamless CLI handles the parts that are usually difficult to get right:
