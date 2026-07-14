@@ -1,5 +1,95 @@
 # seamless-cli
 
+## 0.6.0
+
+### Minor Changes
+
+- d09317c: Add admin verbs for users and organizations (requires an admin role).
+  `seamless users` covers `list` (with client-side `--limit`/`--offset` paging and
+  `--json`), `delete <id>` (with confirmation), `credentials <id>` (from the admin
+  user detail endpoint), and `prepare-device-replacement <id>` for admin-assisted
+  recovery. `seamless org` covers `list`, `create`, `get`, and `update`, and
+  `seamless org members` covers `list`, `add` (by `--user` id or `--email`, with
+  `--roles`/`--scopes`), `update`, and `remove` (with confirmation). Every command
+  surfaces a 403 as a clear permission error, and device replacement explains the
+  step-up requirement when the CLI session is not elevated. Accepts `--profile`
+  and honors `SEAMLESS_PROFILE`.
+- 29cef7d: Add a multi-profile config store and `seamless profile` commands so the CLI can
+  target multiple Seamless Auth instances (self-hosted, managed tenant, local dev)
+  under named profiles. Profiles live in `~/.config/seamless/config.json`
+  (respecting `XDG_CONFIG_HOME`) and hold no secrets. New subcommands: `profile
+list`, `profile add`, `profile use`, and `profile remove`. The active profile can
+  be selected per command with `--profile <name>` or the `SEAMLESS_PROFILE`
+  environment variable, defaulting to the `default` profile.
+- 4d9cc23: Add an authenticated HTTP client that targets the active profile's instance,
+  attaches the Bearer access token, and transparently refreshes on expiry. On a
+  401 it calls `POST /refresh` with the opaque refresh token, persists the rotated
+  pair, and retries the original request once. A rotated or reused refresh token
+  clears the local session and raises a clear re-login prompt instead of a stack
+  trace. Non-JSON and empty response bodies are parsed defensively, and rate-limit
+  (429) responses are surfaced without triggering a refresh.
+- f24a71d: Add `seamless config`, config-as-code for an instance's system configuration
+  (requires an admin role). `config get [key] [--json]` reads the config from `GET
+/system-config/admin`, `config set <key> <value>` writes one key via `PATCH
+/system-config/admin` (the value is parsed as JSON, falling back to a string, so
+  TTLs, arrays, booleans, and numbers all work), and `config roles` lists the
+  instance's roles. `config diff <file>` shows how a local JSON config file
+  differs from the instance, and `config apply <file>` applies the delta after a
+  confirmation prompt, with `--dry-run` to preview. Read-only or unknown keys in a
+  file are ignored on apply, and a non-admin user gets a clear permission error.
+  Accepts `--profile` and honors `SEAMLESS_PROFILE`.
+- 69fb8c8: Store session tokens in the OS keychain (macOS Keychain, Windows Credential
+  Manager, Linux Secret Service) via `@napi-rs/keyring` instead of on disk. Tokens
+  are scoped per profile (keyed by profile name and instance URL) so multiple
+  instances never collide, and the refresh token, the durable secret, never
+  touches config or logs. `seamless profile remove` now clears the profile's
+  keychain entry. When no keychain is available (for example headless CI), the CLI
+  reads a refresh token from `SEAMLESS_REFRESH_TOKEN` if set and otherwise fails
+  with a clear, documented error rather than writing secrets to disk.
+- 4301da5: Add `seamless login`, an interactive email OTP login for the active profile's
+  Seamless Auth instance. It calls `POST /login` (honoring the instance's returned
+  `loginMethods`), triggers the code with `GET /otp/generate-login-email-otp`,
+  prompts for the code you paste from your inbox, and verifies it with `POST
+/otp/verify-login-email-otp`. On success it stores the session in the OS keychain
+  and records the identity (sub, email, identifier type) on the profile. The
+  command caps local code retries so it does not trip the per-IP OTP limiter,
+  surfaces a 429 clearly, refreshes the code automatically if the 5 minute
+  ephemeral window lapses, and reports unreachable instances without a stack trace.
+  Accepts the identifier positionally or with `--identifier`, and targets a
+  specific profile with `--profile`.
+- 79d076e: Add `seamless sessions` to list and revoke the logged-in user's active sessions.
+  `seamless sessions` (or `sessions list`) calls `GET /sessions` and renders each
+  session's id, device or user agent, IP, and last-used time, marking the current
+  session. `seamless sessions revoke <id>` calls `DELETE /sessions/:id`, and
+  `seamless sessions revoke --all` calls `DELETE /sessions`. Revoking the current
+  session, or all sessions, prompts for confirmation first and then clears the
+  local keychain tokens, since that request signs you out. Accepts `--profile` and
+  honors `SEAMLESS_PROFILE`.
+- a9c1ef3: Add `seamless whoami` and `seamless logout`. `whoami` calls `GET /users/me`
+  through the authenticated client and prints the identity (sub, email, roles)
+  alongside the active profile and instance URL, failing cleanly with a "not
+  logged in" message when there is no session. `logout` ends the current session
+  with `DELETE /logout` and then clears the profile's keychain tokens; `logout
+--all` revokes every session for the user with `DELETE /logout/all` first. Both
+  commands accept `--profile` (and honor `SEAMLESS_PROFILE`) and always clear the
+  local tokens even if the server session was already gone.
+
+### Patch Changes
+
+- f8e8cdb: Document the CLI authentication commands in the README (profiles, login, whoami,
+  sessions, logout, config, and the users and organizations admin verbs), including
+  per-platform keychain behavior and the headless `SEAMLESS_REFRESH_TOKEN`
+  fallback. Add a gated end-to-end test that drives the real login flow, an
+  authenticated call, transparent refresh, and refresh-reuse rejection against a
+  running instance (enabled with `SEAMLESS_E2E_URL`), plus an opt-in rate-limit
+  check.
+- f978890: `seamless verify` now prints a consolidated summary report at the end of the run:
+  the seamless package versions under test (source versions for `--local`, the
+  declared pins for released runs), one line per conformance layer (API / adapter and
+  each web template) with its pass/fail status and duration, and an overall verdict.
+  It is printed after teardown so it stays on screen without scrolling back through
+  the phase output.
+
 ## 0.5.2
 
 ### Patch Changes
