@@ -1,0 +1,188 @@
+import { describe, expect, it } from "vitest";
+import type { AuthClient } from "./authClient.js";
+import type { ApiResponse } from "./http.js";
+import {
+  addMember,
+  AdminApiError,
+  createOrg,
+  deleteUser,
+  getUserDetail,
+  listMembers,
+  listOrgs,
+  listUsers,
+  PermissionError,
+  prepareDeviceReplacement,
+  removeMember,
+  updateMember,
+  updateOrg,
+} from "./admin.js";
+
+function response<T>(status: number, data: T | null): ApiResponse<T> {
+  return { ok: status >= 200 && status < 300, status, data, headers: new Headers() };
+}
+
+interface Recorded {
+  method: string;
+  path: string;
+  body?: unknown;
+}
+
+function fakeClient(
+  handler: (rec: Recorded) => ApiResponse<unknown>,
+): { client: AuthClient; calls: Recorded[] } {
+  const calls: Recorded[] = [];
+  const record = (method: string, path: string, init?: RequestInit) => {
+    const rec: Recorded = {
+      method,
+      path,
+      body: init?.body ? JSON.parse(init.body as string) : undefined,
+    };
+    calls.push(rec);
+    return handler(rec);
+  };
+  return {
+    calls,
+    client: {
+      profile: { name: "default", instanceUrl: "https://auth.example.com" },
+      get: async (path) => record("GET", path) as never,
+      post: async (path) => record("POST", path) as never,
+      request: async (path, init) =>
+        record((init?.method ?? "GET").toUpperCase(), path, init) as never,
+    },
+  };
+}
+
+describe("users", () => {
+  it("lists users", async () => {
+    const { client } = fakeClient(({ method, path }) => {
+      expect(`${method} ${path}`).toBe("GET /admin/users");
+      return response(200, { users: [{ id: "u1" }], total: 1 });
+    });
+    expect(await listUsers(client)).toEqual({ users: [{ id: "u1" }], total: 1 });
+  });
+
+  it("deletes a user via the body userId", async () => {
+    const { client, calls } = fakeClient(() => response(200, { message: "ok" }));
+    await deleteUser(client, "u1");
+    expect(calls[0]).toEqual({
+      method: "DELETE",
+      path: "/admin/users",
+      body: { userId: "u1" },
+    });
+  });
+
+  it("maps a 404 delete to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "User not found." }));
+    await expect(deleteUser(client, "missing")).rejects.toThrow(/No user found/);
+  });
+
+  it("reads credentials from the user detail endpoint", async () => {
+    const { client } = fakeClient(({ path }) => {
+      expect(path).toBe("/admin/users/u1");
+      return response(200, {
+        user: { id: "u1" },
+        credentials: [{ id: "c1" }, { id: "c2" }],
+        sessions: [],
+        events: [],
+      });
+    });
+    const detail = await getUserDetail(client, "u1");
+    expect(detail.credentials).toHaveLength(2);
+  });
+
+  it("explains the step-up requirement for device replacement", async () => {
+    const { client, calls } = fakeClient(() => response(401, { error: "step up" }));
+    await expect(
+      prepareDeviceReplacement(client, "u1", {
+        revokeSessions: true,
+        removePasskeys: true,
+        disableTotp: true,
+      }),
+    ).rejects.toThrow(/step-up/i);
+    expect(calls[0].path).toBe("/admin/users/u1/recovery/device-replacement");
+    expect(calls[0].body).toEqual({
+      revokeSessions: true,
+      removePasskeys: true,
+      disableTotp: true,
+    });
+  });
+
+  it("maps 403 to a PermissionError", async () => {
+    const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
+    await expect(listUsers(client)).rejects.toBeInstanceOf(PermissionError);
+  });
+});
+
+describe("organizations", () => {
+  it("lists organizations", async () => {
+    const { client } = fakeClient(({ path }) => {
+      expect(path).toBe("/admin/organizations");
+      return response(200, { organizations: [{ id: "o1" }], total: 1 });
+    });
+    expect(await listOrgs(client)).toEqual({
+      organizations: [{ id: "o1" }],
+      total: 1,
+    });
+  });
+
+  it("creates an org and unwraps the envelope", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(201, { organization: { id: "o1", name: "Acme" } }),
+    );
+    const org = await createOrg(client, { name: "Acme" });
+    expect(org).toEqual({ id: "o1", name: "Acme" });
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/admin/organizations",
+      body: { name: "Acme" },
+    });
+  });
+
+  it("updates an org", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { organization: { id: "o1", name: "New" } }),
+    );
+    await updateOrg(client, "o1", { name: "New" });
+    expect(calls[0]).toMatchObject({
+      method: "PATCH",
+      path: "/admin/organizations/o1",
+      body: { name: "New" },
+    });
+  });
+
+  it("lists members and adds one by email", async () => {
+    const { client } = fakeClient(({ method, path }) => {
+      if (method === "GET") {
+        expect(path).toBe("/admin/organizations/o1/members");
+        return response(200, { members: [{ userId: "u1" }], total: 1 });
+      }
+      return response(201, { membership: { userId: "u2", roles: ["member"] } });
+    });
+
+    expect((await listMembers(client, "o1")).total).toBe(1);
+    const membership = await addMember(client, "o1", { email: "x@example.com" });
+    expect(membership).toEqual({ userId: "u2", roles: ["member"] });
+  });
+
+  it("updates and removes a member with encoded paths", async () => {
+    const { client, calls } = fakeClient(({ method }) =>
+      method === "PATCH"
+        ? response(200, { membership: { userId: "u1", roles: ["admin"] } })
+        : response(200, { message: "ok" }),
+    );
+
+    await updateMember(client, "o1", "u1", { roles: ["admin"] });
+    await removeMember(client, "o1", "u1");
+    expect(calls.map((c) => `${c.method} ${c.path}`)).toEqual([
+      "PATCH /admin/organizations/o1/members/u1",
+      "DELETE /admin/organizations/o1/members/u1",
+    ]);
+  });
+
+  it("maps a 404 org to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(updateOrg(client, "missing", { name: "x" })).rejects.toBeInstanceOf(
+      AdminApiError,
+    );
+  });
+});
