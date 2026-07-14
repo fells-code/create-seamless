@@ -16,6 +16,8 @@ USAGE
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
   seamless profile <list|add|use|remove>
   seamless login [identifier] [--identifier <email>] [--profile <name>]
+  seamless whoami [--profile <name>]
+  seamless logout [--all] [--profile <name>]
   seamless --help
   seamless --version
 
@@ -65,6 +67,14 @@ COMMANDS
     --profile <name>
       • Log in against a specific profile instead of the active one
       • Also selectable with the SEAMLESS_PROFILE environment variable
+
+  whoami
+    Show the identity behind the active profile's session (sub, email, roles),
+    alongside the profile name and instance URL. Fails cleanly if not logged in.
+
+  logout [--all]
+    End the current session on the instance and clear the local keychain tokens.
+    --all revokes every session for the user before clearing local tokens.
 
   check
     Validate project setup, Docker, and running services
