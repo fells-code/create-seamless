@@ -8,6 +8,8 @@ import { runBootstrapAdmin } from "./commands/bootstrapAdmin.js";
 import { runVerify } from "./commands/verify.js";
 import { runProfile } from "./commands/profile.js";
 import { runLogin } from "./commands/login.js";
+import { runWhoami } from "./commands/whoami.js";
+import { runLogout } from "./commands/logout.js";
 
 export const VERSION = pkg.version;
 const args = process.argv.slice(2);
@@ -63,6 +65,16 @@ async function main() {
 
   if (command === "login") {
     await runLogin(args.slice(1));
+    return;
+  }
+
+  if (command === "whoami") {
+    await runWhoami(args.slice(1));
+    return;
+  }
+
+  if (command === "logout") {
+    await runLogout(args.slice(1));
     return;
   }
 
