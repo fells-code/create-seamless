@@ -32,6 +32,43 @@ You’ll be guided through a short setup process where you can choose:
 
 ---
 
+## Connecting to a managed instance
+
+If you are logged in to a managed Seamless Auth account (see
+[Authenticating against an instance](#authenticating-against-an-instance)), `init` connects the new
+project to your managed instance instead of scaffolding a local auth server. This is the default
+whenever a profile has an active session.
+
+```bash
+seamless login          # once, against your managed profile
+seamless init my-app    # scaffolds web + api wired to the managed instance
+```
+
+What happens:
+
+- The CLI lists your applications from the control plane and, when you have more than one, asks
+  which to connect. Skip the prompt with `--app <id>` (an application id or infra id).
+- It issues the application's service token from the control plane (the real credential, not a
+  locally generated secret) and writes it, the managed auth server URL, and the JWKS key id into
+  `api/.env`. The frontend is pointed at the same auth server URL.
+- No local auth server, Docker Compose, or admin dashboard is generated. Auth, users, and OAuth
+  providers are managed from the dashboard.
+
+Because the service token is shown only once at issue time, `init` confirms before issuing a new
+one for an application that already has a token (issuing a new token invalidates the old one).
+
+Run inside an existing project (a non-empty directory) to wire it up in place: `init` updates
+`api/.env` when an `api` directory is present, otherwise it prints the values to set by hand. Your
+own source is never overwritten.
+
+Escape hatches:
+
+- `seamless init --local` forces the self-hosted flow below, even when logged in.
+- With no active session, `init` uses the self-hosted flow automatically.
+- `SEAMLESS_PORTAL_API_URL` overrides the control-plane host (defaults to the managed service).
+
+---
+
 ## What gets created
 
 Depending on your selections, the CLI generates a project like this:

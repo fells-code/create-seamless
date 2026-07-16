@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { runCLI } from "./commands/init.js";
+import { extractFlag } from "./core/args.js";
 import { runCheck } from "./commands/check.js";
 import { printHelp } from "./commands/help.js";
 import pkg from "../package.json" with { type: "json" };
@@ -37,12 +38,21 @@ async function main() {
   }
 
   if (command === "init") {
-    const rest = args.slice(1);
+    const profileFlag = extractFlag(args.slice(1), "profile");
+    const appFlag = extractFlag(profileFlag.rest, "app");
+    const rest = appFlag.rest;
+
+    const local = rest.includes("--local");
     const aliases = rest
-      .filter((a) => a.startsWith("--"))
+      .filter((a) => a.startsWith("--") && a !== "--local")
       .map((a) => a.replace(/^--+/, ""));
     const projectName = rest.find((a) => !a.startsWith("--"));
-    await runCLI(projectName, aliases);
+
+    await runCLI(projectName, aliases, {
+      profileFlag: profileFlag.value,
+      appId: appFlag.value,
+      local,
+    });
     return;
   }
 
