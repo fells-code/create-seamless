@@ -40,6 +40,36 @@ function labelFor(templates: RegistryEntry[], id: string): string {
   return templates.find((t) => t.id === id)?.label ?? id;
 }
 
+// Managed connect only needs the web and api templates: the auth server is the
+// developer's managed instance, so the auth-mode, Docker, and admin-dashboard
+// questions (all local-stack concerns) do not apply.
+export async function runManagedTemplatePrompts(
+  templates: RegistryEntry[],
+  preselect: Preselect = {},
+) {
+  let webTemplateId = preselect.webTemplateId;
+  if (webTemplateId) {
+    console.log(`Web example: ${labelFor(templates, webTemplateId)}`);
+  } else {
+    webTemplateId = (await select({
+      message: "Web example",
+      options: toOptions(templates, "web"),
+    })) as string;
+  }
+
+  let apiTemplateId = preselect.apiTemplateId;
+  if (apiTemplateId) {
+    console.log(`Backend: ${labelFor(templates, apiTemplateId)}`);
+  } else {
+    apiTemplateId = (await select({
+      message: "Backend framework",
+      options: toOptions(templates, "api"),
+    })) as string;
+  }
+
+  return { webTemplateId, apiTemplateId };
+}
+
 export async function runProjectSetupPrompts(
   templates: RegistryEntry[],
   preselect: Preselect = {},

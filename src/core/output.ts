@@ -135,6 +135,88 @@ export function printSuccessOutput(config: {
   console.log(kleur.bold().green("Setup complete.\n"));
 }
 
+export function printManagedSuccessOutput(config: {
+  projectName?: string;
+  webFramework: string | null;
+  apiFramework: string | null;
+  authServerUrl: string;
+  appName: string;
+}) {
+  const { projectName, webFramework, apiFramework, authServerUrl, appName } =
+    config;
+
+  const title = kleur.bold().cyan("SEAMLESS");
+
+  console.log(`
+╔════════════════════════════════════════╗
+║          ${title}                      ║
+╚════════════════════════════════════════╝
+`);
+
+  console.log(kleur.green("Project connected to a managed instance.\n"));
+
+  console.log(kleur.dim("Managed application: ") + kleur.bold(appName));
+  console.log(kleur.dim("Auth server:         ") + kleur.cyan(authServerUrl));
+  console.log("");
+
+  if (projectName) {
+    console.log(kleur.dim("Project directory: ") + kleur.bold(projectName));
+    console.log(kleur.cyan(`cd ${projectName}\n`));
+  }
+
+  console.log(kleur.bold("Included services:\n"));
+  if (webFramework) {
+    console.log(
+      "  • " +
+        kleur.white("Web application") +
+        kleur.dim(` (${formatFramework(webFramework)})`),
+    );
+  }
+  if (apiFramework) {
+    console.log(
+      "  • " +
+        kleur.white("API server") +
+        kleur.dim(` (${formatFramework(apiFramework)})`),
+    );
+  }
+  console.log(
+    "  • " + kleur.white("Auth server") + kleur.dim(" (managed instance)"),
+  );
+  console.log("");
+
+  console.log(kleur.bold("Next steps:\n"));
+  if (apiFramework) {
+    console.log(kleur.dim("  # API server"));
+    console.log("  cd api && npm install && npm run dev\n");
+  }
+  if (webFramework) {
+    console.log(kleur.dim("  # Web app"));
+    console.log("  cd web && npm install && npm run dev\n");
+  }
+  console.log("  Sign in from the web app to confirm the session resolves.\n");
+
+  console.log(kleur.bold("Notes:\n"));
+  console.log(
+    kleur.dim(
+      "  • The API service token was written to api/.env. Keep it out of version control.",
+    ),
+  );
+  console.log(
+    kleur.dim(
+      "  • Auth, users, and OAuth providers are managed from the dashboard, not locally.",
+    ),
+  );
+  console.log(
+    kleur.dim("  • Rotate the service token anytime with the dashboard.\n"),
+  );
+
+  console.log(
+    kleur.dim("Docs: ") + kleur.cyan("https://docs.seamlessauth.com\n"),
+  );
+
+  console.log(kleur.bold().green("Setup complete.\n"));
+}
+
 function formatFramework(name: string) {
   const map: Record<string, string> = {
     react: "React",
