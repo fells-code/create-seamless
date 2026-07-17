@@ -240,4 +240,204 @@ describe("completeLogin", () => {
 
     expect(result).toBeNull();
   });
+
+  it("runs the phone OTP flow, defaulting loginMethods when omitted", async () => {
+    const calls = mockRouter({
+      "/login": [() => json({ token: "e1", identifierType: "phone" })],
+      "/otp/generate-login-phone-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-phone-otp": [
+        () => json({ token: "a", refreshToken: "r" }),
+      ],
+    });
+
+    const result = await completeLogin({
+      instanceUrl: INSTANCE,
+      identifier: "+15555550100",
+      getCode: async () => "123456",
+    });
+
+    expect(result?.identity.identifierType).toBe("phone");
+    expect(calls.some((c) => c.url.endsWith("/otp/generate-login-phone-otp"))).toBe(
+      true,
+    );
+    expect(calls.some((c) => c.url.endsWith("/otp/verify-login-phone-otp"))).toBe(
+      true,
+    );
+  });
+
+  it("wraps a network failure while starting login", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => {
+        throw new Error("getaddrinfo ENOTFOUND");
+      }),
+    );
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Could not reach/);
+  });
+
+  it("surfaces the rate limiter when starting login", async () => {
+    mockRouter({
+      "/login": [() => json({ error: "rate limited" }, 429)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/rate limiting requests/);
+  });
+
+  it("rejects an invalid identifier with a 400", async () => {
+    mockRouter({
+      "/login": [() => json({ error: "Bad identifier" }, 400)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "not-an-identifier",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/not a valid email or phone number/);
+  });
+
+  it("rejects an unknown account with a 401 that isn't a verify message", async () => {
+    mockRouter({
+      "/login": [() => json({ error: "No such account" }, 401)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/No account was found/);
+  });
+
+  it("maps other login failures to a generic status error", async () => {
+    mockRouter({
+      "/login": [() => json({ error: "boom" }, 500)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Login request failed \(500\)/);
+  });
+
+  it("rejects when the instance omits the ephemeral token", async () => {
+    mockRouter({
+      "/login": [() => json({ identifierType: "email", loginMethods: ["email_otp"] })],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/did not return a login token/);
+  });
+
+  it("rejects when OTP login is disabled on the instance", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ error: "disabled" }, 403)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Email OTP login is disabled/);
+  });
+
+  it("includes the API message when sending a code fails", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [
+        () => json({ message: "SMTP is down" }, 500),
+      ],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Could not send a code: SMTP is down/);
+  });
+
+  it("falls back to a generic message when sending a code fails without detail", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({}, 500)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Could not send a login code\./);
+  });
+
+  it("rejects an unexpected verification response shape", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [() => json({ status: "ok" })],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/unexpected verification response/);
+  });
+
+  it("surfaces the rate limiter when verifying a code", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [() => json({ error: "rate limited" }, 429)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Too many attempts/);
+  });
 });

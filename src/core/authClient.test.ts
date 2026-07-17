@@ -6,6 +6,7 @@ import { upsertProfile } from "./config.js";
 import { isRateLimited } from "./http.js";
 import {
   getTokens,
+  KeychainUnavailableError,
   saveTokens,
   setBackendForTesting,
   type KeychainBackend,
@@ -79,6 +80,12 @@ afterEach(() => {
 });
 
 describe("createAuthClient", () => {
+  it("throws a reauth error when there is no active profile", async () => {
+    await expect(
+      createAuthClient({ profileFlag: "ghost" }),
+    ).rejects.toBeInstanceOf(ReauthRequiredError);
+  });
+
   it("throws a reauth error when there is no session", async () => {
     await expect(createAuthClient()).rejects.toBeInstanceOf(ReauthRequiredError);
   });
@@ -156,6 +163,122 @@ describe("transparent refresh", () => {
     );
 
     expect(await getTokens(profile)).toBeNull();
+  });
+
+  it("demands re-login when the refresh response is missing token fields", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+    });
+
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ message: "no tokens here" }),
+    ]);
+
+    const client = await createAuthClient();
+    await expect(client.get("/whoami")).rejects.toThrow(
+      /unexpected refresh response/,
+    );
+
+    expect(await getTokens(profile)).toBeNull();
+  });
+
+  it("swallows a KeychainUnavailableError when persisting rotated tokens", async () => {
+    const store = new Map<string, string>();
+    const key = `${profile.name}::${profile.instanceUrl}`;
+    store.set(
+      key,
+      JSON.stringify({ accessToken: "old-access", refreshToken: "old-refresh" }),
+    );
+    setBackendForTesting({
+      get: (account) => store.get(account) ?? null,
+      set: () => {
+        throw new KeychainUnavailableError();
+      },
+      delete: (account) => store.delete(account),
+    });
+
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ token: "new-access", refreshToken: "new-refresh" }),
+      () => json({ sub: "user-1" }),
+    ]);
+
+    const client = await createAuthClient();
+    const res = await client.get("/whoami");
+    expect(res.ok).toBe(true);
+  });
+
+  it("propagates unexpected errors when persisting rotated tokens", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+    });
+    const client = await createAuthClient();
+
+    setBackendForTesting({
+      get: () => null,
+      set: () => {
+        throw new Error("disk full");
+      },
+      delete: () => false,
+    });
+
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ token: "new-access", refreshToken: "new-refresh" }),
+    ]);
+
+    await expect(client.get("/whoami")).rejects.toThrow("disk full");
+  });
+
+  it("propagates unexpected errors when clearing a rejected session", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "reused-refresh",
+    });
+    const client = await createAuthClient();
+
+    setBackendForTesting({
+      get: () => null,
+      set: () => {},
+      delete: () => {
+        throw new Error("keychain locked");
+      },
+    });
+
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ error: "token reuse detected" }, 401),
+    ]);
+
+    await expect(client.get("/whoami")).rejects.toThrow("keychain locked");
+  });
+
+  it("swallows a KeychainUnavailableError when clearing a rejected session", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "reused-refresh",
+    });
+    const client = await createAuthClient();
+
+    setBackendForTesting({
+      get: () => null,
+      set: () => {},
+      delete: () => {
+        throw new KeychainUnavailableError();
+      },
+    });
+
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ error: "token reuse detected" }, 401),
+    ]);
+
+    await expect(client.get("/whoami")).rejects.toBeInstanceOf(
+      ReauthRequiredError,
+    );
   });
 });
 

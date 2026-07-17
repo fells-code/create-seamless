@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   accountKey,
   deleteTokens,
@@ -130,5 +130,89 @@ describe("redaction", () => {
       nested: { refreshToken: "[redacted]", other: 1 },
       list: [{ Authorization: "[redacted]" }],
     });
+  });
+});
+
+describe("loadBackend (real backend, mocked @napi-rs/keyring)", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.doUnmock("@napi-rs/keyring");
+    vi.resetModules();
+  });
+
+  it("wraps a failure to load the native module in a KeychainUnavailableError", async () => {
+    vi.doMock("@napi-rs/keyring", () => {
+      throw new Error("native module not found for this platform");
+    });
+
+    const mod = await import("./keychain.js");
+    await expect(mod.saveTokens(prod, bundle)).rejects.toBeInstanceOf(
+      mod.KeychainUnavailableError,
+    );
+  });
+
+  it("gets, sets, and deletes through the real Entry-backed backend", async () => {
+    const store = new Map<string, string>();
+    vi.doMock("@napi-rs/keyring", () => ({
+      Entry: class {
+        account: string;
+        constructor(_service: string, account: string) {
+          this.account = account;
+        }
+        getPassword() {
+          const value = store.get(this.account);
+          if (value === undefined) throw new Error("no matching entry found");
+          return value;
+        }
+        setPassword(secret: string) {
+          store.set(this.account, secret);
+        }
+        deletePassword() {
+          if (!store.has(this.account)) throw new Error("entry not found");
+          store.delete(this.account);
+          return true;
+        }
+      },
+    }));
+
+    const mod = await import("./keychain.js");
+
+    expect(await mod.getTokens(prod)).toBeNull();
+
+    await mod.saveTokens(prod, bundle);
+    expect(await mod.getTokens(prod)).toEqual(bundle);
+
+    expect(await mod.deleteTokens(prod)).toBe(true);
+    expect(await mod.deleteTokens(prod)).toBe(false);
+  });
+
+  it("wraps unexpected keychain errors in a KeychainUnavailableError", async () => {
+    vi.doMock("@napi-rs/keyring", () => ({
+      Entry: class {
+        getPassword(): string {
+          throw new Error("permission denied");
+        }
+        setPassword(): void {
+          throw new Error("permission denied");
+        }
+        deletePassword(): boolean {
+          throw new Error("permission denied");
+        }
+      },
+    }));
+
+    const mod = await import("./keychain.js");
+    await expect(mod.getTokens(prod)).rejects.toBeInstanceOf(
+      mod.KeychainUnavailableError,
+    );
+    await expect(mod.saveTokens(prod, bundle)).rejects.toBeInstanceOf(
+      mod.KeychainUnavailableError,
+    );
+    await expect(mod.deleteTokens(prod)).rejects.toBeInstanceOf(
+      mod.KeychainUnavailableError,
+    );
   });
 });

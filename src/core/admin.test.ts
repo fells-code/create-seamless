@@ -6,6 +6,7 @@ import {
   AdminApiError,
   createOrg,
   deleteUser,
+  getOrg,
   getUserDetail,
   listMembers,
   listOrgs,
@@ -111,6 +112,27 @@ describe("users", () => {
     const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
     await expect(listUsers(client)).rejects.toBeInstanceOf(PermissionError);
   });
+
+  it("returns the recovery payload on a successful device replacement", async () => {
+    const { client } = fakeClient(() => response(200, { recoveryUrl: "https://x" }));
+    const result = await prepareDeviceReplacement(client, "u1", {
+      revokeSessions: true,
+      removePasskeys: false,
+      disableTotp: false,
+    });
+    expect(result).toEqual({ recoveryUrl: "https://x" });
+  });
+
+  it("maps a generic failure on device replacement to an AdminApiError", async () => {
+    const { client } = fakeClient(() => response(500, { error: "boom" }));
+    await expect(
+      prepareDeviceReplacement(client, "u1", {
+        revokeSessions: false,
+        removePasskeys: false,
+        disableTotp: false,
+      }),
+    ).rejects.toThrow(/Could not prepare device replacement/);
+  });
 });
 
 describe("organizations", () => {
@@ -183,6 +205,61 @@ describe("organizations", () => {
     const { client } = fakeClient(() => response(404, { error: "not found" }));
     await expect(updateOrg(client, "missing", { name: "x" })).rejects.toBeInstanceOf(
       AdminApiError,
+    );
+  });
+
+  it("gets a single org and unwraps the envelope", async () => {
+    const { client } = fakeClient(({ path }) => {
+      expect(path).toBe("/admin/organizations/o1");
+      return response(200, { organization: { id: "o1", name: "Acme" } });
+    });
+    expect(await getOrg(client, "o1")).toEqual({ id: "o1", name: "Acme" });
+  });
+
+  it("maps a 404 get org to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(getOrg(client, "missing")).rejects.toThrow(/No organization found/);
+  });
+
+  it("throws from the org envelope when the response is not ok", async () => {
+    const { client } = fakeClient(() => response(500, { error: "boom" }));
+    await expect(createOrg(client, { name: "Acme" })).rejects.toBeInstanceOf(
+      AdminApiError,
+    );
+  });
+
+  it("maps a 404 on listMembers to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(listMembers(client, "missing")).rejects.toThrow(
+      /No organization found/,
+    );
+  });
+
+  it("throws from the membership envelope when the response is not ok", async () => {
+    const { client } = fakeClient(() => response(500, { error: "boom" }));
+    await expect(addMember(client, "o1", { email: "x@example.com" })).rejects.toBeInstanceOf(
+      AdminApiError,
+    );
+  });
+
+  it("maps a 404 on addMember to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(
+      addMember(client, "missing", { email: "x@example.com" }),
+    ).rejects.toThrow(/No organization found/);
+  });
+
+  it("maps a 404 on updateMember to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(
+      updateMember(client, "o1", "missing", { roles: ["admin"] }),
+    ).rejects.toThrow(/No such organization or member/);
+  });
+
+  it("maps a 404 on removeMember to a clear error", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(removeMember(client, "o1", "missing")).rejects.toThrow(
+      /No such organization or member/,
     );
   });
 });
