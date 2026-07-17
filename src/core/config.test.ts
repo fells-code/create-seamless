@@ -44,6 +44,42 @@ describe("loadConfig", () => {
     fs.writeFileSync(getConfigPath(), "{ not json");
     expect(() => loadConfig()).toThrow(/not valid JSON/);
   });
+
+  it("throws a clear error when the config file cannot be read", () => {
+    fs.mkdirSync(getConfigPath(), { recursive: true });
+    expect(() => loadConfig()).toThrow(/Unable to read config/);
+  });
+
+  it("picks up a persisted identifierType", () => {
+    fs.mkdirSync(path.dirname(getConfigPath()), { recursive: true });
+    fs.writeFileSync(
+      getConfigPath(),
+      JSON.stringify({
+        activeProfile: "prod",
+        profiles: {
+          prod: {
+            name: "prod",
+            instanceUrl: "https://auth.example.com",
+            identifierType: "phone",
+          },
+        },
+      }),
+    );
+    expect(getProfile("prod")?.identifierType).toBe("phone");
+  });
+
+  it("falls back to the default active profile when unset", () => {
+    fs.mkdirSync(path.dirname(getConfigPath()), { recursive: true });
+    fs.writeFileSync(
+      getConfigPath(),
+      JSON.stringify({
+        profiles: {
+          prod: { name: "prod", instanceUrl: "https://auth.example.com" },
+        },
+      }),
+    );
+    expect(loadConfig().activeProfile).toBe("default");
+  });
 });
 
 describe("upsertProfile", () => {
@@ -114,6 +150,12 @@ describe("resolveActiveProfileName", () => {
   it("falls back to the persisted active profile", () => {
     expect(resolveActiveProfileName({})).toBe("prod");
   });
+
+  it("falls back to the default profile name when nothing else is set", () => {
+    expect(
+      resolveActiveProfileName({}, { activeProfile: "", profiles: {} }),
+    ).toBe("default");
+  });
 });
 
 describe("normalizeInstanceUrl", () => {
@@ -150,5 +192,11 @@ describe("normalizeInstanceUrl", () => {
 
   it("rejects an empty value", () => {
     expect(() => normalizeInstanceUrl("  ")).toThrow(/required/);
+  });
+
+  it("rejects a non-http(s) scheme", () => {
+    expect(() => normalizeInstanceUrl("ftp://auth.example.com")).toThrow(
+      /must use http or https/,
+    );
   });
 });

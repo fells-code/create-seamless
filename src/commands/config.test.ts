@@ -1,0 +1,463 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import fs from "fs";
+
+import type { AuthClient } from "../core/authClient.js";
+import type { ApiResponse } from "../core/http.js";
+import { createAuthClient, ReauthRequiredError } from "../core/authClient.js";
+import { runConfig } from "./config.js";
+
+vi.mock("fs", () => {
+  const fns = {
+    existsSync: vi.fn(),
+    readFileSync: vi.fn(),
+  };
+  return { default: fns, ...fns };
+});
+
+vi.mock("../core/authClient.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../core/authClient.js")>();
+  return { ...actual, createAuthClient: vi.fn() };
+});
+
+vi.mock("@clack/prompts", () => ({
+  confirm: vi.fn(),
+  isCancel: (value: unknown) => value === CANCEL_SYMBOL,
+}));
+
+import { confirm } from "@clack/prompts";
+
+const CANCEL_SYMBOL = Symbol("cancel");
+
+function response<T>(status: number, data: T | null): ApiResponse<T> {
+  return { ok: status >= 200 && status < 300, status, data, headers: new Headers() };
+}
+
+interface Recorded {
+  method: string;
+  path: string;
+  body?: unknown;
+}
+
+function fakeClient(
+  handler: (rec: Recorded) => ApiResponse<unknown>,
+): { client: AuthClient; calls: Recorded[] } {
+  const calls: Recorded[] = [];
+  const record = (method: string, path: string, init?: RequestInit): ApiResponse<unknown> => {
+    const rec: Recorded = {
+      method,
+      path,
+      body: init?.body ? JSON.parse(init.body as string) : undefined,
+    };
+    calls.push(rec);
+    return handler(rec);
+  };
+  return {
+    calls,
+    client: {
+      profile: { name: "default", instanceUrl: "https://auth.example.com" },
+      get: async (path) => record("GET", path) as never,
+      post: async (path, body) =>
+        record("POST", path, { body: JSON.stringify(body) }) as never,
+      request: async (path, init) =>
+        record((init?.method ?? "GET").toUpperCase(), path, init) as never,
+    },
+  };
+}
+
+let logs: string[];
+let errors: string[];
+let exitSpy: ReturnType<typeof vi.spyOn>;
+
+beforeEach(() => {
+  logs = [];
+  errors = [];
+  vi.mocked(fs.existsSync).mockReset();
+  vi.mocked(fs.readFileSync).mockReset();
+  vi.mocked(createAuthClient).mockReset();
+  vi.mocked(confirm).mockReset();
+
+  vi.spyOn(console, "log").mockImplementation((msg?: unknown) => {
+    logs.push(String(msg ?? ""));
+  });
+  vi.spyOn(console, "error").mockImplementation((msg?: unknown) => {
+    errors.push(String(msg ?? ""));
+  });
+  exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+    throw new Error(`process.exit(${code})`);
+  }) as never);
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
+
+function output(): string {
+  return logs.join("\n");
+}
+
+function errOutput(): string {
+  return errors.join("\n");
+}
+
+describe("runConfig — dispatch", () => {
+  it("prints usage and exits 1 for an unknown subcommand", async () => {
+    vi.mocked(createAuthClient).mockResolvedValue(fakeClient(() => response(200, {})).client);
+
+    await expect(runConfig(["bogus"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Unknown config subcommand: bogus");
+    expect(output()).toContain("Usage: seamless config");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("prints (none) for a missing subcommand", async () => {
+    vi.mocked(createAuthClient).mockResolvedValue(fakeClient(() => response(200, {})).client);
+    await expect(runConfig([])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Unknown config subcommand: (none)");
+  });
+
+  it("prints a yellow message and exits 1 on ReauthRequiredError", async () => {
+    vi.mocked(createAuthClient).mockRejectedValue(
+      new ReauthRequiredError("No active profile is configured."),
+    );
+    await expect(runConfig(["get"])).rejects.toThrow("process.exit(1)");
+    expect(output()).toContain("No active profile is configured.");
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("prints red message and exits 1 on PermissionError from a subcommand", async () => {
+    const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    await expect(runConfig(["get"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain(
+      "You do not have permission for this action. It requires an admin role on the instance.",
+    );
+  });
+
+  it("prints red message and exits 1 on ConfigApiError from a subcommand", async () => {
+    const { client } = fakeClient(() => response(500, null));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    await expect(runConfig(["get"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Could not read system config (500).");
+  });
+
+  it("rethrows unexpected errors", async () => {
+    vi.mocked(createAuthClient).mockRejectedValue(new Error("boom"));
+    await expect(runConfig(["get"])).rejects.toThrow("boom");
+  });
+
+  it("passes the --profile flag through to createAuthClient", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    await runConfig(["get", "--profile", "staging", "--json"]);
+    expect(createAuthClient).toHaveBeenCalledWith({ profileFlag: "staging" });
+  });
+});
+
+describe("runConfig get", () => {
+  it("prints the whole config as a table when no key or --json", async () => {
+    const { client } = fakeClient(() =>
+      response(200, { app_name: "Acme", rate_limit: 100 }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["get"]);
+
+    expect(output()).toContain("app_name");
+    expect(output()).toContain("Acme");
+    expect(output()).toContain("rate_limit");
+    expect(output()).toContain("100");
+  });
+
+  it("prints the whole config as JSON with --json", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Acme" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["get", "--json"]);
+
+    expect(output()).toContain(JSON.stringify({ app_name: "Acme" }, null, 2));
+  });
+
+  it("prints a string value raw when a key is given without --json", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Acme" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["get", "app_name"]);
+
+    expect(output()).toBe("Acme");
+  });
+
+  it("prints a non-string value as JSON when a key is given without --json", async () => {
+    const { client } = fakeClient(() => response(200, { rate_limit: 100 }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["get", "rate_limit"]);
+
+    expect(output()).toBe("100");
+  });
+
+  it("prints a key's value as JSON with --json", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Acme" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["get", "app_name", "--json"]);
+
+    expect(output()).toBe('"Acme"');
+  });
+
+  it("errors and exits 1 for an unknown key", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Acme" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["get", "nope"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("No such config key: nope");
+  });
+});
+
+describe("runConfig set", () => {
+  it("errors and exits 1 when the key is missing", async () => {
+    const { client } = fakeClient(() => response(200, { updatedKeys: [] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["set"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Usage: seamless config set <key> <value>");
+  });
+
+  it("errors and exits 1 when the value is missing", async () => {
+    const { client } = fakeClient(() => response(200, { updatedKeys: [] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["set", "app_name"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Usage: seamless config set <key> <value>");
+  });
+
+  it("patches the config and reports updated keys", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { success: true, updatedKeys: ["app_name"] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["set", "app_name", "My", "App"]);
+
+    expect(calls[0]).toMatchObject({ method: "PATCH", path: "/system-config/admin" });
+    expect(calls[0].body).toEqual({ app_name: "My App" });
+    expect(output()).toContain("Updated: app_name");
+  });
+
+  it("parses a JSON value before patching", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { success: true, updatedKeys: ["rate_limit"] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["set", "rate_limit", "100"]);
+
+    expect(calls[0].body).toEqual({ rate_limit: 100 });
+  });
+
+  it("prints 'No changes.' when nothing was updated", async () => {
+    const { client } = fakeClient(() => response(200, { success: true, updatedKeys: [] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["set", "app_name", "Same"]);
+
+    expect(output()).toContain("No changes.");
+  });
+});
+
+describe("runConfig roles", () => {
+  it("prints roles as JSON with --json", async () => {
+    const { client } = fakeClient(() => response(200, { roles: ["admin", "user"] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["roles", "--json"]);
+
+    expect(output()).toContain(JSON.stringify(["admin", "user"], null, 2));
+  });
+
+  it("prints 'No roles.' when the list is empty", async () => {
+    const { client } = fakeClient(() => response(200, { roles: [] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["roles"]);
+
+    expect(output()).toContain("No roles.");
+  });
+
+  it("prints each role indented", async () => {
+    const { client } = fakeClient(() => response(200, { roles: ["admin", "user"] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["roles"]);
+
+    expect(output()).toContain("  admin");
+    expect(output()).toContain("  user");
+  });
+});
+
+describe("runConfig diff", () => {
+  it("errors and exits 1 when no file is given", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["diff"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Usage: seamless config diff <file>");
+  });
+
+  it("propagates a ConfigApiError and exits 1 when the file cannot be read", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+
+    await expect(runConfig(["diff", "missing.json"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Could not read file: missing.json");
+  });
+
+  it("propagates a ConfigApiError when the file is not valid JSON", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(fs.readFileSync).mockReturnValue("{ not json");
+
+    await expect(runConfig(["diff", "bad.json"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("bad.json is not valid JSON.");
+  });
+
+  it("propagates a ConfigApiError when the file is not a JSON object", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(fs.readFileSync).mockReturnValue("[1, 2]");
+
+    await expect(runConfig(["diff", "array.json"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("array.json must contain a JSON object.");
+  });
+
+  it("prints 'In sync' when there are no differences", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Acme" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "Acme" }));
+
+    await runConfig(["diff", "local.json"]);
+
+    expect(output()).toContain("In sync. No differences.");
+  });
+
+  it("prints changes when local differs from remote", async () => {
+    const { client } = fakeClient(() =>
+      response(200, { app_name: "Acme", rate_limit: 100 }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({ app_name: "Acme", rate_limit: 250 }),
+    );
+
+    await runConfig(["diff", "local.json"]);
+
+    expect(output()).toContain("rate_limit");
+    expect(output()).toContain("- 100");
+    expect(output()).toContain("+ 250");
+  });
+});
+
+describe("runConfig apply", () => {
+  beforeEach(() => {
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({ app_name: "Acme", bogus: 1 }),
+    );
+  });
+
+  it("errors and exits 1 when no file is given", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["apply"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Usage: seamless config apply <file> [--dry-run]");
+  });
+
+  it("reports dropped read-only or unknown keys", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Old" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(confirm).mockResolvedValue(true);
+
+    await runConfig(["apply", "local.json"]);
+
+    expect(output()).toContain("Ignoring read-only or unknown keys: bogus");
+  });
+
+  it("prints 'Already in sync' when there is nothing to apply", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "Acme" }));
+    const { client } = fakeClient(() => response(200, { app_name: "Acme" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["apply", "local.json"]);
+
+    expect(output()).toContain("Already in sync. Nothing to apply.");
+  });
+
+  it("prints changes and skips the patch on --dry-run", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "New" }));
+    const { client, calls } = fakeClient(() => response(200, { app_name: "Old" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["apply", "local.json", "--dry-run"]);
+
+    expect(output()).toContain("app_name");
+    expect(output()).toContain("Dry run: no changes applied.");
+    expect(calls).toHaveLength(1); // only the GET for remote config, no PATCH
+  });
+
+  it("cancels when the user declines the confirm prompt", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "New" }));
+    const { client, calls } = fakeClient(() => response(200, { app_name: "Old" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(confirm).mockResolvedValue(false);
+
+    await runConfig(["apply", "local.json"]);
+
+    expect(output()).toContain("Cancelled.");
+    expect(calls).toHaveLength(1);
+  });
+
+  it("cancels when the confirm prompt is aborted (isCancel)", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "New" }));
+    const { client } = fakeClient(() => response(200, { app_name: "Old" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(confirm).mockResolvedValue(CANCEL_SYMBOL as never);
+
+    await runConfig(["apply", "local.json"]);
+
+    expect(output()).toContain("Cancelled.");
+  });
+
+  it("applies the patch and reports updated keys on confirm", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "New" }));
+    const { client, calls } = fakeClient((rec) => {
+      if (rec.method === "PATCH") {
+        return response(200, { success: true, updatedKeys: ["app_name"] });
+      }
+      return response(200, { app_name: "Old" });
+    });
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(confirm).mockResolvedValue(true);
+
+    await runConfig(["apply", "local.json"]);
+
+    expect(calls[1]).toMatchObject({ method: "PATCH", path: "/system-config/admin" });
+    expect(calls[1].body).toEqual({ app_name: "New" });
+    expect(output()).toContain("Applied. Updated: app_name");
+  });
+
+  it("reports '(none reported)' when the patch response has no updatedKeys", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify({ app_name: "New" }));
+    const { client } = fakeClient((rec) => {
+      if (rec.method === "PATCH") return response(200, { success: true });
+      return response(200, { app_name: "Old" });
+    });
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+    vi.mocked(confirm).mockResolvedValue(true);
+
+    await runConfig(["apply", "local.json"]);
+
+    expect(output()).toContain("Applied. Updated: (none reported)");
+  });
+});
