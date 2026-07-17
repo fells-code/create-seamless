@@ -1,0 +1,4 @@
+npm run coverage
+npm run coverage:badge
+git add README.md resources/coverage-badge.svg
+npm run build
