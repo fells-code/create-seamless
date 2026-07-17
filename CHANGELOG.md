@@ -1,5 +1,19 @@
 # seamless-cli
 
+## 0.7.0
+
+### Minor Changes
+
+- 6af3216: feat(init): connect scaffolds to a managed instance when a profile is logged in
+
+  `seamless init` now defaults to the managed control plane whenever a profile has an active session. It reads the logged-in session, lists your applications, issues the application's service token from the control plane (rather than generating a local secret), and points the scaffolded web and api at the managed auth instance. Running `init` inside an existing project wires the managed credentials into `api/.env` in place, or prints them when there is no api directory. The self-hosted flow stays available with `seamless init --local`, and is still used automatically when no session is present. Set `SEAMLESS_PORTAL_API_URL` to override the control-plane host.
+
+### Patch Changes
+
+- f8c4478: chore(templates): scaffold from seamless-templates v0.2.4
+
+  Bump `SEAMLESS_TEMPLATES_REF` to `v0.2.4`. The Express template now has a working production `npm run start` (fixed extensionless ESM imports and the migration runner path) and ships the `docker-compose.yml` its scripts and README referenced. The web templates (react-vite and react-oauth) drop the unused `VITE_AUTH_SERVER_URL`, and all templates document both the local and managed init paths.
+
 ## 0.6.0
 
 ### Minor Changes
