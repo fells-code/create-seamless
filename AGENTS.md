@@ -128,6 +128,14 @@ Modes and sibling repos:
 - **Templates ref bump.** Shipping a change that depends on a new templates release is a two-step,
   cross-repo dance: release `seamless-templates` first, then bump `SEAMLESS_TEMPLATES_REF`
   ([src/core/images.ts](src/core/images.ts)) to that tag.
+- **Coverage badge.** `README.md` shows a line-coverage badge (`resources/coverage-badge.svg`)
+  regenerated locally by a Husky `pre-commit` hook ([.husky/pre-commit](.husky/pre-commit)): it runs
+  `npm run coverage` (`src/**/*.test.ts` only, so it never sweeps the Playwright specs under
+  `verify/`), then `npm run coverage:badge` ([scripts/updateCoverageBadge.mjs](scripts/updateCoverageBadge.mjs))
+  to rewrite the SVG from `coverage/coverage-summary.json`, stages it, and rebuilds. We standardized on
+  the pre-commit hook (matching `seamless-auth-api`) rather than a CI staleness check, so the committed
+  badge always reflects the latest local run. If you change coverage, let the hook regenerate the badge;
+  do not hand-edit the SVG.
 ## Before You Finish A Change
 
 - Run `npm run build` (the root package's only build step).
