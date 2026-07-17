@@ -163,6 +163,18 @@ describe("rotateServiceToken", () => {
     );
   });
 
+  it("treats a 401 or 403 as an authorization failure", async () => {
+    const forbidden = fakeClient([response(403, null)]);
+    await expect(
+      rotateServiceToken(forbidden.client, "app-1"),
+    ).rejects.toBeInstanceOf(PortalError);
+
+    const unauth = fakeClient([response(401, null)]);
+    await expect(
+      rotateServiceToken(unauth.client, "app-1"),
+    ).rejects.toBeInstanceOf(PortalError);
+  });
+
   it("fails when the response omits a token", async () => {
     const { client } = fakeClient([response(200, { message: "ok" })]);
     await expect(rotateServiceToken(client, "app-1")).rejects.toBeInstanceOf(

@@ -95,11 +95,33 @@ describe("patchSystemConfig", () => {
     );
   });
 
+  it("surfaces a 400 without details as a bare reason", async () => {
+    const { client } = fakeClient(() => response(400, { error: "Invalid payload" }));
+    await expect(patchSystemConfig(client, { rpid: "" })).rejects.toThrow(
+      "Invalid payload.",
+    );
+  });
+
   it("maps 403 to a PermissionError", async () => {
     const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
     await expect(
       patchSystemConfig(client, { app_name: "x" }),
     ).rejects.toBeInstanceOf(PermissionError);
+  });
+
+  it("throws a ConfigApiError on other failures", async () => {
+    const { client } = fakeClient(() => response(500, { error: "boom" }));
+    await expect(
+      patchSystemConfig(client, { app_name: "x" }),
+    ).rejects.toBeInstanceOf(ConfigApiError);
+  });
+
+  it("defaults updatedKeys to an empty array when the response omits it", async () => {
+    const { client } = fakeClient(() => response(200, { success: true }));
+    expect(await patchSystemConfig(client, { app_name: "x" })).toEqual({
+      success: true,
+      updatedKeys: [],
+    });
   });
 });
 
@@ -110,6 +132,21 @@ describe("getRoles", () => {
       return response(200, { roles: ["admin", "user"] });
     });
     expect(await getRoles(client)).toEqual(["admin", "user"]);
+  });
+
+  it("returns an empty array when roles is missing", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    expect(await getRoles(client)).toEqual([]);
+  });
+
+  it("maps 403 to a PermissionError", async () => {
+    const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
+    await expect(getRoles(client)).rejects.toBeInstanceOf(PermissionError);
+  });
+
+  it("throws a ConfigApiError on other failures", async () => {
+    const { client } = fakeClient(() => response(500, null));
+    await expect(getRoles(client)).rejects.toBeInstanceOf(ConfigApiError);
   });
 });
 
@@ -146,6 +183,8 @@ describe("deepEqual and diffConfig", () => {
     );
     expect(deepEqual([1, 2], [2, 1])).toBe(false);
     expect(deepEqual({ a: 1 }, { a: 1, b: 2 })).toBe(false);
+    expect(deepEqual([1, 2], [1, 2, 3])).toBe(false);
+    expect(deepEqual([1, 2], { a: 1 })).toBe(false);
   });
 
   it("reports only changed and added keys from the local file", () => {
