@@ -158,6 +158,28 @@ npm run dev
 
 ---
 
+## Creating the first admin
+
+A fresh instance has no admin yet. `seamless bootstrap-admin` issues the first admin invite:
+
+```bash
+seamless bootstrap-admin admin@example.com                 # active profile's instance
+seamless bootstrap-admin admin@example.com --profile prod  # a specific instance
+seamless bootstrap-admin                                   # prompts for the email
+```
+
+The invited user then completes registration to receive admin access.
+
+**Where it points.** The target instance is resolved from your active profile's `instanceUrl`
+(respecting `--profile` and `SEAMLESS_PROFILE`), so you can bootstrap a remote instance you never
+scaffolded locally. Set `SEAMLESS_API_URL` to override it, or — when no profile is configured — it
+falls back to `http://localhost:3000` for local dev.
+
+**How it authenticates.** Bootstrap runs _before_ any admin exists, so it can't use a login
+session. Instead it uses the instance's shared bootstrap secret, resolved automatically from a
+local `.env`, `auth/.env`, or `docker-compose.yml`, and prompted for if none is found (for example
+when bootstrapping a production instance from a machine without the project checked out).
+
 ## Authenticating against an instance
 
 Beyond scaffolding, the CLI can log in to a Seamless Auth instance (self-hosted, a managed
