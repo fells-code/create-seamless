@@ -90,6 +90,26 @@ describe("completeLogin", () => {
     expect(verify.init.body).toBe(JSON.stringify({ verificationToken: "123456" }));
   });
 
+  it("passes the channel to getCode so the prompt can validate accordingly", async () => {
+    mockRouter({
+      "/login": [() => json({ token: "e1", identifierType: "phone" })],
+      "/otp/generate-login-phone-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-phone-otp": [() => json({ token: "a", refreshToken: "r" })],
+    });
+
+    let seenChannel: string | undefined;
+    await completeLogin({
+      instanceUrl: INSTANCE,
+      identifier: "+15555550100",
+      getCode: async ({ channel }) => {
+        seenChannel = channel;
+        return "123456";
+      },
+    });
+
+    expect(seenChannel).toBe("phone");
+  });
+
   it("retries a rejected code, then succeeds", async () => {
     mockRouter({
       "/login": [
