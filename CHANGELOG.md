@@ -1,5 +1,17 @@
 # seamless-cli
 
+## 0.9.0
+
+### Minor Changes
+
+- 3de03ef: Add `seamless config oauth-providers <list|add|update|remove>` for per-provider OAuth management, backed by the auth API's dedicated provider routes (`GET`/`POST /system-config/oauth-providers`, `PATCH`/`DELETE /system-config/oauth-providers/:id`). Each command touches a single provider, so concurrent edits no longer clobber the whole `oauth_providers` array the way `config set oauth_providers` / `config apply` do. `add` and `update` accept an inline JSON object or `--file <path>`; `remove` confirms first (skip with `--yes`). Client secrets stay server-side: providers are referenced by `clientSecretEnv` and the secret value is never sent. The whole-config editor commands are unchanged.
+- 9043643: Add `seamless login --local` for self-hosted and local instances. It asks the instance to return the email or phone OTP in the response body instead of sending it, then verifies with that code automatically, so logins work without a real mail or SMS provider. It only runs against local hosts and requires the auth API to run outside production with `ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true`.
+
+### Patch Changes
+
+- 26a78d6: Fix `seamless login` rejecting valid email OTP codes. Email OTPs are six letters, but the code prompt only accepted digits, so no real email code could be entered. The prompt is now channel-aware: it accepts a six-letter code (case-insensitive, normalized to uppercase) for email logins and a numeric code for phone logins, with matching placeholder text.
+- f8dc6fc: Fix the conformance harness (`seamless verify --local`) failing to build after the ecosystem moved to Express 5 on Node 24. The verify adapter app pinned `express@^4`, but `@seamless-auth/express` now requires `express@>=5` as a peer, so installing the locally-built SDK tarball aborted with an `ERESOLVE` peer conflict and the Docker build failed. The adapter now depends on `express@^5.1.0` (and `@seamless-auth/express@^0.8.0`), and the verify Docker images are bumped from `node:20` to `node:24` to match the ecosystem's supported runtime.
+
 ## 0.8.0
 
 ### Minor Changes
