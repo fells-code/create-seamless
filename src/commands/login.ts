@@ -41,17 +41,26 @@ export async function runLogin(args: string[]): Promise<void> {
     const result = await completeLogin({
       instanceUrl: profile.instanceUrl,
       identifier,
-      getCode: async ({ resent }) => {
+      getCode: async ({ resent, channel }) => {
+        const email = channel === "email";
         const answer = await text({
           message: resent ? "Enter the new code" : "Enter the code we sent you",
-          placeholder: "123456",
-          validate: (value) =>
-            /^\d{4,8}$/.test((value ?? "").trim())
+          placeholder: email ? "ABCDEF" : "123456",
+          validate: (value) => {
+            const code = (value ?? "").trim();
+            if (email) {
+              return /^[A-Za-z]{6}$/.test(code)
+                ? undefined
+                : "Enter the 6-letter code from the email.";
+            }
+            return /^\d{4,8}$/.test(code)
               ? undefined
-              : "Enter the numeric code from the message",
+              : "Enter the numeric code from the message.";
+          },
         });
         if (isCancel(answer)) return null;
-        return (answer as string).trim();
+        const code = (answer as string).trim();
+        return email ? code.toUpperCase() : code;
       },
       notify: (event) => {
         switch (event.type) {

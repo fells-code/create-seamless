@@ -32,7 +32,11 @@ export interface CompleteLoginOptions {
   identifier: string;
   maxAttempts?: number;
   now?: () => number;
-  getCode: (ctx: { attempt: number; resent: boolean }) => Promise<string | null>;
+  getCode: (ctx: {
+    attempt: number;
+    resent: boolean;
+    channel: LoginChannel;
+  }) => Promise<string | null>;
   notify?: (event: LoginEvent) => void;
 }
 
@@ -204,7 +208,7 @@ export async function completeLogin(
   let attempt = 0;
   let resent = false;
   while (attempt < maxAttempts) {
-    const code = await opts.getCode({ attempt: attempt + 1, resent });
+    const code = await opts.getCode({ attempt: attempt + 1, resent, channel });
     resent = false;
     if (code === null) return null;
 

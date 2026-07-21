@@ -256,7 +256,7 @@ describe("runLogin: success", () => {
     expect(out.some((l) => l.includes("A code was sent to dev@example.com."))).toBe(true);
   });
 
-  it("validates the code prompt input", async () => {
+  it("validates the code prompt input as letters for an email login", async () => {
     mockRouter({
       "/login": [
         () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
@@ -264,15 +264,55 @@ describe("runLogin: success", () => {
       "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
       "/otp/verify-login-email-otp": [() => json({ token: "a", refreshToken: "r" })],
     });
-    vi.mocked(text).mockResolvedValueOnce("dev@example.com").mockResolvedValueOnce("123456");
+    vi.mocked(text).mockResolvedValueOnce("dev@example.com").mockResolvedValueOnce("ABCDEF");
 
     await runLogin([]);
 
     const codeCall = vi.mocked(text).mock.calls[1][0] as {
+      placeholder: string;
       validate: (v: string) => string | undefined;
     };
+    expect(codeCall.placeholder).toBe("ABCDEF");
+    expect(codeCall.validate("ABCDEF")).toBeUndefined();
+    expect(codeCall.validate("abcdef")).toBeUndefined();
+    expect(codeCall.validate("123456")).toMatch(/6-letter code/);
+  });
+
+  it("uppercases a lowercase email code before verifying", async () => {
+    const calls = mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [() => json({ token: "a", refreshToken: "r" })],
+    });
+    vi.mocked(text).mockResolvedValueOnce("dev@example.com").mockResolvedValueOnce("abcdef");
+
+    await runLogin([]);
+
+    const verify = calls.find((c) => c.url.endsWith("/otp/verify-login-email-otp"))!;
+    expect(verify.init.body).toBe(JSON.stringify({ verificationToken: "ABCDEF" }));
+  });
+
+  it("validates the code prompt input as digits for a phone login", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "phone", loginMethods: ["phone_otp"] }),
+      ],
+      "/otp/generate-login-phone-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-phone-otp": [() => json({ token: "a", refreshToken: "r" })],
+    });
+    vi.mocked(text).mockResolvedValueOnce("+15555550100").mockResolvedValueOnce("123456");
+
+    await runLogin([]);
+
+    const codeCall = vi.mocked(text).mock.calls[1][0] as {
+      placeholder: string;
+      validate: (v: string) => string | undefined;
+    };
+    expect(codeCall.placeholder).toBe("123456");
     expect(codeCall.validate("123456")).toBeUndefined();
-    expect(codeCall.validate("abc")).toMatch(/numeric code/);
+    expect(codeCall.validate("ABCDEF")).toMatch(/numeric code/);
   });
 
   it("validates the identifier prompt input", async () => {
