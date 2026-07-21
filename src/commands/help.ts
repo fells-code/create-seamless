@@ -110,6 +110,13 @@ COMMANDS
     config apply <file> [--dry-run]
       • Apply a local JSON config file after a confirmation prompt
 
+    config oauth-providers <list|add|update|remove>
+      • Manage OAuth providers one at a time. Client secrets stay server-side,
+        referenced by clientSecretEnv; the secret value is never sent.
+        (for example: config oauth-providers add --file google.json,
+        config oauth-providers update google '{"enabled":false}',
+        config oauth-providers remove google)
+
   users <list|delete|credentials|prepare-device-replacement>
     Admin user management (requires an admin role).
 

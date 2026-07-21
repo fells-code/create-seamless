@@ -5,14 +5,19 @@ import { extractFlag } from "../core/args.js";
 import { createAuthClient, ReauthRequiredError, type AuthClient } from "../core/authClient.js";
 import {
   ConfigApiError,
+  createOAuthProvider,
+  deleteOAuthProvider,
   diffConfig,
   filterWritable,
   getRoles,
   getSystemConfig,
+  listOAuthProviders,
   parseValue,
   patchSystemConfig,
   PermissionError,
+  updateOAuthProvider,
   type ConfigChange,
+  type OAuthProvider,
   type SystemConfig,
 } from "../core/systemConfig.js";
 
@@ -38,9 +43,15 @@ export async function runConfig(args: string[]): Promise<void> {
       case "apply":
         await configApply(client, rest);
         return;
+      case "oauth-providers":
+      case "oauth":
+        await configOAuthProviders(client, rest);
+        return;
       default:
         console.error(kleur.red(`Unknown config subcommand: ${sub ?? "(none)"}`));
-        console.log("Usage: seamless config <get|set|roles|diff|apply>");
+        console.log(
+          "Usage: seamless config <get|set|roles|diff|apply|oauth-providers>",
+        );
         process.exit(1);
     }
   } catch (err) {
@@ -187,6 +198,163 @@ async function configApply(client: AuthClient, rest: string[]): Promise<void> {
       `Applied. Updated: ${result.updatedKeys.join(", ") || "(none reported)"}`,
     ),
   );
+}
+
+async function configOAuthProviders(
+  client: AuthClient,
+  rest: string[],
+): Promise<void> {
+  const action = rest[0];
+  const args = rest.slice(1);
+
+  switch (action) {
+    case "list":
+      await oauthProvidersList(client, args);
+      return;
+    case "add":
+      await oauthProvidersAdd(client, args);
+      return;
+    case "update":
+      await oauthProvidersUpdate(client, args);
+      return;
+    case "remove":
+    case "delete":
+      await oauthProvidersRemove(client, args);
+      return;
+    default:
+      console.error(
+        kleur.red(
+          `Unknown config oauth-providers subcommand: ${action ?? "(none)"}`,
+        ),
+      );
+      console.log(
+        "Usage: seamless config oauth-providers <list|add|update|remove>",
+      );
+      process.exit(1);
+  }
+}
+
+async function oauthProvidersList(
+  client: AuthClient,
+  rest: string[],
+): Promise<void> {
+  const json = rest.includes("--json");
+  const providers = await listOAuthProviders(client);
+
+  if (json) {
+    console.log(JSON.stringify(providers, null, 2));
+    return;
+  }
+  if (providers.length === 0) {
+    console.log(kleur.dim("No OAuth providers configured."));
+    return;
+  }
+  for (const provider of providers) {
+    const id = String(provider.id ?? "?");
+    const name = String(provider.name ?? "");
+    const status =
+      provider.enabled === false
+        ? kleur.yellow("disabled")
+        : kleur.green("enabled");
+    console.log(`  ${kleur.bold(id)}  ${kleur.dim(name)}  ${status}`);
+  }
+}
+
+async function oauthProvidersAdd(
+  client: AuthClient,
+  rest: string[],
+): Promise<void> {
+  const { value: file, rest: positional } = extractFlag(rest, "file");
+  const input = readProviderInput(
+    file,
+    positional.filter((arg) => !arg.startsWith("--")).join(" "),
+  );
+
+  const provider = await createOAuthProvider(client, input);
+  console.log(
+    kleur.green(`Added OAuth provider: ${String(provider.id ?? input.id ?? "")}`),
+  );
+}
+
+async function oauthProvidersUpdate(
+  client: AuthClient,
+  rest: string[],
+): Promise<void> {
+  const { value: file, rest: positional } = extractFlag(rest, "file");
+  const nonFlag = positional.filter((arg) => !arg.startsWith("--"));
+  const id = nonFlag[0];
+  if (!id) {
+    console.error(
+      kleur.red(
+        "Usage: seamless config oauth-providers update <id> <json|--file <path>>",
+      ),
+    );
+    process.exit(1);
+  }
+
+  const updates = readProviderInput(file, nonFlag.slice(1).join(" "));
+  // The id is immutable and comes from the path; the API rejects it in the body.
+  delete updates.id;
+
+  const provider = await updateOAuthProvider(client, id, updates);
+  console.log(kleur.green(`Updated OAuth provider: ${String(provider.id ?? id)}`));
+}
+
+async function oauthProvidersRemove(
+  client: AuthClient,
+  rest: string[],
+): Promise<void> {
+  const skipConfirm = rest.includes("--yes") || rest.includes("-y");
+  const id = rest.find((arg) => !arg.startsWith("-"));
+  if (!id) {
+    console.error(
+      kleur.red("Usage: seamless config oauth-providers remove <id> [--yes]"),
+    );
+    process.exit(1);
+  }
+
+  if (!skipConfirm) {
+    const proceed = await confirm({
+      message: `Remove OAuth provider "${id}" from ${client.profile.instanceUrl}?`,
+      initialValue: false,
+    });
+    if (isCancel(proceed) || !proceed) {
+      console.log("Cancelled.");
+      return;
+    }
+  }
+
+  await deleteOAuthProvider(client, id);
+  console.log(kleur.green(`Removed OAuth provider: ${id}`));
+}
+
+function readProviderInput(
+  file: string | undefined,
+  inlineJson: string,
+): OAuthProvider {
+  let raw: string;
+  if (file) {
+    try {
+      raw = fs.readFileSync(file, "utf-8");
+    } catch {
+      throw new ConfigApiError(`Could not read file: ${file}`);
+    }
+  } else if (inlineJson.trim()) {
+    raw = inlineJson;
+  } else {
+    throw new ConfigApiError("Provide a JSON provider object, or --file <path>.");
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new ConfigApiError("Provider input is not valid JSON.");
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new ConfigApiError("Provider input must be a JSON object.");
+  }
+  return parsed as OAuthProvider;
 }
 
 function readConfigFile(file: string): SystemConfig {
