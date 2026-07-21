@@ -1,33 +1,30 @@
-import fs from "fs";
-import path from "path";
 import { intro, outro, text, confirm, spinner } from "@clack/prompts";
 import kleur from "kleur";
+import { extractFlag } from "../core/args.js";
+import { getActiveProfile } from "../core/config.js";
 import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
 
-type SeamlessConfig = {
-  services: {
-    auth: {
-      mode: "local" | "docker";
-    };
-  };
-};
+const DEFAULT_API_URL = "http://localhost:3000";
 
-function loadConfig(): SeamlessConfig {
-  const configPath = path.join(process.cwd(), "seamless.config.json");
+// Bootstrap authenticates with the shared bootstrap secret (not a user
+// session), so the profile is only used to target the right instance. The
+// SEAMLESS_API_URL env override wins for backward compatibility; otherwise fall
+// back to the local dev default when no profile is configured.
+function resolveApiUrl(profileFlag?: string): string {
+  const override = process.env.SEAMLESS_API_URL?.trim();
+  if (override) return override;
 
-  if (!fs.existsSync(configPath)) {
-    throw new Error("No seamless.config.json found. Run init first.");
-  }
+  const profile = getActiveProfile({ profileFlag });
+  if (profile) return profile.instanceUrl;
 
-  return JSON.parse(fs.readFileSync(configPath, "utf-8"));
+  return DEFAULT_API_URL;
 }
 
-export async function runBootstrapAdmin(emailArg?: string) {
+export async function runBootstrapAdmin(args: string[] = []) {
   intro("Seamless Auth Bootstrap");
 
-  const config = loadConfig();
-
-  let email = emailArg;
+  const { value: profileFlag, rest } = extractFlag(args, "profile");
+  let email = rest.find((a) => !a.startsWith("-"));
 
   if (!email) {
     email = (await text({
@@ -51,11 +48,7 @@ export async function runBootstrapAdmin(emailArg?: string) {
     return;
   }
 
-  let apiUrl = process.env.SEAMLESS_API_URL;
-
-  if (!apiUrl) {
-    apiUrl = "http://localhost:3000";
-  }
+  const apiUrl = resolveApiUrl(profileFlag);
 
   let secret = resolveBootstrapSecret();
 
