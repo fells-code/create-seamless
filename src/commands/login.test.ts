@@ -365,6 +365,51 @@ describe("runLogin: success", () => {
   });
 });
 
+describe("runLogin: local delivery", () => {
+  beforeEach(() => {
+    upsertProfile({ name: "default", instanceUrl: "http://localhost:5312" });
+  });
+
+  it("auto-fills the OTP from the response without prompting for a code", async () => {
+    const calls = mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [
+        () => json({ message: "sent", delivery: { kind: "otp_email", token: "ABCDEF" } }),
+      ],
+      "/otp/verify-login-email-otp": [
+        () => json({ token: "a", refreshToken: "r", sub: "user-1", email: "dev@example.com" }),
+      ],
+    });
+    vi.mocked(text).mockResolvedValueOnce("dev@example.com");
+
+    await runLogin(["--local"]);
+
+    // Only the identifier prompt runs; the code is never prompted.
+    expect(vi.mocked(text)).toHaveBeenCalledTimes(1);
+    const stored = await getTokens({ name: "default", instanceUrl: "http://localhost:5312" });
+    expect(stored?.accessToken).toBe("a");
+
+    const generate = calls.find((c) =>
+      c.url.endsWith("/otp/generate-login-email-otp"),
+    )!;
+    expect(
+      (generate.init.headers as Record<string, string>)["x-seamless-auth-delivery-mode"],
+    ).toBe("external");
+  });
+
+  it("rejects --local against a non-local instance", async () => {
+    upsertProfile({ name: "default", instanceUrl: "https://auth.example.com" });
+
+    await expect(runLogin(["--local"])).rejects.toThrow("exit:1");
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("--local only works against a local instance"),
+    );
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
 describe("runLogin: failure handling", () => {
   beforeEach(() => {
     upsertProfile(profile);

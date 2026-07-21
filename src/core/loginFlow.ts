@@ -6,6 +6,8 @@ import type { TokenBundle } from "./keychain.js";
 export const EPHEMERAL_WINDOW_MS = 5 * 60 * 1000;
 export const DEFAULT_MAX_ATTEMPTS = 3;
 
+const EXTERNAL_DELIVERY_HEADER = "x-seamless-auth-delivery-mode";
+
 export type LoginChannel = "email" | "phone";
 
 export class LoginError extends Error {
@@ -18,6 +20,7 @@ export class LoginError extends Error {
 export type LoginEvent =
   | { type: "code_sent"; channel: LoginChannel }
   | { type: "code_resent"; channel: LoginChannel }
+  | { type: "code_autofilled"; channel: LoginChannel }
   | { type: "verifying" }
   | { type: "incorrect"; attemptsLeft: number };
 
@@ -38,6 +41,13 @@ export interface CompleteLoginOptions {
     channel: LoginChannel;
   }) => Promise<string | null>;
   notify?: (event: LoginEvent) => void;
+  /**
+   * Local-only escape hatch. Asks the instance for external delivery so the OTP
+   * comes back in the response body instead of by email/SMS, then verifies with it
+   * automatically. Requires the instance to run outside production with
+   * ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true, and should be gated to local hosts.
+   */
+  localDelivery?: boolean;
 }
 
 interface StartedLogin {
@@ -46,6 +56,15 @@ interface StartedLogin {
   channel: LoginChannel;
   sub?: string;
   deadline: number;
+}
+
+function deliveryCode(data: Record<string, unknown> | null): string | undefined {
+  const delivery = data?.delivery;
+  if (delivery && typeof delivery === "object") {
+    const token = (delivery as Record<string, unknown>).token;
+    if (typeof token === "string" && token) return token;
+  }
+  return undefined;
 }
 
 function apiMessage(data: unknown): string | undefined {
@@ -133,15 +152,21 @@ async function startLogin(
 async function sendCode(
   instanceUrl: string,
   started: StartedLogin,
-): Promise<void> {
+  localDelivery: boolean,
+): Promise<string | undefined> {
   const path =
     started.channel === "email"
       ? "/otp/generate-login-email-otp"
       : "/otp/generate-login-phone-otp";
 
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${started.ephemeralToken}`,
+  };
+  if (localDelivery) headers[EXTERNAL_DELIVERY_HEADER] = "external";
+
   const res = await request(instanceUrl, joinUrl(instanceUrl, path), {
     method: "GET",
-    headers: { Authorization: `Bearer ${started.ephemeralToken}` },
+    headers,
   });
 
   if (isRateLimited(res)) {
@@ -163,6 +188,8 @@ async function sendCode(
 
   const refreshed = typeof res.data?.token === "string" ? res.data.token : undefined;
   if (refreshed) started.ephemeralToken = refreshed;
+
+  return localDelivery ? deliveryCode(res.data) : undefined;
 }
 
 async function verifyCode(
@@ -192,6 +219,15 @@ export async function completeLogin(
   const now = opts.now ?? (() => Date.now());
   const maxAttempts = opts.maxAttempts ?? DEFAULT_MAX_ATTEMPTS;
   const notify = opts.notify ?? (() => {});
+  const localDelivery = opts.localDelivery ?? false;
+
+  const requireLocalCode = (code: string | undefined): void => {
+    if (localDelivery && !code) {
+      throw new LoginError(
+        "Local delivery is on, but the instance did not return the code. Start the auth API outside production with ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true so it returns OTP codes in the response.",
+      );
+    }
+  };
 
   let started = await startLogin(opts.instanceUrl, opts.identifier, now);
   const channel = started.channel;
@@ -202,21 +238,30 @@ export async function completeLogin(
     );
   }
 
-  await sendCode(opts.instanceUrl, started);
+  let autoCode = await sendCode(opts.instanceUrl, started, localDelivery);
   notify({ type: "code_sent", channel });
+  requireLocalCode(autoCode);
 
   let attempt = 0;
   let resent = false;
   while (attempt < maxAttempts) {
-    const code = await opts.getCode({ attempt: attempt + 1, resent, channel });
+    let code: string | null;
+    if (localDelivery && autoCode) {
+      code = autoCode;
+      autoCode = undefined;
+      notify({ type: "code_autofilled", channel });
+    } else {
+      code = await opts.getCode({ attempt: attempt + 1, resent, channel });
+    }
     resent = false;
     if (code === null) return null;
 
     if (now() >= started.deadline) {
       started = await startLogin(opts.instanceUrl, opts.identifier, now);
-      await sendCode(opts.instanceUrl, started);
+      autoCode = await sendCode(opts.instanceUrl, started, localDelivery);
       resent = true;
       notify({ type: "code_resent", channel });
+      requireLocalCode(autoCode);
       continue;
     }
 

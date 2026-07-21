@@ -15,7 +15,7 @@ USAGE
   seamless bootstrap-admin [email] [--profile <name>]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
   seamless profile <list|add|use|remove>
-  seamless login [identifier] [--identifier <email>] [--profile <name>]
+  seamless login [identifier] [--identifier <email>] [--local] [--profile <name>]
   seamless whoami [--profile <name>]
   seamless logout [--all] [--profile <name>]
   seamless sessions [list]
@@ -69,6 +69,12 @@ COMMANDS
     Log in to the active profile's Seamless Auth instance using email OTP.
     Prompts for the identifier (or pass it positionally or with --identifier)
     and the code sent to your inbox, then stores the session in the OS keychain.
+
+    --local
+      • For local instances only. Asks the instance to return the OTP in the
+        response instead of emailing it, and verifies with it automatically.
+      • Requires the auth API to run outside production with
+        ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true.
 
     --profile <name>
       • Log in against a specific profile instead of the active one
