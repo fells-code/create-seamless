@@ -461,3 +461,216 @@ describe("runConfig apply", () => {
     expect(output()).toContain("Applied. Updated: (none reported)");
   });
 });
+
+describe("runConfig oauth-providers", () => {
+  it("lists providers with an enabled/disabled status", async () => {
+    const { client } = fakeClient(() =>
+      response(200, {
+        providers: [
+          { id: "google", name: "Google", enabled: true },
+          { id: "github", name: "GitHub", enabled: false },
+        ],
+      }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "list"]);
+
+    expect(output()).toContain("google");
+    expect(output()).toContain("enabled");
+    expect(output()).toContain("github");
+    expect(output()).toContain("disabled");
+  });
+
+  it("lists providers as JSON with --json", async () => {
+    const { client } = fakeClient(() =>
+      response(200, { providers: [{ id: "google" }] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "list", "--json"]);
+
+    expect(output()).toContain(JSON.stringify([{ id: "google" }], null, 2));
+  });
+
+  it("adds a provider from an inline JSON object", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(201, { provider: { id: "google" } }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig([
+      "oauth-providers",
+      "add",
+      '{"id":"google","name":"Google"}',
+    ]);
+
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/system-config/oauth-providers",
+      body: { id: "google", name: "Google" },
+    });
+    expect(output()).toContain("Added OAuth provider: google");
+  });
+
+  it("adds a provider from a --file JSON object", async () => {
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({ id: "github", name: "GitHub" }),
+    );
+    const { client, calls } = fakeClient(() =>
+      response(201, { provider: { id: "github" } }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "add", "--file", "github.json"]);
+
+    expect(calls[0]?.body).toEqual({ id: "github", name: "GitHub" });
+    expect(output()).toContain("Added OAuth provider: github");
+  });
+
+  it("rejects an add with no JSON and no --file", async () => {
+    const { client } = fakeClient(() => response(201, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["oauth-providers", "add"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+    expect(errOutput()).toContain("Provide a JSON provider object");
+  });
+
+  it("updates a provider and strips any id in the body", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { provider: { id: "google", enabled: false } }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig([
+      "oauth-providers",
+      "update",
+      "google",
+      '{"id":"google","enabled":false}',
+    ]);
+
+    expect(calls[0]).toEqual({
+      method: "PATCH",
+      path: "/system-config/oauth-providers/google",
+      body: { enabled: false },
+    });
+    expect(output()).toContain("Updated OAuth provider: google");
+  });
+
+  it("requires an id for update", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(
+      runConfig(["oauth-providers", "update"]),
+    ).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("update <id>");
+  });
+
+  it("removes a provider after confirmation", async () => {
+    vi.mocked(confirm).mockResolvedValue(true);
+    const { client, calls } = fakeClient(() =>
+      response(200, { success: true, id: "google" }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "remove", "google"]);
+
+    expect(calls[0]).toEqual({
+      method: "DELETE",
+      path: "/system-config/oauth-providers/google",
+      body: undefined,
+    });
+    expect(output()).toContain("Removed OAuth provider: google");
+  });
+
+  it("does not remove a provider when confirmation is declined", async () => {
+    vi.mocked(confirm).mockResolvedValue(false);
+    const { client, calls } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "remove", "google"]);
+
+    expect(calls).toHaveLength(0);
+    expect(output()).toContain("Cancelled.");
+  });
+
+  it("skips confirmation with --yes", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { success: true, id: "google" }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "remove", "google", "--yes"]);
+
+    expect(confirm).not.toHaveBeenCalled();
+    expect(calls[0]?.method).toBe("DELETE");
+  });
+
+  it("prints usage for an unknown oauth-providers subcommand", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(
+      runConfig(["oauth-providers", "bogus"]),
+    ).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain(
+      "Unknown config oauth-providers subcommand: bogus",
+    );
+  });
+
+  it("accepts the 'oauth' alias for the subcommand group", async () => {
+    const { client } = fakeClient(() =>
+      response(200, { providers: [{ id: "google", enabled: true }] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth", "list"]);
+
+    expect(output()).toContain("google");
+  });
+
+  it("prints an empty-state message when there are no providers", async () => {
+    const { client } = fakeClient(() => response(200, { providers: [] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "list"]);
+
+    expect(output()).toContain("No OAuth providers configured.");
+  });
+
+  it("rejects an add with invalid JSON", async () => {
+    const { client } = fakeClient(() => response(201, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(
+      runConfig(["oauth-providers", "add", "{not json"]),
+    ).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Provider input is not valid JSON.");
+  });
+
+  it("rejects an add whose JSON is not an object", async () => {
+    const { client } = fakeClient(() => response(201, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(
+      runConfig(["oauth-providers", "add", "[1,2,3]"]),
+    ).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Provider input must be a JSON object.");
+  });
+
+  it("reports an unreadable --file", async () => {
+    vi.mocked(fs.readFileSync).mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+    const { client } = fakeClient(() => response(201, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(
+      runConfig(["oauth-providers", "add", "--file", "missing.json"]),
+    ).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("Could not read file: missing.json");
+  });
+});

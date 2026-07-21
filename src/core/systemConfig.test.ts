@@ -3,14 +3,18 @@ import type { AuthClient } from "./authClient.js";
 import type { ApiResponse } from "./http.js";
 import {
   ConfigApiError,
+  createOAuthProvider,
   deepEqual,
+  deleteOAuthProvider,
   diffConfig,
   filterWritable,
   getRoles,
   getSystemConfig,
+  listOAuthProviders,
   parseValue,
   patchSystemConfig,
   PermissionError,
+  updateOAuthProvider,
 } from "./systemConfig.js";
 
 function response<T>(status: number, data: T | null): ApiResponse<T> {
@@ -147,6 +151,152 @@ describe("getRoles", () => {
   it("throws a ConfigApiError on other failures", async () => {
     const { client } = fakeClient(() => response(500, null));
     await expect(getRoles(client)).rejects.toBeInstanceOf(ConfigApiError);
+  });
+});
+
+describe("listOAuthProviders", () => {
+  it("returns the providers array from the dedicated route", async () => {
+    const { client } = fakeClient(({ method, path }) => {
+      expect(`${method} ${path}`).toBe("GET /system-config/oauth-providers");
+      return response(200, { providers: [{ id: "google" }, { id: "github" }] });
+    });
+    expect(await listOAuthProviders(client)).toEqual([
+      { id: "google" },
+      { id: "github" },
+    ]);
+  });
+
+  it("returns an empty array when providers is missing", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    expect(await listOAuthProviders(client)).toEqual([]);
+  });
+
+  it("maps 403 to a PermissionError", async () => {
+    const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
+    await expect(listOAuthProviders(client)).rejects.toBeInstanceOf(
+      PermissionError,
+    );
+  });
+
+  it("throws a ConfigApiError on other failures", async () => {
+    const { client } = fakeClient(() => response(500, null));
+    await expect(listOAuthProviders(client)).rejects.toBeInstanceOf(
+      ConfigApiError,
+    );
+  });
+});
+
+describe("createOAuthProvider", () => {
+  it("POSTs the provider and returns the created record", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(201, { provider: { id: "google", name: "Google" } }),
+    );
+
+    const created = await createOAuthProvider(client, {
+      id: "google",
+      name: "Google",
+    });
+    expect(created).toEqual({ id: "google", name: "Google" });
+    expect(calls[0]).toEqual({
+      method: "POST",
+      path: "/system-config/oauth-providers",
+      body: { id: "google", name: "Google" },
+    });
+  });
+
+  it("maps 409 to a ConfigApiError with the API message", async () => {
+    const { client } = fakeClient(() =>
+      response(409, { error: 'OAuth provider "google" already exists' }),
+    );
+    await expect(
+      createOAuthProvider(client, { id: "google" }),
+    ).rejects.toThrow(/already exists/);
+  });
+
+  it("surfaces 400 validation details", async () => {
+    const { client } = fakeClient(() =>
+      response(400, { error: "Invalid", details: { tokenUrl: "required" } }),
+    );
+    await expect(
+      createOAuthProvider(client, { id: "google" }),
+    ).rejects.toThrow(/Invalid.*tokenUrl/);
+  });
+
+  it("surfaces a 400 without details as a bare reason", async () => {
+    const { client } = fakeClient(() =>
+      response(400, { error: "Invalid OAuth provider" }),
+    );
+    await expect(
+      createOAuthProvider(client, { id: "google" }),
+    ).rejects.toThrow("Invalid OAuth provider.");
+  });
+
+  it("throws a ConfigApiError on other failures", async () => {
+    const { client } = fakeClient(() => response(500, { error: "boom" }));
+    await expect(
+      createOAuthProvider(client, { id: "google" }),
+    ).rejects.toThrow("Could not add OAuth provider (500).");
+  });
+
+  it("falls back to the input when the response omits the provider", async () => {
+    const { client } = fakeClient(() => response(201, {}));
+    expect(await createOAuthProvider(client, { id: "google" })).toEqual({
+      id: "google",
+    });
+  });
+
+  it("maps 403 to a PermissionError", async () => {
+    const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
+    await expect(
+      createOAuthProvider(client, { id: "google" }),
+    ).rejects.toBeInstanceOf(PermissionError);
+  });
+});
+
+describe("updateOAuthProvider", () => {
+  it("PATCHes the id-scoped route with the update body", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { provider: { id: "google", enabled: false } }),
+    );
+
+    const updated = await updateOAuthProvider(client, "google", {
+      enabled: false,
+    });
+    expect(updated).toEqual({ id: "google", enabled: false });
+    expect(calls[0]).toEqual({
+      method: "PATCH",
+      path: "/system-config/oauth-providers/google",
+      body: { enabled: false },
+    });
+  });
+
+  it("maps 404 to a ConfigApiError naming the provider", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(
+      updateOAuthProvider(client, "missing", { enabled: false }),
+    ).rejects.toThrow(/"missing" not found/);
+  });
+});
+
+describe("deleteOAuthProvider", () => {
+  it("DELETEs the id-scoped route", async () => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { success: true, id: "google" }),
+    );
+
+    await deleteOAuthProvider(client, "google");
+    expect(calls[0]).toEqual({
+      method: "DELETE",
+      path: "/system-config/oauth-providers/google",
+      body: undefined,
+    });
+  });
+
+  it("maps 404 to a ConfigApiError", async () => {
+    const { client } = fakeClient(() => response(404, { error: "not found" }));
+    await expect(deleteOAuthProvider(client, "missing")).rejects.toBeInstanceOf(
+      ConfigApiError,
+    );
   });
 });
 

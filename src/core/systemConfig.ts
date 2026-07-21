@@ -98,6 +98,99 @@ export async function patchSystemConfig(
   };
 }
 
+export type OAuthProvider = Record<string, unknown>;
+
+const OAUTH_PROVIDERS_PATH = "/system-config/oauth-providers";
+
+function providerMutationError(
+  res: { status: number; data: { error?: string; details?: unknown } | null },
+  action: string,
+  id?: unknown,
+): never {
+  if (res.status === 403) throw new PermissionError();
+
+  const label = id ? ` "${String(id)}"` : "";
+  if (res.status === 404) {
+    throw new ConfigApiError(`OAuth provider${label} not found.`);
+  }
+  if (res.status === 409) {
+    throw new ConfigApiError(
+      res.data?.error ?? `OAuth provider${label} already exists.`,
+    );
+  }
+  if (res.status === 400) {
+    const reason = res.data?.error ?? "Invalid OAuth provider";
+    const details = res.data?.details
+      ? ` ${JSON.stringify(res.data.details)}`
+      : "";
+    throw new ConfigApiError(`${reason}.${details}`);
+  }
+  throw new ConfigApiError(`Could not ${action} OAuth provider (${res.status}).`);
+}
+
+export async function listOAuthProviders(
+  client: AuthClient,
+): Promise<OAuthProvider[]> {
+  const res = await client.get<{ providers?: unknown }>(OAUTH_PROVIDERS_PATH);
+  if (res.status === 403) throw new PermissionError();
+  if (!res.ok) {
+    throw new ConfigApiError(`Could not list OAuth providers (${res.status}).`);
+  }
+  return Array.isArray(res.data?.providers)
+    ? (res.data.providers as OAuthProvider[])
+    : [];
+}
+
+export async function createOAuthProvider(
+  client: AuthClient,
+  provider: OAuthProvider,
+): Promise<OAuthProvider> {
+  const res = await client.request<{
+    provider?: OAuthProvider;
+    error?: string;
+    details?: unknown;
+  }>(OAUTH_PROVIDERS_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(provider),
+  });
+
+  if (res.ok) return res.data?.provider ?? provider;
+  throw providerMutationError(res, "add", provider.id);
+}
+
+export async function updateOAuthProvider(
+  client: AuthClient,
+  id: string,
+  updates: OAuthProvider,
+): Promise<OAuthProvider> {
+  const res = await client.request<{
+    provider?: OAuthProvider;
+    error?: string;
+    details?: unknown;
+  }>(`${OAUTH_PROVIDERS_PATH}/${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(updates),
+  });
+
+  if (res.ok) return res.data?.provider ?? updates;
+  throw providerMutationError(res, "update", id);
+}
+
+export async function deleteOAuthProvider(
+  client: AuthClient,
+  id: string,
+): Promise<void> {
+  const res = await client.request<{ error?: string; details?: unknown }>(
+    `${OAUTH_PROVIDERS_PATH}/${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
+
+  if (res.ok) return;
+  throw providerMutationError(res, "remove", id);
+}
+
 export function parseValue(raw: string): unknown {
   try {
     return JSON.parse(raw.trim());
