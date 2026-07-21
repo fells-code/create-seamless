@@ -1,5 +1,18 @@
 # seamless-cli
 
+## 0.8.0
+
+### Minor Changes
+
+- 8468863: Target `bootstrap-admin` at the active profile's instance URL instead of requiring a local `seamless.config.json`. The command now resolves the instance from the active profile (respecting `--profile` and `SEAMLESS_PROFILE`), with `SEAMLESS_API_URL` as an override and `http://localhost:3000` as the fallback when no profile is configured. The bootstrap-secret auth flow is unchanged.
+
+### Patch Changes
+
+- 5126998: Document `bootstrap-admin` in the README: add a "Creating the first admin"
+  section covering the command, its profile-based instance targeting (with the
+  `SEAMLESS_API_URL` override and `http://localhost:3000` fallback), and the
+  bootstrap-secret authentication it uses because it runs before any admin exists.
+
 ## 0.7.0
 
 ### Minor Changes
