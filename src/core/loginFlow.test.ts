@@ -443,6 +443,83 @@ describe("completeLogin", () => {
     ).rejects.toThrow(/unexpected verification response/);
   });
 
+  it("auto-fills the code from external delivery in local mode", async () => {
+    const calls = mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [
+        () => json({ message: "sent", delivery: { kind: "otp_email", token: "ABCDEF" } }),
+      ],
+      "/otp/verify-login-email-otp": [() => json({ token: "a", refreshToken: "r" })],
+    });
+
+    let asked = 0;
+    const result = await completeLogin({
+      instanceUrl: INSTANCE,
+      identifier: "dev@example.com",
+      localDelivery: true,
+      getCode: async () => {
+        asked++;
+        return "999999";
+      },
+    });
+
+    expect(asked).toBe(0);
+    expect(result?.tokens.accessToken).toBe("a");
+
+    const generate = calls.find((c) =>
+      c.url.endsWith("/otp/generate-login-email-otp"),
+    )!;
+    expect(
+      (generate.init.headers as Record<string, string>)["x-seamless-auth-delivery-mode"],
+    ).toBe("external");
+
+    const verify = calls.find((c) => c.url.endsWith("/otp/verify-login-email-otp"))!;
+    expect(verify.init.body).toBe(JSON.stringify({ verificationToken: "ABCDEF" }));
+  });
+
+  it("errors in local mode when the instance does not return the code", async () => {
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        localDelivery: true,
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/ALLOW_UNCREDENTIALED_DELIVERY_SECRETS/);
+  });
+
+  it("does not request external delivery when local mode is off", async () => {
+    const calls = mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [() => json({ token: "a", refreshToken: "r" })],
+    });
+
+    await completeLogin({
+      instanceUrl: INSTANCE,
+      identifier: "dev@example.com",
+      getCode: async () => "123456",
+    });
+
+    const generate = calls.find((c) =>
+      c.url.endsWith("/otp/generate-login-email-otp"),
+    )!;
+    expect(
+      (generate.init.headers as Record<string, string>)["x-seamless-auth-delivery-mode"],
+    ).toBeUndefined();
+  });
+
   it("surfaces the rate limiter when verifying a code", async () => {
     mockRouter({
       "/login": [

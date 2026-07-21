@@ -171,6 +171,17 @@ export function getActiveProfile(
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
+export function isLocalInstanceUrl(input: string): boolean {
+  let url: URL;
+  try {
+    url = new URL((input ?? "").trim());
+  } catch {
+    return false;
+  }
+  const host = url.hostname;
+  return LOCAL_HOSTS.has(host) || host.endsWith(".localhost");
+}
+
 export function normalizeInstanceUrl(input: string): string {
   const trimmed = (input ?? "").trim();
   if (!trimmed) {
@@ -193,8 +204,7 @@ export function normalizeInstanceUrl(input: string): string {
   }
 
   const host = url.hostname;
-  const isLocal = LOCAL_HOSTS.has(host) || host.endsWith(".localhost");
-  if (url.protocol === "http:" && !isLocal) {
+  if (url.protocol === "http:" && !isLocalInstanceUrl(trimmed)) {
     throw new Error(
       `Instance URL must use https for non-local host "${host}".`,
     );

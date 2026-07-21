@@ -1,12 +1,21 @@
 import { intro, outro, text, isCancel, cancel } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
-import { getActiveProfile, upsertProfile, type Profile } from "../core/config.js";
+import {
+  getActiveProfile,
+  isLocalInstanceUrl,
+  upsertProfile,
+  type Profile,
+} from "../core/config.js";
 import { KeychainUnavailableError, saveTokens } from "../core/keychain.js";
 import { completeLogin, LoginError, type LoginResult } from "../core/loginFlow.js";
 
 export async function runLogin(args: string[]): Promise<void> {
-  const profileFlag = extractFlag(args, "profile");
+  const local = args.includes("--local");
+  const profileFlag = extractFlag(
+    args.filter((a) => a !== "--local"),
+    "profile",
+  );
   const idFlag = extractFlag(profileFlag.rest, "identifier");
 
   const profile = getActiveProfile({ profileFlag: profileFlag.value });
@@ -19,7 +28,19 @@ export async function runLogin(args: string[]): Promise<void> {
     process.exit(1);
   }
 
+  if (local && !isLocalInstanceUrl(profile.instanceUrl)) {
+    console.error(
+      kleur.red(`--local only works against a local instance, not ${profile.instanceUrl}.`),
+    );
+    process.exit(1);
+  }
+
   intro(`Log in to ${kleur.bold(profile.name)} (${profile.instanceUrl})`);
+  if (local) {
+    console.log(
+      kleur.dim("Local delivery on: reading the OTP from the instance response."),
+    );
+  }
 
   let identifier = (idFlag.value ?? idFlag.rest[0])?.trim();
   if (!identifier) {
@@ -41,6 +62,7 @@ export async function runLogin(args: string[]): Promise<void> {
     const result = await completeLogin({
       instanceUrl: profile.instanceUrl,
       identifier,
+      localDelivery: local,
       getCode: async ({ resent, channel }) => {
         const email = channel === "email";
         const answer = await text({
@@ -71,6 +93,9 @@ export async function runLogin(args: string[]): Promise<void> {
             console.log(
               kleur.dim("Your previous code expired, so we sent a new one."),
             );
+            break;
+          case "code_autofilled":
+            console.log(kleur.dim("Read the code from the instance response."));
             break;
           case "incorrect":
             console.log(
