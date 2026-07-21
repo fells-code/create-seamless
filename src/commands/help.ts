@@ -12,7 +12,7 @@ USAGE
 
   seamless init [project-name] [--<example>]
   seamless check
-  seamless bootstrap-admin [email]
+  seamless bootstrap-admin [email] [--profile <name>]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
   seamless profile <list|add|use|remove>
   seamless login [identifier] [--identifier <email>] [--profile <name>]
@@ -146,8 +146,12 @@ COMMANDS
     seamless-auth-server, override with SEAMLESS_SERVER_DIR) instead of the
     published npm packages — so you can catch SDK regressions before publishing.
 
-  bootstrap-admin [email]
+  bootstrap-admin [email] [--profile <name>]
     Create a bootstrap admin invite
+
+    Targets the active profile's instance URL (override with --profile or
+    SEAMLESS_API_URL). Falls back to http://localhost:3000 when no profile is
+    configured.
 
     Automatically resolves bootstrap secret from:
       • .env
@@ -159,6 +163,7 @@ COMMANDS
     Examples:
       seamless bootstrap-admin
       seamless bootstrap-admin admin@example.com
+      seamless bootstrap-admin admin@example.com --profile prod
 
 ────────────────────────────────────────────
 

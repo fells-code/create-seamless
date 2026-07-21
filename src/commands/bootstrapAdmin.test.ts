@@ -1,19 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import fs from "fs";
 
 import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
+import { getActiveProfile } from "../core/config.js";
 import { runBootstrapAdmin } from "./bootstrapAdmin.js";
-
-vi.mock("fs", () => {
-  const fns = {
-    existsSync: vi.fn(),
-    readFileSync: vi.fn(),
-  };
-  return { default: fns, ...fns };
-});
 
 vi.mock("../core/bootstrapSecret.js", () => ({
   resolveBootstrapSecret: vi.fn(),
+}));
+
+vi.mock("../core/config.js", () => ({
+  getActiveProfile: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -26,8 +22,6 @@ vi.mock("@clack/prompts", () => ({
 
 import { intro, outro, text, confirm, spinner } from "@clack/prompts";
 
-const CONFIG_JSON = JSON.stringify({ services: { auth: { mode: "local" } } });
-
 let logs: string[];
 let errors: string[];
 let exitSpy: ReturnType<typeof vi.spyOn>;
@@ -39,17 +33,15 @@ beforeEach(() => {
   logs = [];
   errors = [];
 
-  vi.mocked(fs.existsSync).mockReset();
-  vi.mocked(fs.readFileSync).mockReset();
   vi.mocked(resolveBootstrapSecret).mockReset();
+  vi.mocked(getActiveProfile).mockReset();
   vi.mocked(intro).mockReset();
   vi.mocked(outro).mockReset();
   vi.mocked(text).mockReset();
   vi.mocked(confirm).mockReset();
   vi.mocked(spinner).mockReset();
 
-  vi.mocked(fs.existsSync).mockReturnValue(true);
-  vi.mocked(fs.readFileSync).mockReturnValue(CONFIG_JSON);
+  vi.mocked(getActiveProfile).mockReturnValue(undefined);
   vi.mocked(confirm).mockResolvedValue(true);
 
   spinnerStart = vi.fn();
@@ -89,17 +81,6 @@ function errOutput(): string {
   return errors.join("\n");
 }
 
-describe("runBootstrapAdmin — config loading", () => {
-  it("throws when seamless.config.json is missing", async () => {
-    vi.mocked(fs.existsSync).mockReturnValue(false);
-
-    await expect(runBootstrapAdmin("admin@example.com")).rejects.toThrow(
-      "No seamless.config.json found. Run init first.",
-    );
-    expect(intro).toHaveBeenCalledWith("Seamless Auth Bootstrap");
-  });
-});
-
 describe("runBootstrapAdmin — email prompt", () => {
   it("uses the provided email argument without prompting", async () => {
     vi.mocked(resolveBootstrapSecret).mockReturnValue("auto-secret");
@@ -108,7 +89,7 @@ describe("runBootstrapAdmin — email prompt", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(text).not.toHaveBeenCalled();
     expect(output()).toContain("Invite sent to admin@example.com");
@@ -121,7 +102,7 @@ describe("runBootstrapAdmin — email prompt", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin();
+    await runBootstrapAdmin([]);
 
     expect(text).toHaveBeenCalledWith(
       expect.objectContaining({ message: "Admin email address" }),
@@ -136,7 +117,7 @@ describe("runBootstrapAdmin — email prompt", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin();
+    await runBootstrapAdmin([]);
 
     const call = vi.mocked(text).mock.calls[0][0] as {
       validate: (v?: string) => string | undefined;
@@ -151,7 +132,7 @@ describe("runBootstrapAdmin — confirm cancellation", () => {
   it("outputs Cancelled and returns without calling fetch", async () => {
     vi.mocked(confirm).mockResolvedValue(false);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(outro).toHaveBeenCalledWith("Cancelled.");
     expect(fetch).not.toHaveBeenCalled();
@@ -159,13 +140,13 @@ describe("runBootstrapAdmin — confirm cancellation", () => {
 });
 
 describe("runBootstrapAdmin — API URL resolution", () => {
-  it("defaults to localhost:3000 when SEAMLESS_API_URL is unset", async () => {
+  it("defaults to localhost:3000 when no profile or override is set", async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(fetch).toHaveBeenCalledWith(
       "http://localhost:3000/auth/internal/bootstrap/admin-invite",
@@ -173,15 +154,57 @@ describe("runBootstrapAdmin — API URL resolution", () => {
     );
   });
 
-  it("uses SEAMLESS_API_URL when set", async () => {
-    process.env.SEAMLESS_API_URL = "https://api.example.com";
+  it("targets the active profile's instance URL", async () => {
+    vi.mocked(getActiveProfile).mockReturnValue({
+      name: "prod",
+      instanceUrl: "https://auth.prod.example.com",
+    });
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
+    expect(fetch).toHaveBeenCalledWith(
+      "https://auth.prod.example.com/auth/internal/bootstrap/admin-invite",
+      expect.anything(),
+    );
+  });
+
+  it("resolves the profile named by the --profile flag", async () => {
+    vi.mocked(getActiveProfile).mockReturnValue({
+      name: "staging",
+      instanceUrl: "https://auth.staging.example.com",
+    });
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: {} }),
+    } as Response);
+
+    await runBootstrapAdmin(["--profile", "staging", "admin@example.com"]);
+
+    expect(getActiveProfile).toHaveBeenCalledWith({ profileFlag: "staging" });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://auth.staging.example.com/auth/internal/bootstrap/admin-invite",
+      expect.anything(),
+    );
+  });
+
+  it("lets SEAMLESS_API_URL override the profile", async () => {
+    process.env.SEAMLESS_API_URL = "https://api.example.com";
+    vi.mocked(getActiveProfile).mockReturnValue({
+      name: "prod",
+      instanceUrl: "https://auth.prod.example.com",
+    });
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: {} }),
+    } as Response);
+
+    await runBootstrapAdmin(["admin@example.com"]);
+
+    expect(getActiveProfile).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       "https://api.example.com/auth/internal/bootstrap/admin-invite",
       expect.anything(),
@@ -197,7 +220,7 @@ describe("runBootstrapAdmin — bootstrap secret resolution", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(text).not.toHaveBeenCalled();
     expect(output()).toContain("Using bootstrap secret from local environment");
@@ -215,7 +238,7 @@ describe("runBootstrapAdmin — bootstrap secret resolution", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(text).toHaveBeenCalledWith(
       expect.objectContaining({ message: "Bootstrap secret" }),
@@ -235,7 +258,7 @@ describe("runBootstrapAdmin — bootstrap secret resolution", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     const call = vi.mocked(text).mock.calls[0][0] as {
       validate: (v?: string) => string | undefined;
@@ -253,7 +276,7 @@ describe("runBootstrapAdmin — request outcomes", () => {
       json: async () => ({ data: { url: "https://auth.example.com/register/abc" } }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(spinnerStart).toHaveBeenCalledWith("Creating bootstrap invite...");
     expect(spinnerStop).toHaveBeenCalledWith("Done");
@@ -269,7 +292,7 @@ describe("runBootstrapAdmin — request outcomes", () => {
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin("admin@example.com");
+    await runBootstrapAdmin(["admin@example.com"]);
 
     expect(output()).toContain("Invite sent to admin@example.com");
   });
@@ -281,7 +304,7 @@ describe("runBootstrapAdmin — request outcomes", () => {
       json: async () => ({ error: "already bootstrapped" }),
     } as Response);
 
-    await expect(runBootstrapAdmin("admin@example.com")).rejects.toThrow(
+    await expect(runBootstrapAdmin(["admin@example.com"])).rejects.toThrow(
       "process.exit(1)",
     );
 
@@ -294,7 +317,7 @@ describe("runBootstrapAdmin — request outcomes", () => {
     vi.mocked(resolveBootstrapSecret).mockReturnValue("secret");
     vi.mocked(fetch).mockRejectedValue(new Error("network down"));
 
-    await expect(runBootstrapAdmin("admin@example.com")).rejects.toThrow(
+    await expect(runBootstrapAdmin(["admin@example.com"])).rejects.toThrow(
       "process.exit(1)",
     );
 

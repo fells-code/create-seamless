@@ -62,8 +62,7 @@ async function main() {
   }
 
   if (command === "bootstrap-admin") {
-    const email = args[1];
-    await runBootstrapAdmin(email);
+    await runBootstrapAdmin(args.slice(1));
     return;
   }
 

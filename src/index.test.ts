@@ -83,10 +83,14 @@ describe("index dispatcher", () => {
     expect(runCheck).toHaveBeenCalledTimes(1);
   });
 
-  it("dispatches bootstrap-admin with the email argument", async () => {
-    await dispatch(["bootstrap-admin", "admin@example.com"]);
+  it("dispatches bootstrap-admin with the remaining arguments", async () => {
+    await dispatch(["bootstrap-admin", "--profile", "prod", "admin@example.com"]);
     const { runBootstrapAdmin } = await import("./commands/bootstrapAdmin.js");
-    expect(runBootstrapAdmin).toHaveBeenCalledWith("admin@example.com");
+    expect(runBootstrapAdmin).toHaveBeenCalledWith([
+      "--profile",
+      "prod",
+      "admin@example.com",
+    ]);
   });
 
   it("dispatches verify with the remaining args", async () => {
