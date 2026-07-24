@@ -436,6 +436,20 @@ describe("applyTemplateEnv", () => {
     expect(written).toContain("PLAIN=literal-value");
   });
 
+  it("resolves the serveAdminConsole placeholder from the scaffold context", () => {
+    applyTemplateEnv(
+      destDir,
+      {
+        id: "x",
+        targetDir: ".",
+        env: { set: { SERVE_ADMIN_CONSOLE: "{{serveAdminConsole}}" } },
+      },
+      { ...ctx, serveAdminConsole: "true" },
+    );
+
+    expect(readEnv()).toContain("SERVE_ADMIN_CONSOLE=true");
+  });
+
   it("resolves secret:N placeholders to N bytes of hex", () => {
     applyTemplateEnv(
       destDir,

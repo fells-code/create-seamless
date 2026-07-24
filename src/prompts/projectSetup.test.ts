@@ -136,14 +136,13 @@ describe("runManagedTemplatePrompts", () => {
 });
 
 describe("runProjectSetupPrompts", () => {
-  it("runs the full docker + admin-image flow with no preselection", async () => {
+  it("runs the full docker + API-served console flow with no preselection", async () => {
     mockSelect({
       "Web example": "web-a",
       "Backend framework": "api-a",
       "How would you like to run SeamlessAuth?": "docker",
-      "Admin dashboard source": "image",
+      "How would you like to host the admin console?": "api",
     });
-    mockConfirm({ "Include Admin Dashboard?": true });
 
     const result = await runProjectSetupPrompts(fullRegistry());
 
@@ -154,16 +153,16 @@ describe("runProjectSetupPrompts", () => {
       apiTemplateId: "api-a",
       authMode: "docker",
       useDocker: true,
-      includeAdmin: true,
-      adminMode: "image",
+      adminMode: "api",
     });
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it("uses preselected template ids and logs them instead of prompting", async () => {
     mockSelect({
       "How would you like to run SeamlessAuth?": "docker",
+      "How would you like to host the admin console?": "none",
     });
-    mockConfirm({ "Include Admin Dashboard?": false });
 
     const result = await runProjectSetupPrompts(fullRegistry(), {
       webTemplateId: "web-b",
@@ -176,35 +175,41 @@ describe("runProjectSetupPrompts", () => {
     expect(out()).toContain("Backend: Express");
   });
 
-  it("skips the admin-source prompt and keeps the image default when admin is declined", async () => {
-    mockSelect({
+  it("returns the chosen console hosting mode", async () => {
+    const calls = mockSelect({
       "Web example": "web-a",
       "Backend framework": "api-a",
       "How would you like to run SeamlessAuth?": "docker",
+      "How would you like to host the admin console?": "source",
     });
-    mockConfirm({ "Include Admin Dashboard?": false });
-
-    const result = await runProjectSetupPrompts(fullRegistry());
-
-    expect(result.includeAdmin).toBe(false);
-    expect(result.adminMode).toBe("image");
-    expect(select).not.toHaveBeenCalledWith(
-      expect.objectContaining({ message: "Admin dashboard source" }),
-    );
-  });
-
-  it("selects the source admin mode when chosen", async () => {
-    mockSelect({
-      "Web example": "web-a",
-      "Backend framework": "api-a",
-      "How would you like to run SeamlessAuth?": "docker",
-      "Admin dashboard source": "source",
-    });
-    mockConfirm({ "Include Admin Dashboard?": true });
 
     const result = await runProjectSetupPrompts(fullRegistry());
 
     expect(result.adminMode).toBe("source");
+
+    // The console prompt offers all four hosting options, defaulting to api.
+    const consoleCall = calls.find(
+      (c) => c.message === "How would you like to host the admin console?",
+    )!;
+    expect(consoleCall.options.map((o) => o.value)).toEqual([
+      "api",
+      "image",
+      "source",
+      "none",
+    ]);
+  });
+
+  it("selects the standalone image console mode when chosen", async () => {
+    mockSelect({
+      "Web example": "web-a",
+      "Backend framework": "api-a",
+      "How would you like to run SeamlessAuth?": "docker",
+      "How would you like to host the admin console?": "image",
+    });
+
+    const result = await runProjectSetupPrompts(fullRegistry());
+
+    expect(result.adminMode).toBe("image");
   });
 
   it("confirms docker is required when local auth mode is chosen and accepted", async () => {
@@ -212,10 +217,9 @@ describe("runProjectSetupPrompts", () => {
       "Web example": "web-a",
       "Backend framework": "api-a",
       "How would you like to run SeamlessAuth?": "local",
-      "Admin dashboard source": "image",
+      "How would you like to host the admin console?": "api",
     });
     mockConfirm({
-      "Include Admin Dashboard?": true,
       "Auth server still requires Docker for full stack. Enable Docker?": true,
     });
 
@@ -231,10 +235,9 @@ describe("runProjectSetupPrompts", () => {
       "Web example": "web-a",
       "Backend framework": "api-a",
       "How would you like to run SeamlessAuth?": "local",
-      "Admin dashboard source": "image",
+      "How would you like to host the admin console?": "api",
     });
     mockConfirm({
-      "Include Admin Dashboard?": true,
       "Auth server still requires Docker for full stack. Enable Docker?": false,
     });
 

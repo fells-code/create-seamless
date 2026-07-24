@@ -188,6 +188,9 @@ async function scaffoldManaged(
       apiUrl: API_URL,
       apiToken: serviceToken,
       jwksKid: MANAGED_JWKS_KID,
+      // A managed instance hosts its own dashboard, so the app API does not proxy
+      // the console. Keeps the template's SERVE_ADMIN_CONSOLE gate off.
+      serveAdminConsole: "false",
     };
 
     for (const { manifest, dir } of selected) {
@@ -263,14 +266,18 @@ async function scaffoldLocal(
   let sharedConfig: any = {};
 
   if (answers.authMode === "local") {
-    sharedConfig = await generateAuthServer({ root }, "local", oauthProviders);
+    sharedConfig = await generateAuthServer(
+      { root },
+      "local",
+      oauthProviders,
+      answers.adminMode,
+    );
   }
 
   if (answers.useDocker) {
     const dockerShared = await generateDockerCompose(root, {
       authMode: answers.authMode,
       adminMode: answers.adminMode,
-      includeAdmin: answers.includeAdmin,
       oauth: oauthProviders,
     });
 
@@ -284,6 +291,7 @@ async function scaffoldLocal(
     apiUrl: API_URL,
     apiToken: sharedConfig.apiToken,
     jwksKid: sharedConfig.kid,
+    serveAdminConsole: answers.adminMode === "api" ? "true" : "false",
   };
 
   for (const { manifest, dir } of selected) {
@@ -308,6 +316,7 @@ async function scaffoldLocal(
     apiFramework: apiEntry.framework,
     authMode: answers.authMode,
     useDocker: answers.useDocker,
+    adminMode: answers.adminMode,
   });
 
   printOAuthNextSteps(oauthProviders);

@@ -3,7 +3,7 @@ import { confirm, select } from "@clack/prompts";
 import type { RegistryEntry, TemplateKind } from "../core/templates.js";
 
 type AuthMode = "local" | "docker";
-type AdminMode = "image" | "source";
+type AdminMode = "api" | "image" | "source" | "none";
 
 interface Option {
   value: string;
@@ -108,28 +108,28 @@ export async function runProjectSetupPrompts(
     ],
   })) as AuthMode;
 
-  const includeAdmin = await confirm({
-    message: "Include Admin Dashboard?",
-    initialValue: true,
-  });
-
-  let adminMode: AdminMode = "image";
-
-  if (includeAdmin) {
-    adminMode = (await select({
-      message: "Admin dashboard source",
-      options: [
-        {
-          value: "image",
-          label: "Use official Docker image (recommended)",
-        },
-        {
-          value: "source",
-          label: "Clone repo for modification",
-        },
-      ],
-    })) as AdminMode;
-  }
+  const adminMode = (await select({
+    message: "How would you like to host the admin console?",
+    options: [
+      {
+        value: "api",
+        label: "Served by your API at /console (recommended)",
+      },
+      {
+        value: "image",
+        label: "Separate container — official Docker image",
+      },
+      {
+        value: "source",
+        label: "Separate container — clone repo for modification",
+      },
+      {
+        value: "none",
+        label: "Don't include the admin console",
+      },
+    ],
+    initialValue: "api",
+  })) as AdminMode;
 
   if (authMode === "local") {
     const confirmDocker = await confirm({
@@ -155,7 +155,6 @@ export async function runProjectSetupPrompts(
     authMode,
     useDocker: true,
 
-    includeAdmin,
     adminMode,
   };
 }

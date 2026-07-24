@@ -7,9 +7,19 @@ export function printSuccessOutput(config: {
   apiFramework: string | null;
   authMode: "local" | "docker";
   useDocker: boolean | symbol;
+  adminMode: "api" | "image" | "source" | "none";
 }) {
-  const { projectName, webFramework, apiFramework, authMode, useDocker } =
+  const { projectName, webFramework, apiFramework, authMode, useDocker, adminMode } =
     config;
+
+  // Where the admin console lives: proxied by the app API at /console, or a
+  // standalone container on 5174. "none" scaffolds no console at all.
+  const consoleUrl =
+    adminMode === "api"
+      ? "http://localhost:3000/console"
+      : adminMode === "none"
+        ? null
+        : "http://localhost:5174";
 
   const title = kleur.bold().cyan("SEAMLESS");
 
@@ -50,9 +60,15 @@ export function printSuccessOutput(config: {
       kleur.dim(authMode === "local" ? " (local source)" : " (Docker image)"),
   );
 
-  console.log(
-    "  • " + kleur.white("Admin dashboard") + kleur.dim(" (management UI)"),
-  );
+  if (consoleUrl) {
+    console.log(
+      "  • " +
+        kleur.white("Admin console") +
+        kleur.dim(
+          adminMode === "api" ? " (served by API at /console)" : " (management UI)",
+        ),
+    );
+  }
 
   console.log("");
 
@@ -114,7 +130,9 @@ export function printSuccessOutput(config: {
     console.log("  Web:    " + kleur.cyan("http://localhost:5173"));
   }
 
-  console.log("  Admin:  " + kleur.cyan("http://localhost:5174"));
+  if (consoleUrl) {
+    console.log("  Console:" + kleur.cyan(` ${consoleUrl}`));
+  }
 
   console.log("");
 
@@ -122,7 +140,15 @@ export function printSuccessOutput(config: {
 
   console.log(kleur.dim("  • Web connects to API automatically"));
   console.log(kleur.dim("  • API connects to Auth automatically"));
-  console.log(kleur.dim("  • Admin dashboard uses the same auth system"));
+  if (consoleUrl) {
+    console.log(
+      kleur.dim(
+        adminMode === "api"
+          ? "  • Admin console is served by the API at /console"
+          : "  • Admin console uses the same auth system",
+      ),
+    );
+  }
   console.log(
     kleur.dim("  • Bootstrap command provisions the first admin user"),
   );

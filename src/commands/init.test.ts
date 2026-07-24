@@ -321,7 +321,6 @@ describe("scaffoldLocal", () => {
     expect(generateDockerCompose).toHaveBeenCalledWith("/work", {
       authMode: "docker",
       adminMode: "image",
-      includeAdmin: true,
       oauth: [],
     });
     // env applied with the docker-provided token/kid for both templates.
@@ -388,6 +387,7 @@ describe("scaffoldLocal", () => {
       expect.arrayContaining([
         expect.objectContaining({ catalog: { label: "Google" } }),
       ]),
+      "image",
     );
     // Docker not requested, so the compose generator is untouched.
     expect(generateDockerCompose).not.toHaveBeenCalled();

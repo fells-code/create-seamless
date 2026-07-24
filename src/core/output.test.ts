@@ -24,6 +24,7 @@ describe("printSuccessOutput", () => {
       apiFramework: "express",
       authMode: "local",
       useDocker: true,
+      adminMode: "image",
     });
 
     const out = allLogs();
@@ -37,7 +38,7 @@ describe("printSuccessOutput", () => {
     expect(out).toContain("API server");
     expect(out).toContain("(Express)");
     expect(out).toContain("(local source)");
-    expect(out).toContain("Admin dashboard");
+    expect(out).toContain("Admin console");
     expect(out).toContain("1. Start services");
     expect(out).toContain("docker compose up");
     expect(out).toContain("2. Create your first admin user");
@@ -52,6 +53,41 @@ describe("printSuccessOutput", () => {
     expect(out).toContain("Setup complete.");
   });
 
+  it("prints the /console URL for API-served hosting", () => {
+    printSuccessOutput({
+      projectName: "my-app",
+      root: "/tmp/my-app",
+      webFramework: "react",
+      apiFramework: "express",
+      authMode: "docker",
+      useDocker: true,
+      adminMode: "api",
+    });
+
+    const out = allLogs();
+    expect(out).toContain("Admin console");
+    expect(out).toContain("served by API at /console");
+    expect(out).toContain("Console: http://localhost:3000/console");
+    expect(out).not.toContain("http://localhost:5174");
+  });
+
+  it("omits the console line entirely when hosting is none", () => {
+    printSuccessOutput({
+      projectName: "my-app",
+      root: "/tmp/my-app",
+      webFramework: "react",
+      apiFramework: "express",
+      authMode: "docker",
+      useDocker: true,
+      adminMode: "none",
+    });
+
+    const out = allLogs();
+    expect(out).not.toContain("Admin console");
+    expect(out).not.toContain("Console:");
+    expect(out).not.toContain("http://localhost:5174");
+  });
+
   it("prints docker authMode label even when useDocker is falsy (symbol edge case not exercised here)", () => {
     printSuccessOutput({
       root: "/tmp/my-app",
@@ -59,6 +95,7 @@ describe("printSuccessOutput", () => {
       apiFramework: null,
       authMode: "docker",
       useDocker: false,
+      adminMode: "image",
     });
 
     const out = allLogs();
@@ -83,6 +120,7 @@ describe("printSuccessOutput", () => {
       apiFramework: "fastapi",
       authMode: "local",
       useDocker: false,
+      adminMode: "image",
     });
 
     const out = allLogs();
@@ -112,6 +150,7 @@ describe("printSuccessOutput", () => {
       apiFramework: "django",
       authMode: "docker",
       useDocker: true,
+      adminMode: "image",
     });
 
     const out = allLogs();
@@ -126,6 +165,7 @@ describe("printSuccessOutput", () => {
       apiFramework: null,
       authMode: "docker",
       useDocker: Symbol("cancel"),
+      adminMode: "none",
     });
 
     const out = allLogs();
