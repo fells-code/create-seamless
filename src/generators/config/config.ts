@@ -19,7 +19,7 @@ export function generateSeamlessConfig(
     webFramework: string;
     apiFramework: string;
     authMode: "local" | "docker" | "managed";
-    adminMode: "image" | "source";
+    adminMode: "api" | "image" | "source" | "none";
     managed?: ManagedConfig;
   },
 ) {
@@ -43,14 +43,18 @@ export function generateSeamlessConfig(
   // A managed instance hosts its own admin dashboard, so no admin service is
   // scaffolded locally.
   const admin = managed
-    ? { mode: "hosted" as const, image: null, path: null }
+    ? { mode: "hosted" as const, image: null, path: null, url: null }
     : {
         mode: options.adminMode,
+        // API-served: the app API proxies the console at /console (no separate
+        // image or checkout). Container modes carry an image or a source path.
         image:
           options.adminMode === "image"
             ? SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE
             : null,
         path: options.adminMode === "source" ? "./admin" : null,
+        url:
+          options.adminMode === "api" ? "http://localhost:3000/console" : null,
       };
 
   const config = {

@@ -10,6 +10,7 @@ import {
   envToDockerBlock,
 } from "../docker/docker.js";
 import type { CollectedOAuthProvider } from "../../core/oauthProviders.js";
+import type { AdminMode } from "../docker/docker.js";
 
 const AUTH_REPO = "https://github.com/fells-code/seamless-auth-api";
 
@@ -17,17 +18,22 @@ export async function generateAuthServer(
   context: any,
   mode: "local" | "docker" | Symbol,
   oauth: CollectedOAuthProvider[] = [],
+  adminMode: AdminMode = "api",
 ) {
   const { root } = context;
 
   if (mode === "local") {
-    return await setupLocalAuth(root, oauth);
+    return await setupLocalAuth(root, oauth, adminMode);
   }
 
   return await setupDockerAuth(root);
 }
 
-async function setupLocalAuth(root: string, oauth: CollectedOAuthProvider[] = []) {
+async function setupLocalAuth(
+  root: string,
+  oauth: CollectedOAuthProvider[] = [],
+  adminMode: AdminMode = "api",
+) {
   const authDir = path.join(root, "auth");
 
   console.log("Cloning SeamlessAuth server...");
@@ -36,7 +42,7 @@ async function setupLocalAuth(root: string, oauth: CollectedOAuthProvider[] = []
 
   console.log("Writing auth environment...");
 
-  const shared = await configureAuthLocalEnv(root, oauth);
+  const shared = await configureAuthLocalEnv(root, oauth, adminMode);
 
   console.log("Auth server ready in /auth");
   return shared;

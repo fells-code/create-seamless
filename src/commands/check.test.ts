@@ -170,6 +170,53 @@ describe("runCheck", () => {
     expect(execSync).not.toHaveBeenCalled();
   });
 
+  it("probes the API /console URL in API-served mode", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({
+        ...CONFIG,
+        services: {
+          ...CONFIG.services,
+          admin: { mode: "api", url: "http://localhost:3000/console" },
+        },
+      }),
+    );
+    vi.mocked(execSync).mockReturnValue(Buffer.from("api\n"));
+    const seen: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (url: unknown) => {
+      seen.push(String(url));
+      return { ok: true, status: 200 } as Response;
+    });
+
+    await runCheck();
+
+    expect(seen).toContain("http://localhost:3000/console");
+    expect(seen).not.toContain("http://localhost:5174");
+    expect(output()).toContain("Console is healthy");
+  });
+
+  it("skips the console probe when hosting is none", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({
+        ...CONFIG,
+        services: { ...CONFIG.services, admin: { mode: "none" } },
+      }),
+    );
+    vi.mocked(execSync).mockReturnValue(Buffer.from("api\n"));
+    const seen: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (url: unknown) => {
+      seen.push(String(url));
+      return { ok: true, status: 200 } as Response;
+    });
+
+    await runCheck();
+
+    expect(seen).not.toContain("http://localhost:5174");
+    expect(seen).not.toContain("http://localhost:3000/console");
+    expect(output()).not.toContain("Console");
+  });
+
   it("reports a container check failure when docker ps throws", async () => {
     vi.mocked(fs.existsSync).mockReturnValue(true);
     vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(CONFIG));

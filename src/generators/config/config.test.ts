@@ -59,6 +59,7 @@ describe("generateSeamlessConfig", () => {
       mode: "hosted",
       image: null,
       path: null,
+      url: null,
     });
     expect(config.services.database).toEqual({ type: "postgres" });
     expect(config.docker).toBeNull();
@@ -108,8 +109,47 @@ describe("generateSeamlessConfig", () => {
       mode: "image",
       image: SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE,
       path: null,
+      url: null,
     });
     expect(config.docker).toEqual({ composeFile: "docker-compose.yml" });
+  });
+
+  it("writes an api-served console config with the /console url", () => {
+    generateSeamlessConfig(tmpDir, {
+      projectName: "my-app",
+      webFramework: "react",
+      apiFramework: "express",
+      authMode: "docker",
+      adminMode: "api",
+    });
+
+    const config = readConfig(tmpDir);
+
+    expect(config.services.admin).toEqual({
+      mode: "api",
+      image: null,
+      path: null,
+      url: "http://localhost:3000/console",
+    });
+  });
+
+  it("writes a none-mode admin block when the console is omitted", () => {
+    generateSeamlessConfig(tmpDir, {
+      projectName: "my-app",
+      webFramework: "react",
+      apiFramework: "express",
+      authMode: "docker",
+      adminMode: "none",
+    });
+
+    const config = readConfig(tmpDir);
+
+    expect(config.services.admin).toEqual({
+      mode: "none",
+      image: null,
+      path: null,
+      url: null,
+    });
   });
 
   it("writes a local-auth config with a source-mode admin dashboard", () => {
@@ -132,6 +172,7 @@ describe("generateSeamlessConfig", () => {
       mode: "source",
       image: null,
       path: "./admin",
+      url: null,
     });
     expect(config.services.web).toEqual({ framework: "vue", path: "./web" });
     expect(config.services.api).toEqual({

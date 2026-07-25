@@ -95,10 +95,26 @@ describe("buildAuthEnv", () => {
     expect(env.REFRESH_TOKEN_LOOKUP_SECRET).toMatch(/^[0-9a-f]{64}$/);
     expect(env.TOTP_SECRET_ENCRYPTION_KEY).toMatch(/^[0-9a-f]{64}$/);
     expect(env.APP_ORIGINS).toBe("http://localhost:3000");
-    expect(env.ORIGINS).toBe("http://localhost:5173,http://localhost:5174");
+    // Defaults to API-served: the console shares the app API origin (3000).
+    expect(env.ORIGINS).toBe("http://localhost:5173,http://localhost:3000");
+    expect(env.SERVE_ADMIN_DASHBOARD).toBe("true");
     expect(env.LOGIN_METHODS).toBe("passkey,magic_link,email_otp");
     expect(env.ALLOW_UNCREDENTIALED_DELIVERY_SECRETS).toBe("true");
     expect(shared.kid).toBe("dev-main");
+  });
+
+  it("adds the standalone console origin and disables serving in container mode", () => {
+    const { env } = buildAuthEnv({}, "docker", [], "image");
+
+    expect(env.ORIGINS).toBe("http://localhost:5173,http://localhost:5174");
+    expect(env.SERVE_ADMIN_DASHBOARD).toBe("false");
+  });
+
+  it("lists only the web origin and disables serving when the console is omitted", () => {
+    const { env } = buildAuthEnv({}, "docker", [], "none");
+
+    expect(env.ORIGINS).toBe("http://localhost:5173");
+    expect(env.SERVE_ADMIN_DASHBOARD).toBe("false");
   });
 
   it("wires local-mode networking values", () => {
@@ -183,7 +199,6 @@ describe("generateDockerCompose", () => {
     const shared = await generateDockerCompose(tmpDir, {
       authMode: "local",
       adminMode: "image",
-      includeAdmin: true,
     });
 
     expect(shared).toEqual({ apiToken: "existing-token", kid: "existing-kid" });
@@ -208,13 +223,28 @@ describe("generateDockerCompose", () => {
     expect(compose.endsWith("\n")).toBe(true);
   });
 
-  it("omits the admin service entirely when includeAdmin is false", async () => {
+  it("omits the admin container in API-served mode and trims 5174 from the api CORS origins", async () => {
     writeAuthEnvFixture(tmpDir, "SEAMLESS_JWKS_ACTIVE_KID");
 
     await generateDockerCompose(tmpDir, {
       authMode: "local",
-      adminMode: "image",
-      includeAdmin: false,
+      adminMode: "api",
+    });
+
+    const compose = fs.readFileSync(
+      path.join(tmpDir, "docker-compose.yml"),
+      "utf-8",
+    );
+    expect(compose).not.toContain("container_name: admin");
+    expect(compose).toContain("UI_ORIGINS: http://localhost:5173\n");
+  });
+
+  it("omits the admin container entirely when the console is not included", async () => {
+    writeAuthEnvFixture(tmpDir, "SEAMLESS_JWKS_ACTIVE_KID");
+
+    await generateDockerCompose(tmpDir, {
+      authMode: "local",
+      adminMode: "none",
     });
 
     const compose = fs.readFileSync(
@@ -224,13 +254,12 @@ describe("generateDockerCompose", () => {
     expect(compose).not.toContain("container_name: admin");
   });
 
-  it("builds a source-mode admin service when includeAdmin is a truthy symbol", async () => {
+  it("builds a source-mode admin service and keeps 5174 in the api CORS origins", async () => {
     writeAuthEnvFixture(tmpDir, "SEAMLESS_JWKS_ACTIVE_KID");
 
     await generateDockerCompose(tmpDir, {
       authMode: "local",
       adminMode: "source",
-      includeAdmin: Symbol("include"),
     });
 
     const compose = fs.readFileSync(
@@ -241,6 +270,9 @@ describe("generateDockerCompose", () => {
     expect(compose).toContain("build: ./admin");
     expect(compose).toContain("AUTH_MODE: server");
     expect(compose).toContain("- ./admin:/app");
+    expect(compose).toContain(
+      "UI_ORIGINS: http://localhost:5173,http://localhost:5174",
+    );
   });
 
   it("builds a docker-auth compose file using the fetched env.example and oauth wiring", async () => {
@@ -249,7 +281,6 @@ describe("generateDockerCompose", () => {
     const shared = await generateDockerCompose(tmpDir, {
       authMode: "docker",
       adminMode: "image",
-      includeAdmin: true,
       oauth: [googleProvider()],
     });
 

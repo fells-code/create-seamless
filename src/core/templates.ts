@@ -55,6 +55,9 @@ export interface ScaffoldContext {
   apiUrl: string;
   apiToken?: string;
   jwksKid?: string;
+  // "true" when the app API should serve the admin console at /console, "false"
+  // when the console is hosted elsewhere (a standalone container) or omitted.
+  serveAdminConsole?: string;
 }
 
 // Build artifacts and local-only files that must never be copied into a scaffold,
@@ -246,6 +249,7 @@ function resolveToken(token: string, ctx: ScaffoldContext): string {
     apiUrl: ctx.apiUrl,
     apiToken: ctx.apiToken,
     jwksKid: ctx.jwksKid,
+    serveAdminConsole: ctx.serveAdminConsole,
   };
 
   if (token in known) {

@@ -19,8 +19,7 @@ export async function generateDockerCompose(
   root: string,
   options: {
     authMode: "local" | "docker";
-    adminMode: "image" | "source";
-    includeAdmin: boolean | symbol;
+    adminMode: AdminMode;
     oauth?: CollectedOAuthProvider[];
   },
 ) {
@@ -38,15 +37,21 @@ export async function generateDockerCompose(
 async function buildCompose(
   options: {
     authMode: "local" | "docker";
-    adminMode: "image" | "source";
-    includeAdmin: boolean | symbol;
+    adminMode: AdminMode;
     oauth?: CollectedOAuthProvider[];
   },
   root: string,
 ) {
-  const { authMode, adminMode, includeAdmin, oauth } = options;
+  const { authMode, adminMode, oauth } = options;
 
-  const { service: authBlock, shared } = await authService(authMode, root, oauth);
+  const { service: authBlock, shared } = await authService(
+    authMode,
+    root,
+    oauth,
+    adminMode,
+  );
+
+  const includeAdminContainer = adminMode === "image" || adminMode === "source";
 
   return {
     compose: `
@@ -70,11 +75,11 @@ services:
 
 ${authBlock}
 
-${apiService(shared)}
+${apiService(shared, adminMode)}
 
 ${webService()}
 
-${includeAdmin ? adminService(adminMode) : ""}
+${includeAdminContainer ? adminService(adminMode) : ""}
 
 volumes:
   pgdata:
@@ -86,6 +91,7 @@ async function authService(
   mode: "local" | "docker",
   root: string,
   oauth: CollectedOAuthProvider[] = [],
+  adminMode: AdminMode = "api",
 ) {
   if (mode === "local") {
     // auth/.env was already written by generateAuthServer (with its secrets and any
@@ -118,10 +124,20 @@ async function authService(
     };
   }
 
-  return await authServiceDocker(oauth);
+  return await authServiceDocker(oauth, adminMode);
 }
 
-function apiService(shared: any) {
+// The app API's CORS allowlist. The console is same-origin here in API-served
+// mode, so 5174 only belongs when a standalone dashboard container runs there.
+function apiUiOrigins(adminMode: AdminMode): string {
+  const web = "http://localhost:5173";
+  if (adminMode === "image" || adminMode === "source") {
+    return `${web},http://localhost:5174`;
+  }
+  return web;
+}
+
+function apiService(shared: any, adminMode: AdminMode) {
   return `
   api:
     container_name: api
@@ -132,7 +148,7 @@ function apiService(shared: any) {
       - ./api/.env
     environment:
       AUTH_SERVER_URL: http://auth:5312
-      UI_ORIGINS: http://localhost:5173,http://localhost:5174
+      UI_ORIGINS: ${apiUiOrigins(adminMode)}
       DB_HOST: db
       API_SERVICE_TOKEN: ${shared.apiToken}
       JWKS_KID: ${shared.kid}
@@ -169,11 +185,14 @@ function webService() {
 `;
 }
 
-async function authServiceDocker(oauth: CollectedOAuthProvider[] = []) {
+async function authServiceDocker(
+  oauth: CollectedOAuthProvider[] = [],
+  adminMode: AdminMode = "api",
+) {
   const raw = await fetchEnvExample();
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "docker", oauth);
+  const { env, shared } = buildAuthEnv(parsed, "docker", oauth, adminMode);
 
   const envBlock = envToDockerBlock(env);
 
@@ -226,10 +245,25 @@ function adminService(mode: "image" | "source") {
 `;
 }
 
+export type AdminMode = "api" | "image" | "source" | "none";
+
+// WebAuthn allowed origins the auth server accepts passkey ceremonies from. The
+// web app (5173) is always present; the console adds either the app API origin
+// (when the API serves it at /console) or the standalone container origin (5174).
+function adminOrigins(adminMode: AdminMode): string {
+  const web = "http://localhost:5173";
+  if (adminMode === "api") return `${web},http://localhost:3000`;
+  if (adminMode === "image" || adminMode === "source") {
+    return `${web},http://localhost:5174`;
+  }
+  return web;
+}
+
 export function buildAuthEnv(
   env: Record<string, string>,
   mode: "local" | "docker",
   oauth: CollectedOAuthProvider[] = [],
+  adminMode: AdminMode = "api",
 ) {
   const apiToken = generateSecret(32);
   const bootstrapSecret = generateSecret(32);
@@ -256,7 +290,11 @@ export function buildAuthEnv(
   env.TOTP_SECRET_ENCRYPTION_KEY = generateSecret(32);
 
   env.APP_ORIGINS = "http://localhost:3000";
-  env.ORIGINS = "http://localhost:5173,http://localhost:5174";
+  env.ORIGINS = adminOrigins(adminMode);
+
+  // Serve the bundled admin dashboard build only when the app API proxies it at
+  // /console; otherwise the console is a standalone container (or omitted).
+  env.SERVE_ADMIN_DASHBOARD = adminMode === "api" ? "true" : "false";
 
   // Enable email OTP so `seamless login` works against a freshly scaffolded stack
   // out of the box. The auth server's own default (passkey,magic_link) has no
@@ -334,6 +372,7 @@ export function buildJWKSConfig() {
 export async function configureAuthLocalEnv(
   root: string,
   oauth: CollectedOAuthProvider[] = [],
+  adminMode: AdminMode = "api",
 ) {
   const authDir = path.join(root, "auth");
   const envExamplePath = path.join(authDir, ".env.example");
@@ -347,7 +386,7 @@ export async function configureAuthLocalEnv(
 
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "local", oauth);
+  const { env, shared } = buildAuthEnv(parsed, "local", oauth, adminMode);
 
   writeEnvFile(envPath, env);
 
