@@ -391,14 +391,20 @@ export async function runVerify(args: string[] = []): Promise<void> {
   const webTemplates = opts.react ? resolveWebTemplates() : [];
   const packageVersions = collectPackageVersions(opts, apiDir, webTemplates);
 
-  const serviceToken = process.env.API_SERVICE_TOKEN ?? "verify-dev-service-token";
+  // Dev-only fixed secrets (deterministic across runs). They must be at least 32
+  // characters: the adapter reuses the service token as its cookie secret, and
+  // @seamless-auth/express rejects a cookieSecret shorter than 32.
+  const serviceToken =
+    process.env.API_SERVICE_TOKEN ??
+    "verify-dev-service-token-not-a-real-secret";
   const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     SEAMLESS_API_DIR: apiDir,
     API_SERVICE_TOKEN: serviceToken,
     JWKS_KID: process.env.JWKS_KID ?? "dev-main",
     SEAMLESS_BOOTSTRAP_SECRET:
-      process.env.SEAMLESS_BOOTSTRAP_SECRET ?? "verify-dev-bootstrap-secret",
+      process.env.SEAMLESS_BOOTSTRAP_SECRET ??
+      "verify-dev-bootstrap-secret-not-a-real-secret",
     // consumed by the harness
     SEAMLESS_API_SERVICE_TOKEN: serviceToken,
     SEAMLESS_API_URL: "http://localhost:5312",
