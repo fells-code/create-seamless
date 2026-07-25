@@ -163,17 +163,17 @@ npm run dev
 A fresh instance has no admin yet. `seamless bootstrap-admin` issues the first admin invite:
 
 ```bash
-seamless bootstrap-admin admin@example.com                 # active profile's instance
-seamless bootstrap-admin admin@example.com --profile prod  # a specific instance
-seamless bootstrap-admin                                   # prompts for the email
+seamless bootstrap-admin admin@example.com                          # local app API (default)
+seamless bootstrap-admin admin@example.com --api-url https://api...  # a specific app API
+seamless bootstrap-admin                                            # prompts for the email
 ```
 
 The invited user then completes registration to receive admin access.
 
-**Where it points.** The target instance is resolved from your active profile's `instanceUrl`
-(respecting `--profile` and `SEAMLESS_PROFILE`), so you can bootstrap a remote instance you never
-scaffolded locally. Set `SEAMLESS_API_URL` to override it, or — when no profile is configured — it
-falls back to `http://localhost:3000` for local dev.
+**Where it points.** The bootstrap invite route is served by your app API (the SeamlessAuth
+server adapter), not the auth server directly, so the target is resolved independently of any
+login profile: `--api-url` wins, then `SEAMLESS_API_URL`, then the local default
+`http://localhost:3000`.
 
 **How it authenticates.** Bootstrap runs _before_ any admin exists, so it can't use a login
 session. Instead it uses the instance's shared bootstrap secret, resolved automatically from a
@@ -367,7 +367,7 @@ Seamless CLI exists to make this setup fast and repeatable.
 
 ## Requirements
 
-- Node.js 18 or newer
+- Node.js 24 (see `.nvmrc`; the package `engines` requires `>=24 <25`)
 - npm or pnpm
 - Docker (optional)
 

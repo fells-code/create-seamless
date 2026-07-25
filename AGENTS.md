@@ -42,12 +42,12 @@ guidance may extend them but must not contradict them.
   or docs. Use a comma, parentheses, or a separate sentence.
 
 ### Before declaring work done
-- All code quality checks must pass before you open a PR or call the work done:
-  tests, linting, type checks, and formatting. Run them and report the real
-  output; do not open a PR while any check is failing.
-- Typical commands: `npm run typecheck`, `npm run lint`, `npm run format:check`
-  (or `npm run format`), and `npm test`. Never claim a change works without
-  running them.
+- All code quality checks must pass before you open a PR or call the work done.
+  Run them and report the real output; do not open a PR while any check is failing.
+- Commands: `npm run build` (runs `tsc`, which type-checks) and `npm test`
+  (`vitest run`); `npm run coverage` enforces the coverage thresholds. There is no
+  separate lint/format tooling configured yet. Never claim a change works without
+  running these.
 - Match the surrounding code's style, naming, and comment density.
 
 ## Start Here
@@ -55,7 +55,9 @@ guidance may extend them but must not contradict them.
 - Install dependencies: `npm install`
 - Build (type-check and emit): `npm run build` (`tsc`, output in `dist/`)
 - Run from source: `npm run dev -- <command>` (`tsx`); or after building, `node dist/index.js <command>`
-- Commands: `init [name]`, `check`, `bootstrap-admin <email>`, `verify [flags]`
+- Commands: `init [name]`, `check`, `bootstrap-admin [email]`, `verify [flags]`,
+  and the instance-management commands `profile`, `login`, `whoami`, `logout`,
+  `sessions`, `config`, `users`, `org` (all dispatched from `src/index.ts`)
 
 The entry point is [src/index.ts](src/index.ts), which dispatches to a command module in
 `src/commands/`.
@@ -77,9 +79,12 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
     [src/core/oauthProviders.ts](src/core/oauthProviders.ts)). The chosen providers are wired into
     the auth server env (`OAUTH_PROVIDERS`, per-provider `*_CLIENT_SECRET`, the `oauth` login
     method) by `buildAuthEnv` in [src/generators/docker/docker.ts](src/generators/docker/docker.ts).
-- **check** health-checks a running stack.
-- **bootstrap-admin** mints the first admin invite.
+- **check** health-checks a running stack (local or managed).
+- **bootstrap-admin** mints the first admin invite against the app API.
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
+- **instance management** — `profile` (targets), `login`/`logout`/`whoami`,
+  `sessions`, `config` (system config + OAuth providers), `users`, and `org` all
+  talk to a running instance and are authenticated by the stored session.
 
 ## The verify harness
 
@@ -102,7 +107,7 @@ Modes and sibling repos:
 - The sibling repos are resolved relative to this repo, overridable with `SEAMLESS_API_DIR`,
   `SEAMLESS_SERVER_DIR`, `SEAMLESS_REACT_SDK_DIR` (the React SDK), and `SEAMLESS_REACT_DIR` (the
   `react-vite` web template, defaulting to `../seamless-templates/templates/web/react-vite`).
-- Useful flags: `--api-only`, `--no-react`, `--filter <grep>`, `--keep-up`.
+- Useful flags: `--api-only`, `--no-react`, `--filter=<flow>` (the `=` form; a space-separated `--filter <flow>` is not parsed), `--keep-up`.
 
 ## Important Folders
 
@@ -112,7 +117,9 @@ Modes and sibling repos:
 - [src/prompts](src/prompts): interactive setup prompts (`@clack/prompts`)
 - [src/utils](src/utils): repo and env-file helpers
 - [verify](verify): the conformance harness (shipped with the package)
-- [templates](templates): static template assets
+
+Templates are not in this repo — they live in the `seamless-templates` monorepo
+(`SEAMLESS_TEMPLATES_REPO`) and are fetched at scaffold time.
 
 ## Conventions
 
