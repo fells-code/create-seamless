@@ -50,11 +50,18 @@ describe("parseEnv", () => {
     expect(parseEnv(file)).toEqual({ URL: "https://example.com?a=1&b=2" });
   });
 
-  it("keeps quotes in values as-is (no unquoting)", () => {
+  it("unquotes double-quoted values and unescapes them", () => {
     const file = path.join(tmpDir, ".env");
-    fs.writeFileSync(file, 'FOO="bar baz"\n');
+    fs.writeFileSync(file, 'FOO="bar baz"\nMULTI="a\\nb"\n');
 
-    expect(parseEnv(file)).toEqual({ FOO: '"bar baz"' });
+    expect(parseEnv(file)).toEqual({ FOO: "bar baz", MULTI: "a\nb" });
+  });
+
+  it("treats single-quoted values as literal", () => {
+    const file = path.join(tmpDir, ".env");
+    fs.writeFileSync(file, "FOO='a\\nb'\n");
+
+    expect(parseEnv(file)).toEqual({ FOO: "a\\nb" });
   });
 });
 
@@ -108,6 +115,29 @@ describe("writeEnv", () => {
     const file = path.join(tmpDir, "roundtrip.env");
     const original = { A: "1", B: "two", C: "" };
     writeEnv(file, original);
+
+    expect(parseEnv(file)).toEqual(original);
+  });
+
+  it("quotes values with characters dotenv would misread, and round-trips them", () => {
+    const file = path.join(tmpDir, "special.env");
+    const original = {
+      HASH: "abc#notacomment",
+      SPACED: "with spaces",
+      QUOTED: 'a"b',
+      NEWLINE: "line1\nline2",
+      BACKSLASH: "a\\b",
+      LEADING: " padded ",
+      PLAIN: "simple-token_123",
+    };
+    writeEnv(file, original);
+
+    const raw = fs.readFileSync(file, "utf-8");
+    // The `#` value must be quoted so a dotenv parser doesn't treat it as a comment,
+    // and a simple token must stay bare.
+    expect(raw).toContain('HASH="abc#notacomment"');
+    expect(raw).toContain("PLAIN=simple-token_123");
+    expect(raw).not.toContain("PLAIN=\"");
 
     expect(parseEnv(file)).toEqual(original);
   });
