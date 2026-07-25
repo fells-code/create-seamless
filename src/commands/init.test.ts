@@ -244,9 +244,34 @@ describe("resolveManagedClient", () => {
     expect(runManagedTemplatePrompts).not.toHaveBeenCalled();
   });
 
-  it("rethrows non-reauth errors from the auth client", async () => {
+  it("falls back to local (with a warning) when the control plane is unreachable", async () => {
     vi.mocked(createAuthClient).mockRejectedValue(new Error("boom"));
-    await expect(runCLI()).rejects.toThrow(/boom/);
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "image",
+      useDocker: true,
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+
+    await runCLI();
+
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+    expect(runManagedTemplatePrompts).not.toHaveBeenCalled();
+    expect(out()).toContain("Could not reach the control plane");
+  });
+
+  it("errors when --app is given but there is no session (no silent local fallback)", async () => {
+    vi.mocked(createAuthClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+
+    await expect(runCLI(undefined, [], { appId: "app-1" })).rejects.toThrow(
+      /--app was given but you are not logged in/,
+    );
+    expect(runProjectSetupPrompts).not.toHaveBeenCalled();
   });
 
   it("skips the auth client entirely with --local", async () => {
@@ -554,6 +579,45 @@ describe("scaffoldManaged", () => {
     expect(confirm).toHaveBeenCalled();
     expect(rotateServiceToken).toHaveBeenCalled();
     expect(printManagedSuccessOutput).toHaveBeenCalled();
+  });
+
+  it("copies templates before rotating the token", async () => {
+    loggedIn();
+    const order: string[] = [];
+    const source = makeSource();
+    source.copyInto = vi.fn(async () => {
+      order.push("copy");
+    }) as never;
+    vi.mocked(openTemplateSource).mockResolvedValue(source as never);
+    vi.mocked(listApplications).mockResolvedValue([app()] as never);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockImplementation(async () => {
+      order.push("rotate");
+      return "svc-token" as never;
+    });
+
+    await runCLI(undefined, [], { appId: "app-1" });
+
+    // copyInto (the likeliest failure) must run before the destructive rotation.
+    expect(order.indexOf("copy")).toBeLessThan(order.indexOf("rotate"));
+  });
+
+  it("prints the issued token for recovery when a post-rotation step fails", async () => {
+    loggedIn();
+    vi.mocked(listApplications).mockResolvedValue([app()] as never);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+    vi.mocked(applyTemplateEnv).mockImplementation(() => {
+      throw new Error("disk full");
+    });
+
+    await expect(runCLI(undefined, [], { appId: "app-1" })).rejects.toThrow(
+      /disk full/,
+    );
+
+    // The freshly issued (and now-active) token is surfaced so the app can recover.
+    expect(out()).toContain("svc-token");
+    expect(printManagedSuccessOutput).not.toHaveBeenCalled();
   });
 
   it("aborts the scaffold when the developer declines rotation", async () => {
