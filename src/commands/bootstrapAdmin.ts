@@ -2,6 +2,7 @@ import { intro, outro, text, confirm, spinner } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
+import { scrubTokens } from "../core/keychain.js";
 
 const DEFAULT_API_URL = "http://localhost:3000";
 
@@ -87,7 +88,7 @@ export async function runBootstrapAdmin(args: string[] = []) {
       s.stop("Failed");
 
       console.error(kleur.red("Error creating bootstrap invite"));
-      console.error(data);
+      console.error(scrubTokens(data));
 
       process.exit(1);
     }
