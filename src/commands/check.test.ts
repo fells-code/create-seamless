@@ -20,6 +20,7 @@ const CONFIG = {
   services: {
     web: { path: "web" },
     api: { path: "api" },
+    admin: { mode: "image" },
   },
   docker: { composeFile: "docker-compose.yml" },
 };
@@ -85,7 +86,7 @@ describe("runCheck", () => {
     expect(out).toContain("Containers running");
     expect(out).toContain("API is healthy");
     expect(out).toContain("Auth is healthy");
-    expect(out).toContain("Admin is healthy");
+    expect(out).toContain("Console is healthy");
     expect(out).toContain("Check complete.");
   });
 
@@ -123,7 +124,50 @@ describe("runCheck", () => {
     expect(out).toContain("API container not running");
     expect(out).toContain("API returned 503");
     expect(out).toContain("Auth not reachable");
-    expect(out).toContain("Admin not reachable");
+    expect(out).toContain("Console not reachable");
+  });
+
+  it("validates the remote instance for a managed project and skips Docker checks", async () => {
+    const managed = {
+      services: {
+        web: { path: "web" },
+        api: { path: "api" },
+        auth: {
+          mode: "managed",
+          instanceUrl: "https://acme.seamlessauth.com",
+          applicationName: "Acme",
+        },
+      },
+      docker: null,
+    };
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(managed));
+    const seen: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (url: unknown) => {
+      seen.push(String(url));
+      return { ok: true, status: 200 } as Response;
+    });
+
+    await runCheck();
+
+    const out = output();
+    expect(out).toContain("Managed instance: Acme");
+    expect(out).toContain("Auth instance reachable");
+    expect(seen).toContain("https://acme.seamlessauth.com/health/status");
+    // Docker/compose/container checks must not run for managed.
+    expect(execSync).not.toHaveBeenCalled();
+    expect(out).not.toContain("Docker Compose file");
+    expect(seen).not.toContain("http://localhost:5312/health/status");
+  });
+
+  it("reports a friendly error on a malformed config file instead of crashing", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+    vi.mocked(fs.readFileSync).mockReturnValue("{ not json");
+
+    await expect(runCheck()).resolves.toBeUndefined();
+
+    expect(output()).toContain("not valid JSON");
+    expect(execSync).not.toHaveBeenCalled();
   });
 
   it("reports a container check failure when docker ps throws", async () => {
