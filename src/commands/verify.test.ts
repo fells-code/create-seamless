@@ -134,6 +134,19 @@ describe("runVerify — published (default) mode", () => {
     expect(tails[tails.length - 1]).toEqual(["--profile", "react", "down", "-v"]);
     expect(exitSpy).not.toHaveBeenCalled();
   });
+
+  it("defaults the service token to >=32 chars (the adapter cookie-secret minimum)", async () => {
+    delete process.env.API_SERVICE_TOKEN;
+    await runVerify(["--api-only"]);
+
+    const dockerUp = vi
+      .mocked(runCommand)
+      .mock.calls.find(
+        (c) => c[0] === "docker" && (c[1] as string[]).includes("up"),
+      );
+    const env = dockerUp?.[3] as NodeJS.ProcessEnv;
+    expect((env.API_SERVICE_TOKEN ?? "").length).toBeGreaterThanOrEqual(32);
+  });
 });
 
 describe("runVerify — flag parsing", () => {
