@@ -263,6 +263,11 @@ export function buildAuthEnv(
   // method the CLI can drive without a browser authenticator.
   env.LOGIN_METHODS = withLoginMethod(env.LOGIN_METHODS, "email_otp");
 
+  // Let `seamless login --local` read the OTP straight from the response instead
+  // of needing a mail provider. Dev-only: the auth server ignores this under a
+  // production NODE_ENV, and the scaffold runs as development.
+  env.ALLOW_UNCREDENTIALED_DELIVERY_SECRETS = "true";
+
   // When the OAuth template collected providers, wire them into the auth server
   // (OAUTH_PROVIDERS, per-provider secret env vars, OAUTH_STATE_SECRET) and enable
   // the oauth login method.
