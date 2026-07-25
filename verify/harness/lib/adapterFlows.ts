@@ -16,7 +16,7 @@ export async function registerAndVerifyEmail(ctx: APIRequestContext, email: stri
   let res = await ctx.post('/auth/registration/register', { data: { email } });
   expect(res.ok(), `register -> ${res.status()}`).toBeTruthy();
 
-  res = await ctx.get('/auth/otp/generate-email-otp');
+  res = await ctx.post('/auth/otp/generate-email-otp');
   expect(res.ok(), `generate-email-otp -> ${res.status()}`).toBeTruthy();
 
   const code = await readCapturedCode(ctx, email);
@@ -28,7 +28,7 @@ export async function loginViaEmailOtp(ctx: APIRequestContext, email: string): P
   let res = await ctx.post('/auth/login', { data: { identifier: email } });
   expect(res.ok(), `login -> ${res.status()}`).toBeTruthy();
 
-  res = await ctx.get('/auth/otp/generate-login-email-otp');
+  res = await ctx.post('/auth/otp/generate-login-email-otp');
   expect(res.ok(), `generate-login-email-otp -> ${res.status()}`).toBeTruthy();
 
   const code = await readCapturedCode(ctx, email);
@@ -40,7 +40,7 @@ export async function loginViaMagicLink(ctx: APIRequestContext, email: string): 
   let res = await ctx.post('/auth/login', { data: { identifier: email } });
   expect(res.ok(), `login -> ${res.status()}`).toBeTruthy();
 
-  res = await ctx.get('/auth/magic-link');
+  res = await ctx.post('/auth/magic-link');
   expect(res.ok(), `magic-link request -> ${res.status()}`).toBeTruthy();
   const token = await readCapturedCode(ctx, email);
 
