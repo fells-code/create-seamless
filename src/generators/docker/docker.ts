@@ -258,6 +258,11 @@ export function buildAuthEnv(
   env.APP_ORIGINS = "http://localhost:3000";
   env.ORIGINS = "http://localhost:5173,http://localhost:5174";
 
+  // Enable email OTP so `seamless login` works against a freshly scaffolded stack
+  // out of the box. The auth server's own default (passkey,magic_link) has no
+  // method the CLI can drive without a browser authenticator.
+  env.LOGIN_METHODS = withLoginMethod(env.LOGIN_METHODS, "email_otp");
+
   // When the OAuth template collected providers, wire them into the auth server
   // (OAUTH_PROVIDERS, per-provider secret env vars, OAUTH_STATE_SECRET) and enable
   // the oauth login method.

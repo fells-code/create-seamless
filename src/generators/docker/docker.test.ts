@@ -96,7 +96,7 @@ describe("buildAuthEnv", () => {
     expect(env.TOTP_SECRET_ENCRYPTION_KEY).toMatch(/^[0-9a-f]{64}$/);
     expect(env.APP_ORIGINS).toBe("http://localhost:3000");
     expect(env.ORIGINS).toBe("http://localhost:5173,http://localhost:5174");
-    expect(env.LOGIN_METHODS).toBeUndefined();
+    expect(env.LOGIN_METHODS).toBe("passkey,magic_link,email_otp");
     expect(shared.kid).toBe("dev-main");
   });
 
@@ -114,7 +114,7 @@ describe("buildAuthEnv", () => {
     const providers = JSON.parse(env.OAUTH_PROVIDERS);
     expect(providers).toHaveLength(1);
     expect(providers[0]).toMatchObject({ id: "google", enabled: true });
-    expect(env.LOGIN_METHODS).toBe("passkey,magic_link,oauth");
+    expect(env.LOGIN_METHODS).toBe("passkey,magic_link,email_otp,oauth");
   });
 });
 
