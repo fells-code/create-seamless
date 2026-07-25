@@ -60,6 +60,10 @@ services:
       REFRESH_TOKEN_TTL: 1h
       RATE_LIMIT: '100000'
       DELAY_AFTER: '100000'
+      # The dedicated per-IP OTP/magic-link/registration/OAuth limiters are not
+      # tuned by RATE_LIMIT; the suite drives many flows from one IP and would trip
+      # them. This dev-only flag skips them (ignored under NODE_ENV=production).
+      DISABLE_AUTH_RATE_LIMITS: 'true'
       RPID: localhost
       ORIGINS: http://localhost:5173,http://localhost:3000
       DB_HOST: postgres
