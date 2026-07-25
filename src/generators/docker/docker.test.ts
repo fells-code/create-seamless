@@ -97,6 +97,7 @@ describe("buildAuthEnv", () => {
     expect(env.APP_ORIGINS).toBe("http://localhost:3000");
     expect(env.ORIGINS).toBe("http://localhost:5173,http://localhost:5174");
     expect(env.LOGIN_METHODS).toBe("passkey,magic_link,email_otp");
+    expect(env.ALLOW_UNCREDENTIALED_DELIVERY_SECRETS).toBe("true");
     expect(shared.kid).toBe("dev-main");
   });
 
