@@ -1,5 +1,158 @@
 # seamless-cli
 
+## 0.10.0
+
+### Minor Changes
+
+- 46ed8dd: Let adopters choose how the admin console is hosted during `seamless init`.
+
+  The old "Include Admin Dashboard?" / image-vs-source prompts are replaced by a
+  single question with four options:
+
+  - **Served by your API at /console** (recommended default) — the app backend
+    proxies the console via the SDK's `createSeamlessConsoleProxy`, so it loads
+    from the API's own origin. The scaffold sets `SERVE_ADMIN_CONSOLE=true` on the
+    API, `SERVE_ADMIN_DASHBOARD=true` on the auth server, and adds the API origin
+    to the auth server's `ORIGINS` so console passkey ceremonies verify. No
+    separate admin container.
+  - **Separate container** — official image or cloned source, as before, on
+    `http://localhost:5174`.
+  - **None** — no console is scaffolded.
+
+  Each choice pre-configures the auth-server env, the app-backend env, the Docker
+  Compose services, `seamless.config.json`, the success output, and `seamless
+check` accordingly. Pins the auth API image to `v0.3.0` and the templates to
+  `v0.3.0` (which env-gate the console proxy).
+
+- e612a10: Enable `email_otp` in the scaffolded auth server's default login methods.
+
+  The auth server's own default (`passkey,magic_link`) has no method the CLI can
+  drive without a browser authenticator, so `seamless login` could not sign in to
+  a freshly scaffolded local stack. `buildAuthEnv` now appends `email_otp` to
+  `LOGIN_METHODS` (composing with the OAuth method when providers are configured),
+  so email-OTP login works out of the box.
+
+- 7fbaff0: Enable `ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true` in the scaffolded auth server env.
+
+  Companion to the `email_otp` default: with it set, `seamless login --local`
+  reads the OTP straight from the auth server's response instead of needing a mail
+  provider, so signing in to a freshly scaffolded local stack works end to end.
+  It's a dev-only escape hatch — the auth server ignores it under a production
+  `NODE_ENV`, and the scaffold runs as development.
+
+### Patch Changes
+
+- 2e27156: Fix `seamless bootstrap-admin` to target the app API instead of the login profile's auth server.
+
+  The bootstrap invite route (`/auth/internal/bootstrap/admin-invite`) and its
+  delivery are exposed by the app API (the SeamlessAuth server adapter), not the
+  auth server directly — the auth server does not serve that path. Previously
+  `bootstrap-admin` fell back to the active profile's `instanceUrl`, so once a
+  profile pointed at the auth server (as `seamless login` and the admin commands
+  require), bootstrap requests 404'd.
+
+  `bootstrap-admin` now resolves its target independently of any profile:
+  `--api-url <url>` → `SEAMLESS_API_URL` → the local default `http://localhost:3000`.
+  The `--profile` flag is removed from this command (it no longer affects the
+  target; the bootstrap secret is still resolved from the local project).
+
+- 3dbdc61: Reconcile documentation with actual behavior.
+
+  - README: correct the Node requirement (24, per `.nvmrc`/`engines`, not 18);
+    update `bootstrap-admin` docs to the `--api-url` → `SEAMLESS_API_URL` →
+    `http://localhost:3000` resolution (the removed `--profile` flag and
+    auth-server-profile wording are gone).
+  - AGENTS.md: drop the `npm run typecheck`/`lint`/`format:check` commands that
+    don't exist (there is no lint/format tooling yet); note the `--filter=<flow>`
+    (`=` form) for `verify`; list the instance-management commands; remove the stale
+    top-level `templates/` reference (templates live in the `seamless-templates`
+    monorepo).
+  - `package.json`: drop the dead `templates` entry from `files`.
+
+  Closes #94.
+
+- e81a07d: Make `seamless check` managed-aware and resilient to partial config.
+
+  `checkCompose` dereferenced `config.docker.composeFile`, which is `null` for
+  managed projects, so `seamless check` crashed with a `TypeError` on any managed
+  scaffold. `check` now branches on `services.auth.mode === "managed"`: it validates
+  the remote instance's `/health/status` and skips the Docker/compose/container
+  checks (which don't apply remotely). It also wraps `JSON.parse` and guards missing
+  service entries so a malformed or partial `seamless.config.json` prints a friendly
+  message instead of a stack trace. The local console health check is derived from
+  `services.admin.mode` (image/source → :5174, api → :3000/console, none/hosted →
+  skipped).
+
+  Closes #78.
+
+- c4a0f93: Fix the conformance adapter flows to match the SDK's POST OTP/magic-link routes.
+
+  `@seamless-auth/express` now serves OTP generate routes (and `/magic-link`) over
+  POST, but the harness adapter flows still called them with GET, so every adapter
+  spec failed at `generate-email-otp -> 404` once the stack came up. The adapter
+  flows now POST `/auth/otp/generate-email-otp`, `/auth/otp/generate-login-email-otp`,
+  and `/auth/magic-link`.
+
+  Closes #111.
+
+- 545aafc: Disable auth rate limits in the conformance stack.
+
+  The conformance suite drives many OTP/registration/magic-link flows from a single
+  IP and trips auth-api's dedicated per-IP limiters (which `RATE_LIMIT` doesn't
+  tune), so the adapter layer failed with 429s once the stack came up. The verify
+  compose now sets `DISABLE_AUTH_RATE_LIMITS=true` on the auth-api service — a
+  dev-only flag (ignored under `NODE_ENV=production`) added in seamless-auth-api.
+
+  Requires seamless-auth-api with `DISABLE_AUTH_RATE_LIMITS` support; conformance
+  builds it from source, so no release is needed.
+
+- f7e5b5d: Fix the conformance stack and surface container logs on failure.
+
+  auth-api 0.3.0 requires `FRONTEND_URL` at startup (a required system config), which
+  the verify compose never set — so the auth-api container exited on boot and every
+  `conformance` run (here and in sibling repos calling the reusable workflow) aborted
+  with a bare "docker failed" before any layer ran. `verify/docker-compose.verify.yml`
+  now sets `FRONTEND_URL`, and `seamless verify` dumps recent container logs on a
+  setup failure so a container that exits on startup is diagnosable instead of hidden.
+
+  Closes #107.
+
+- 54f1f02: Quote generated `.env` values that a dotenv parser would otherwise misread.
+
+  `writeEnv` wrote bare `KEY=value`, so a value containing `#`, whitespace, quotes,
+  a backslash, or a newline (e.g. a managed `API_SERVICE_TOKEN` or a pasted OAuth
+  secret) produced a `.env` that dotenv truncates or mis-parses. Values that need
+  it are now double-quoted and escaped, and `parseEnv`/`parseEnvString` unquote on
+  read so the CLI round-trips its own output. Simple values (tokens, URLs, hex
+  secrets) are still written bare.
+
+  Closes #81.
+
+- 943d13d: Harden the managed `init` flow.
+
+  - **Explicit managed intent no longer silently scaffolds local.** When `--app` is
+    given but there is no usable session (expired or control plane unreachable),
+    `init` now fails with an actionable message instead of quietly scaffolding a
+    self-hosted project and ignoring the flag. Without `--app`, a missing session or
+    an unreachable control plane falls back to local with a clear warning (rather
+    than aborting on transient network errors, as it previously did for non-reauth
+    failures). Closes #79.
+  - **Service-token rotation is now recoverable.** Rotation invalidates the app's
+    previous token, so it runs after templates are copied (the likeliest failure
+    point), and every step after it is guarded: if scaffolding fails post-rotation,
+    the freshly issued token is printed so a deployed app can be re-wired instead of
+    left bricked. The same guard covers `integrateExistingProject`. Closes #80.
+
+- 9eaaf0e: Fix the conformance adapter crash: the dev service token was too short.
+
+  `seamless verify` defaulted `API_SERVICE_TOKEN` to a 24-char constant, which the
+  adapter reuses as its cookie secret; a newer `@seamless-auth/express` rejects a
+  cookieSecret shorter than 32, so the adapter container exited and conformance
+  failed after the stack came up. The dev service token and bootstrap secret
+  defaults are now >=32 characters.
+
+  Closes #109.
+
 ## 0.9.0
 
 ### Minor Changes
