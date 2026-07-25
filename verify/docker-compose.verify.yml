@@ -51,6 +51,10 @@ services:
       DEFAULT_ROLES: user
       AVAILABLE_ROLES: user,admin
       LOGIN_METHODS: passkey,magic_link,email_otp,phone_otp,oauth
+      # Required system config as of auth-api 0.3.0: the base URL for emailed
+      # magic links. Without it (and with a fresh DB, so system_config isn't seeded)
+      # the server exits at startup. The browser-visible web app runs on 5173.
+      FRONTEND_URL: http://localhost:5173
       DB_LOGGING: 'false'
       ACCESS_TOKEN_TTL: 15m
       REFRESH_TOKEN_TTL: 1h

@@ -477,6 +477,17 @@ export async function runVerify(args: string[] = []): Promise<void> {
     failed = true;
     setupError = err as Error;
     console.log(kleur.red(`\n✖ Conformance failed: ${setupError.message}\n`));
+    // A container that exits on startup surfaces only as "docker failed" — dump the
+    // recent stack logs before teardown so the real cause is visible (in CI too).
+    console.log(kleur.dim("→ Recent container logs:\n"));
+    await compose(
+      baseEnv,
+      "--profile",
+      "react",
+      "logs",
+      "--tail",
+      "80",
+    ).catch(() => undefined);
   } finally {
     if (opts.keepUp) {
       console.log(kleur.dim("Stack left running (--keep-up). Tear down with:"));

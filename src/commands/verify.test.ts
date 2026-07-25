@@ -356,6 +356,15 @@ describe("runVerify — conformance failures (caught, exits 1)", () => {
     const printed = logSpy.mock.calls.map((c) => String(c[0])).join("\n");
     expect(printed).toMatch(/Verify aborted/);
     expect(printed).toMatch(/No conformance layers ran/);
+    // On a stack failure the recent container logs are dumped so the real cause
+    // (e.g. a container that exited on startup) isn't hidden behind "docker failed".
+    expect(printed).toMatch(/Recent container logs/);
+    expect(runCommand).toHaveBeenCalledWith(
+      "docker",
+      expect.arrayContaining(["logs"]),
+      expect.anything(),
+      expect.anything(),
+    );
   });
 });
 
