@@ -35,7 +35,6 @@
   "main": "dist/index.js",
   "files": [
     "dist",
-    "templates",
     "verify",
     "README.md",
     "LICENSE"
