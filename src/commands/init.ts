@@ -76,8 +76,25 @@ export async function runCLI(
   }
 
   // A logged-in profile makes the managed path the default; --local forces the
-  // self-hosted stack, and a missing session falls back to it automatically.
-  const client = opts.local ? null : await resolveManagedClient(opts.profileFlag);
+  // self-hosted stack. A missing session or an unreachable control plane falls
+  // back to local — unless managed was requested explicitly (handled below).
+  let client: AuthClient | null = null;
+  let fallbackReason: "no-session" | "unreachable" | null = null;
+  if (!opts.local) {
+    const resolution = await resolveManagedClient(opts.profileFlag);
+    client = resolution.client;
+    if (!client) fallbackReason = resolution.reason;
+  }
+
+  // `--app` is an explicit managed intent. Silently scaffolding local and ignoring
+  // the flag would be surprising, so fail with an actionable message instead.
+  if (!client && opts.appId) {
+    throw new Error(
+      fallbackReason === "unreachable"
+        ? "Could not reach the Seamless control plane to connect a managed instance. Check your connection, or re-run with --local to scaffold a self-hosted stack."
+        : "--app was given but you are not logged in. Run `seamless login` to connect a managed instance, or drop --app to scaffold a local project.",
+    );
+  }
 
   const isEmpty = fs.readdirSync(root).length === 0;
 
@@ -89,20 +106,36 @@ export async function runCLI(
   if (client) {
     await scaffoldManaged(root, projectName, aliases, client, opts);
   } else {
+    if (fallbackReason) {
+      console.log(
+        kleur.yellow(
+          fallbackReason === "unreachable"
+            ? "Could not reach the control plane; scaffolding a local project instead. Use --local to skip this check."
+            : "Not logged in; scaffolding a local project. Run `seamless login` first to connect a managed instance.",
+        ),
+      );
+    }
     await scaffoldLocal(root, projectName, aliases);
   }
 }
 
-// Returns an authenticated control-plane client when a profile is logged in, or
-// null when there is no session (so init drops to the local stack).
+type ManagedResolution =
+  | { client: AuthClient; reason: null }
+  | { client: null; reason: "no-session" | "unreachable" };
+
+// Resolves an authenticated control-plane client. A missing session
+// ("no-session") and an unreachable/errored control plane ("unreachable") both
+// yield a null client so init can fall back to local (or, with --app, error).
 async function resolveManagedClient(
   profileFlag?: string,
-): Promise<AuthClient | null> {
+): Promise<ManagedResolution> {
   try {
-    return await createAuthClient({ profileFlag });
+    return { client: await createAuthClient({ profileFlag }), reason: null };
   } catch (err) {
-    if (err instanceof ReauthRequiredError) return null;
-    throw err;
+    if (err instanceof ReauthRequiredError) {
+      return { client: null, reason: "no-session" };
+    }
+    return { client: null, reason: "unreachable" };
   }
 }
 
@@ -127,56 +160,72 @@ async function scaffoldManaged(
     root,
   );
 
-  // Resolve the target application and its service token before writing files,
-  // so a cancelled selection or an authorization failure leaves nothing behind.
+  // Resolve the target application before writing files, so a cancelled selection
+  // or an authorization failure leaves nothing behind.
   const apps = await listApplications(client);
   const app = await selectApplication(apps, opts.appId);
   if (!app) return;
+
+  // Copy templates before rotating the service token. Rotation invalidates the
+  // app's previous token (see rotateServiceToken), so it runs as late as possible;
+  // copyInto is the likeliest step to fail, so it happens first, before rotation.
+  for (const { entry, dir } of selected) {
+    console.log(`Adding ${entry.label} starter...`);
+    await source.copyInto(entry, dir);
+  }
 
   const serviceToken = await issueServiceToken(client, app);
   if (serviceToken === null) return;
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
 
-  for (const { entry, dir } of selected) {
-    console.log(`Adding ${entry.label} starter...`);
-    await source.copyInto(entry, dir);
+  // Everything past rotation is guarded: if it throws, the freshly issued token is
+  // printed so a deployed app can be re-wired rather than left bricked (the control
+  // plane never re-shows it).
+  try {
+    const ctx: ScaffoldContext = {
+      authServerUrl,
+      apiUrl: API_URL,
+      apiToken: serviceToken,
+      jwksKid: MANAGED_JWKS_KID,
+    };
+
+    for (const { manifest, dir } of selected) {
+      applyTemplateEnv(dir, manifest, ctx);
+    }
+
+    const webEntry = findEntry(source.registry.templates, answers.webTemplateId);
+    const apiEntry = findEntry(source.registry.templates, answers.apiTemplateId);
+
+    generateSeamlessConfig(root, {
+      projectName,
+      webFramework: webEntry.framework,
+      apiFramework: apiEntry.framework,
+      authMode: "managed",
+      adminMode: "image",
+      managed: {
+        instanceUrl: authServerUrl,
+        applicationId: app.id,
+        applicationName: app.name,
+      },
+    });
+
+    printManagedSuccessOutput({
+      projectName,
+      webFramework: webEntry.framework,
+      apiFramework: apiEntry.framework,
+      authServerUrl,
+      appName: app.name,
+    });
+  } catch (err) {
+    console.error(
+      kleur.red(
+        "\nScaffolding failed after a new service token was issued. The token below is valid — set it on your backend to recover:",
+      ),
+    );
+    printManagedValues(authServerUrl, serviceToken);
+    throw err;
   }
-
-  const ctx: ScaffoldContext = {
-    authServerUrl,
-    apiUrl: API_URL,
-    apiToken: serviceToken,
-    jwksKid: MANAGED_JWKS_KID,
-  };
-
-  for (const { manifest, dir } of selected) {
-    applyTemplateEnv(dir, manifest, ctx);
-  }
-
-  const webEntry = findEntry(source.registry.templates, answers.webTemplateId);
-  const apiEntry = findEntry(source.registry.templates, answers.apiTemplateId);
-
-  generateSeamlessConfig(root, {
-    projectName,
-    webFramework: webEntry.framework,
-    apiFramework: apiEntry.framework,
-    authMode: "managed",
-    adminMode: "image",
-    managed: {
-      instanceUrl: authServerUrl,
-      applicationId: app.id,
-      applicationName: app.name,
-    },
-  });
-
-  printManagedSuccessOutput({
-    projectName,
-    webFramework: webEntry.framework,
-    apiFramework: apiEntry.framework,
-    authServerUrl,
-    appName: app.name,
-  });
 }
 
 async function scaffoldLocal(
@@ -298,16 +347,30 @@ async function integrateExistingProject(
   const authServerUrl = normalizeInstanceUrl(app.domain);
   const apiDir = path.join(root, "api");
 
-  if (fs.existsSync(apiDir)) {
-    wireApiEnv(apiDir, authServerUrl, serviceToken);
-    console.log(kleur.green(`Updated ${path.join("api", ".env")}.`));
-    console.log(
-      kleur.dim("  Set your web app's auth server URL to: ") +
-        kleur.cyan(authServerUrl),
-    );
-  } else {
+  if (!fs.existsSync(apiDir)) {
     printManagedValues(authServerUrl, serviceToken);
+    return;
   }
+
+  // The token is already rotated (old one invalidated); if the write fails, print
+  // it so the app can be re-wired by hand rather than left bricked.
+  try {
+    wireApiEnv(apiDir, authServerUrl, serviceToken);
+  } catch (err) {
+    console.error(
+      kleur.red(
+        "\nFailed to write api/.env after issuing a new service token. Set it by hand to recover:",
+      ),
+    );
+    printManagedValues(authServerUrl, serviceToken);
+    throw err;
+  }
+
+  console.log(kleur.green(`Updated ${path.join("api", ".env")}.`));
+  console.log(
+    kleur.dim("  Set your web app's auth server URL to: ") +
+      kleur.cyan(authServerUrl),
+  );
 }
 
 // Merges the managed auth values into an existing api/.env, preserving any keys
