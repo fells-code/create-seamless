@@ -1,15 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
-import { getActiveProfile } from "../core/config.js";
 import { runBootstrapAdmin } from "./bootstrapAdmin.js";
 
 vi.mock("../core/bootstrapSecret.js", () => ({
   resolveBootstrapSecret: vi.fn(),
-}));
-
-vi.mock("../core/config.js", () => ({
-  getActiveProfile: vi.fn(),
 }));
 
 vi.mock("@clack/prompts", () => ({
@@ -34,14 +29,12 @@ beforeEach(() => {
   errors = [];
 
   vi.mocked(resolveBootstrapSecret).mockReset();
-  vi.mocked(getActiveProfile).mockReset();
   vi.mocked(intro).mockReset();
   vi.mocked(outro).mockReset();
   vi.mocked(text).mockReset();
   vi.mocked(confirm).mockReset();
   vi.mocked(spinner).mockReset();
 
-  vi.mocked(getActiveProfile).mockReturnValue(undefined);
   vi.mocked(confirm).mockResolvedValue(true);
 
   spinnerStart = vi.fn();
@@ -140,7 +133,7 @@ describe("runBootstrapAdmin — confirm cancellation", () => {
 });
 
 describe("runBootstrapAdmin — API URL resolution", () => {
-  it("defaults to localhost:3000 when no profile or override is set", async () => {
+  it("defaults to the local app API at localhost:3000 when no override is set", async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ data: {} }),
@@ -154,49 +147,26 @@ describe("runBootstrapAdmin — API URL resolution", () => {
     );
   });
 
-  it("targets the active profile's instance URL", async () => {
-    vi.mocked(getActiveProfile).mockReturnValue({
-      name: "prod",
-      instanceUrl: "https://auth.prod.example.com",
-    });
+  it("targets the --api-url flag when provided", async () => {
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ data: {} }),
     } as Response);
 
-    await runBootstrapAdmin(["admin@example.com"]);
+    await runBootstrapAdmin([
+      "--api-url",
+      "http://localhost:4000",
+      "admin@example.com",
+    ]);
 
     expect(fetch).toHaveBeenCalledWith(
-      "https://auth.prod.example.com/auth/internal/bootstrap/admin-invite",
+      "http://localhost:4000/auth/internal/bootstrap/admin-invite",
       expect.anything(),
     );
   });
 
-  it("resolves the profile named by the --profile flag", async () => {
-    vi.mocked(getActiveProfile).mockReturnValue({
-      name: "staging",
-      instanceUrl: "https://auth.staging.example.com",
-    });
-    vi.mocked(fetch).mockResolvedValue({
-      ok: true,
-      json: async () => ({ data: {} }),
-    } as Response);
-
-    await runBootstrapAdmin(["--profile", "staging", "admin@example.com"]);
-
-    expect(getActiveProfile).toHaveBeenCalledWith({ profileFlag: "staging" });
-    expect(fetch).toHaveBeenCalledWith(
-      "https://auth.staging.example.com/auth/internal/bootstrap/admin-invite",
-      expect.anything(),
-    );
-  });
-
-  it("lets SEAMLESS_API_URL override the profile", async () => {
+  it("lets SEAMLESS_API_URL override the default", async () => {
     process.env.SEAMLESS_API_URL = "https://api.example.com";
-    vi.mocked(getActiveProfile).mockReturnValue({
-      name: "prod",
-      instanceUrl: "https://auth.prod.example.com",
-    });
     vi.mocked(fetch).mockResolvedValue({
       ok: true,
       json: async () => ({ data: {} }),
@@ -204,9 +174,27 @@ describe("runBootstrapAdmin — API URL resolution", () => {
 
     await runBootstrapAdmin(["admin@example.com"]);
 
-    expect(getActiveProfile).not.toHaveBeenCalled();
     expect(fetch).toHaveBeenCalledWith(
       "https://api.example.com/auth/internal/bootstrap/admin-invite",
+      expect.anything(),
+    );
+  });
+
+  it("prefers --api-url over SEAMLESS_API_URL", async () => {
+    process.env.SEAMLESS_API_URL = "https://env.example.com";
+    vi.mocked(fetch).mockResolvedValue({
+      ok: true,
+      json: async () => ({ data: {} }),
+    } as Response);
+
+    await runBootstrapAdmin([
+      "--api-url",
+      "https://flag.example.com",
+      "admin@example.com",
+    ]);
+
+    expect(fetch).toHaveBeenCalledWith(
+      "https://flag.example.com/auth/internal/bootstrap/admin-invite",
       expect.anything(),
     );
   });

@@ -1,29 +1,27 @@
 import { intro, outro, text, confirm, spinner } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
-import { getActiveProfile } from "../core/config.js";
 import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
 
 const DEFAULT_API_URL = "http://localhost:3000";
 
-// Bootstrap authenticates with the shared bootstrap secret (not a user
-// session), so the profile is only used to target the right instance. The
-// SEAMLESS_API_URL env override wins for backward compatibility; otherwise fall
-// back to the local dev default when no profile is configured.
-function resolveApiUrl(profileFlag?: string): string {
-  const override = process.env.SEAMLESS_API_URL?.trim();
-  if (override) return override;
-
-  const profile = getActiveProfile({ profileFlag });
-  if (profile) return profile.instanceUrl;
-
-  return DEFAULT_API_URL;
+// Bootstrap targets the app API (the SeamlessAuth server adapter), which is what
+// exposes /auth/internal/bootstrap/admin-invite and delivers the invite. That is a
+// different service from a login profile's auth-server URL, which does not serve
+// that route — so this resolves independently of any profile: an explicit
+// --api-url wins, then SEAMLESS_API_URL, then the local dev default.
+function resolveApiUrl(apiUrlFlag?: string): string {
+  return (
+    apiUrlFlag?.trim() ||
+    process.env.SEAMLESS_API_URL?.trim() ||
+    DEFAULT_API_URL
+  );
 }
 
 export async function runBootstrapAdmin(args: string[] = []) {
   intro("Seamless Auth Bootstrap");
 
-  const { value: profileFlag, rest } = extractFlag(args, "profile");
+  const { value: apiUrlFlag, rest } = extractFlag(args, "api-url");
   let email = rest.find((a) => !a.startsWith("-"));
 
   if (!email) {
@@ -48,7 +46,7 @@ export async function runBootstrapAdmin(args: string[] = []) {
     return;
   }
 
-  const apiUrl = resolveApiUrl(profileFlag);
+  const apiUrl = resolveApiUrl(apiUrlFlag);
 
   let secret = resolveBootstrapSecret();
 
