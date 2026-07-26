@@ -1,6 +1,6 @@
 export const POSTGRES_IMAGE = "postgres:17";
 
-export const SEAMLESS_AUTH_API_VERSION = "v0.4.0";
+export const SEAMLESS_AUTH_API_VERSION = "v0.5.0";
 
 export const SEAMLESS_AUTH_API_IMAGE = `ghcr.io/fells-code/seamless-auth-api:${SEAMLESS_AUTH_API_VERSION}`;
 
