@@ -22,6 +22,11 @@ import {
 import { createPortalClient, ReauthRequiredError } from "../core/authClient.js";
 import { listApplications, rotateServiceToken } from "../core/portal.js";
 import { selectApplication } from "../prompts/appSelect.js";
+import {
+  chooseExistingDirectoryAction,
+  chooseScaffoldTarget,
+  confirmLocalFallback,
+} from "../prompts/initMode.js";
 import { parseEnv, writeEnv } from "../core/env.js";
 
 import { CancelledError } from "../core/cancel.js";
@@ -55,6 +60,11 @@ vi.mock("../prompts/oauthSetup.js", () => ({
 }));
 vi.mock("../prompts/appSelect.js", () => ({
   selectApplication: vi.fn(),
+}));
+vi.mock("../prompts/initMode.js", () => ({
+  chooseExistingDirectoryAction: vi.fn(),
+  chooseScaffoldTarget: vi.fn(),
+  confirmLocalFallback: vi.fn(),
 }));
 vi.mock("../generators/auth/auth.js", () => ({
   generateAuthServer: vi.fn(),
@@ -180,6 +190,10 @@ beforeEach(() => {
   // Empty directory by default (fresh scaffold).
   vi.mocked(fs.readdirSync).mockReturnValue([] as never);
   vi.mocked(fs.existsSync).mockReturnValue(false);
+  // Default answers for the mode prompts; individual tests override.
+  vi.mocked(chooseExistingDirectoryAction).mockResolvedValue("integrate");
+  vi.mocked(chooseScaffoldTarget).mockResolvedValue("managed");
+  vi.mocked(confirmLocalFallback).mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -366,7 +380,9 @@ describe("resolveManagedClient", () => {
 
     expect(runProjectSetupPrompts).toHaveBeenCalled();
     expect(runManagedTemplatePrompts).not.toHaveBeenCalled();
-    expect(out()).toContain("Could not reach the control plane");
+    // Degrading from managed to a full local Docker stack is confirmed rather
+    // than announced after the fact.
+    expect(confirmLocalFallback).toHaveBeenCalled();
   });
 
   it("errors when --app is given but there is no session (no silent local fallback)", async () => {
@@ -758,7 +774,7 @@ describe("scaffoldManaged", () => {
 
   it("stops when the application selection is cancelled", async () => {
     loggedIn();
-    vi.mocked(listApplications).mockResolvedValue([] as never);
+    vi.mocked(listApplications).mockResolvedValue([app(), app({ id: "app-2" })] as never);
     vi.mocked(selectApplication).mockRejectedValue(new CancelledError());
 
     await expect(runCLI(undefined, [])).rejects.toBeInstanceOf(CancelledError);
@@ -768,21 +784,163 @@ describe("scaffoldManaged", () => {
   });
 });
 
+describe("init mode selection", () => {
+  function loggedInWith(apps: unknown[]) {
+    vi.mocked(createPortalClient).mockResolvedValue({
+      profile: { name: "default", instanceUrl: "https://auth" },
+    } as never);
+    vi.mocked(listApplications).mockResolvedValue(apps as never);
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+    } as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "image",
+      useDocker: true,
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+  }
+
+  it("asks whether to connect managed or scaffold local", async () => {
+    loggedInWith([app(), app({ id: "app-2" })]);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+
+    await runCLI(undefined, []);
+
+    expect(chooseScaffoldTarget).toHaveBeenCalledWith(2);
+    expect(printManagedSuccessOutput).toHaveBeenCalled();
+  });
+
+  it("scaffolds local when that is the answer, despite a session", async () => {
+    loggedInWith([app()]);
+    vi.mocked(chooseScaffoldTarget).mockResolvedValue("local");
+
+    await runCLI(undefined, []);
+
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+    expect(rotateServiceToken).not.toHaveBeenCalled();
+  });
+
+  // The old flow asked for templates first and only then discovered there was
+  // nothing to connect, ending in a hard error.
+  it("falls through to local when the account has no applications", async () => {
+    loggedInWith([]);
+
+    await runCLI(undefined, []);
+
+    expect(chooseScaffoldTarget).not.toHaveBeenCalled();
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+    expect(out()).toContain("no managed applications yet");
+  });
+
+  it("says provisioning when an application exists but has no URL yet", async () => {
+    loggedInWith([app({ domain: undefined })]);
+
+    await runCLI(undefined, []);
+
+    expect(out()).toContain("still provisioning");
+    expect(out()).not.toContain("no managed applications yet");
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+  });
+
+  it("does not ask when --app names the intent", async () => {
+    loggedInWith([app()]);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+
+    await runCLI(undefined, [], { appId: "app-1" });
+
+    expect(chooseScaffoldTarget).not.toHaveBeenCalled();
+    expect(printManagedSuccessOutput).toHaveBeenCalled();
+  });
+
+  it("does not reach the control plane at all with --local", async () => {
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "image",
+      useDocker: true,
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+
+    await runCLI(undefined, [], { local: true });
+
+    expect(createPortalClient).not.toHaveBeenCalled();
+    expect(listApplications).not.toHaveBeenCalled();
+    expect(chooseScaffoldTarget).not.toHaveBeenCalled();
+  });
+
+  it("offers integrate only when there is something to connect", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["package.json"] as never);
+    loggedInWith([app()]);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    await runCLI(undefined, []);
+
+    expect(chooseExistingDirectoryAction).toHaveBeenCalledWith(true);
+  });
+
+  it("scaffolds into a non-empty directory when that is the answer", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["README.md"] as never);
+    loggedInWith([app()]);
+    vi.mocked(chooseExistingDirectoryAction).mockResolvedValue("scaffold");
+    vi.mocked(chooseScaffoldTarget).mockResolvedValue("local");
+
+    await runCLI(undefined, []);
+
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+    expect(rotateServiceToken).not.toHaveBeenCalled();
+  });
+
+  it("skips the directory question when --app names the intent", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["package.json"] as never);
+    loggedInWith([app()]);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    await runCLI(undefined, [], { appId: "app-1" });
+
+    expect(chooseExistingDirectoryAction).not.toHaveBeenCalled();
+  });
+});
+
 describe("integrateExistingProject", () => {
   beforeEach(() => {
     // Non-empty directory triggers the existing-project path.
     vi.mocked(fs.readdirSync).mockReturnValue(["package.json"] as never);
   });
 
-  it("prints login guidance when there is no session", async () => {
+  // Without a session there is nothing to integrate, so the only offer is to
+  // scaffold here. This used to be a dead end that printed guidance and quit.
+  it("offers to scaffold in place when there is no session", async () => {
     vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
+    vi.mocked(chooseExistingDirectoryAction).mockResolvedValue("scaffold");
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "image",
+      useDocker: true,
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
 
     await runCLI(undefined, []);
 
-    expect(out()).toContain("Existing project detected.");
-    expect(out()).toContain("seamless login");
+    expect(chooseExistingDirectoryAction).toHaveBeenCalledWith(false);
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
   });
 
   it("updates api/.env when an api directory exists", async () => {

@@ -35,14 +35,19 @@ You’ll be guided through a short setup process where you can choose:
 
 ## Connecting to a managed instance
 
-If you are signed in to the Seamless portal (`seamless login`), `init` connects the new project to
-your managed instance instead of scaffolding a local auth server. This is the default whenever a
-portal session exists.
+If you are signed in to the Seamless portal (`seamless login`) and your account has at least one
+provisioned application, `init` offers to connect the new project to it instead of scaffolding a
+local auth server. Managed leads the prompt, since being signed in signals intent, but it is a
+question rather than an assumption.
 
 ```bash
 seamless login          # once, no profile needed
-seamless init my-app    # scaffolds web + api wired to the managed instance
+seamless init my-app    # asks: connect a managed application, or scaffold local
 ```
+
+With no session, nothing provisioned yet, or `--local`, you get the local stack below. An account
+whose applications are still provisioning is told so and continues to a local scaffold rather than
+failing.
 
 What happens:
 
@@ -82,10 +87,15 @@ invalidates the old one.
 
 Escape hatches:
 
-- `seamless init --local` forces the self-hosted flow below, even when signed in.
+- `seamless init --local` forces the self-hosted flow below without contacting the control plane.
+- `seamless init --app <id>` is explicit managed intent: it skips both questions and fails rather
+  than silently scaffolding local if you are not signed in.
 - With no portal session, `init` uses the self-hosted flow automatically. A profile session is not
   consulted: signing in to an auth instance you administer says nothing about whether you have a
   managed account.
+- In a directory that already has files, `init` asks whether to connect it to a managed application
+  or scaffold in place. Starter files overwrite anything with the same name, so scaffolding there is
+  never assumed.
 - `SEAMLESS_PORTAL_API_URL` overrides the control-plane host (defaults to the managed service), and
   `SEAMLESS_PORTAL_AUTH_URL` overrides the portal auth instance the login targets.
 
