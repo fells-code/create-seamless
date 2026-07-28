@@ -1,10 +1,11 @@
 import type { AuthClient } from "./authClient.js";
 import { joinUrl } from "./http.js";
 
-// The managed control plane (seamless-portal-api). It is fronted by the same
-// Seamless Auth server a developer logs into, so the CLI reuses the active
-// profile's keychain session (Bearer) to call it. Override the host for staging
-// or local portal development with SEAMLESS_PORTAL_API_URL.
+// The managed control plane (seamless-portal-api). It only recognizes sessions
+// from the portal's own auth instance (getPortalAuthUrl), so these calls take a
+// createPortalClient and never the active profile's client: an instance session
+// belongs to a different user pool on a different host. Override the host for
+// staging or local portal development with SEAMLESS_PORTAL_API_URL.
 export const DEFAULT_PORTAL_API_URL = "https://api.seamlessauth.com";
 
 export function getPortalApiUrl(): string {
