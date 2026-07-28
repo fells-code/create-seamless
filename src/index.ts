@@ -15,6 +15,7 @@ import { runSessions } from "./commands/sessions.js";
 import { runConfig } from "./commands/config.js";
 import { runUsers } from "./commands/users.js";
 import { runOrg } from "./commands/org.js";
+import { runApps } from "./commands/apps.js";
 
 export const VERSION = pkg.version;
 const args = process.argv.slice(2);
@@ -108,6 +109,11 @@ async function main() {
 
   if (command === "org") {
     await runOrg(args.slice(1));
+    return;
+  }
+
+  if (command === "apps") {
+    await runApps(args.slice(1));
     return;
   }
 

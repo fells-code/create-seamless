@@ -61,6 +61,25 @@ Run inside an existing project (a non-empty directory) to wire it up in place: `
 `api/.env` when an `api` directory is present, otherwise it prints the values to set by hand. Your
 own source is never overwritten.
 
+### Seeing your managed applications
+
+```bash
+seamless apps list              # reference, name, plan, status, instance URL
+seamless apps list --json
+seamless apps get <id>          # detail for one application
+seamless apps get my-app        # a name or infra id works too
+seamless apps get <id> --json
+```
+
+`apps` uses the portal session, so it needs `seamless login` and never an instance profile.
+Applications the control plane has not finished provisioning are listed with `(provisioning)` in
+place of an instance URL.
+
+`apps get` reports whether a service token has been issued, showing the masked value and its issue
+date. The live token exists only at rotation time, so the control plane never re-shows it. Checking
+here first is worth doing before `init` connects a project, since connecting rotates the token and
+invalidates the old one.
+
 Escape hatches:
 
 - `seamless init --local` forces the self-hosted flow below, even when signed in.

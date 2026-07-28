@@ -21,20 +21,61 @@ export class PortalError extends Error {
   }
 }
 
-// A managed application as the CLI needs it. `domain` is the application's own
-// managed auth instance URL (https://<infraId>.seamlessauth.com), which the
-// scaffold points its AUTH_SERVER_URL at. `hasServiceToken` reflects whether a
-// service token was ever issued, so init can confirm before rotating and
-// invalidating one that a deployed app may still be using.
+// Split out so a caller can retry a lookup by another reference (a name or infra
+// id) without matching on message text.
+export class PortalNotFoundError extends PortalError {
+  constructor(message: string) {
+    super(message);
+    this.name = "PortalNotFoundError";
+  }
+}
+
+// A managed application as the CLI needs it, mapped from the portal's
+// serializeApplication payload (documented there as a CLI-facing contract).
+//
+// `instanceUrl` is where the tenant's auth actually answers; the portal derives
+// it from the service plan. `domain` is the stored column it superseded, kept
+// because it goes stale when a trial is upgraded and its tenant moves zones, so
+// prefer instanceUrl and read both through resolveAppInstanceUrl.
+//
+// Both are optional: an application that has not finished provisioning has
+// neither, and a list command has to be able to show it.
+//
+// `hasServiceToken` reflects whether a token was ever issued, so init can
+// confirm before rotating and invalidating one a deployed app may still be using.
 export interface PortalApp {
   id: string;
   name: string;
-  domain: string;
+  instanceUrl?: string;
+  domain?: string;
+  consoleUrl?: string;
   infraId?: string;
   frontendUrl?: string;
   servicePlan?: string;
   status?: string;
+  hostedRegion?: string;
+  devMode?: boolean;
+  ownerEmails: string[];
+  trialExpiresAt?: string;
+  createdAt?: string;
   hasServiceToken: boolean;
+  // Metadata only. The control plane returns a raw token exclusively at
+  // rotation time, so there is never a live secret to show here.
+  serviceToken?: { maskedToken?: string; createdAt?: string };
+}
+
+// Where this application's auth answers, or undefined while it is still
+// provisioning.
+export function resolveAppInstanceUrl(app: PortalApp): string | undefined {
+  return app.instanceUrl ?? app.domain;
+}
+
+// The shortest reference that still identifies the application, for display and
+// for pasting into `apps get` or `init --app`. Both accept an infra id, and it
+// is far easier to read than the UUID primary key. Applications that have not
+// been provisioned have no infra id yet, so they fall back to the id.
+export function resolveAppRef(app: PortalApp): string {
+  return app.infraId ?? app.id;
 }
 
 function str(raw: Record<string, unknown>, key: string): string | undefined {
@@ -42,20 +83,47 @@ function str(raw: Record<string, unknown>, key: string): string | undefined {
   return typeof value === "string" && value ? value : undefined;
 }
 
+function strList(raw: Record<string, unknown>, key: string): string[] {
+  const value = raw[key];
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string");
+  }
+  return typeof value === "string" && value ? [value] : [];
+}
+
+function toServiceToken(
+  raw: Record<string, unknown>,
+): PortalApp["serviceToken"] {
+  const meta = raw.serviceTokenMetadata;
+  if (!meta || typeof meta !== "object") return undefined;
+  const record = meta as Record<string, unknown>;
+  return {
+    maskedToken: str(record, "maskedToken"),
+    createdAt: str(record, "createdAt"),
+  };
+}
+
 function toApp(raw: Record<string, unknown>): PortalApp | null {
   const id = str(raw, "id");
-  const domain = str(raw, "domain");
-  if (!id || !domain) return null;
+  if (!id) return null;
 
   return {
     id,
     name: str(raw, "name") ?? id,
-    domain,
+    instanceUrl: str(raw, "instanceUrl"),
+    domain: str(raw, "domain"),
+    consoleUrl: str(raw, "consoleUrl"),
     infraId: str(raw, "infraId"),
     frontendUrl: str(raw, "frontendUrl"),
     servicePlan: str(raw, "servicePlan"),
     status: str(raw, "status"),
+    hostedRegion: str(raw, "hostedRegion"),
+    devMode: typeof raw.devMode === "boolean" ? raw.devMode : undefined,
+    ownerEmails: strList(raw, "ownerEmail"),
+    trialExpiresAt: str(raw, "trialExpiresAt"),
+    createdAt: str(raw, "createdAt"),
     hasServiceToken: raw.serviceTokenMetadata != null,
+    serviceToken: toServiceToken(raw),
   };
 }
 
@@ -83,6 +151,40 @@ export async function listApplications(client: AuthClient): Promise<PortalApp[]>
     .filter((a): a is PortalApp => a !== null);
 }
 
+export async function getApplication(
+  client: AuthClient,
+  appId: string,
+): Promise<PortalApp> {
+  const url = joinUrl(
+    getPortalApiUrl(),
+    `/applications/${encodeURIComponent(appId)}`,
+  );
+  const res = await client.get<{ application?: unknown }>(url);
+
+  if (res.status === 401 || res.status === 403) {
+    throw unauthorized("read this application");
+  }
+  if (res.status === 404) {
+    throw new PortalNotFoundError(`Managed application "${appId}" was not found.`);
+  }
+  if (!res.ok) {
+    throw new PortalError(`Could not load application "${appId}" (${res.status}).`);
+  }
+
+  const raw = res.data?.application;
+  const app =
+    raw && typeof raw === "object"
+      ? toApp(raw as Record<string, unknown>)
+      : null;
+  if (!app) {
+    throw new PortalError(
+      `The control plane returned an unexpected response for "${appId}".`,
+    );
+  }
+
+  return app;
+}
+
 // Issues (rotates) the application's service token. The control plane only ever
 // returns a raw token at rotation time (it is stored write-once), so this is the
 // real credential flow: the token the auth instance already recognizes for this
@@ -101,7 +203,7 @@ export async function rotateServiceToken(
     throw unauthorized("issue a service token");
   }
   if (res.status === 404) {
-    throw new PortalError(`Managed application "${appId}" was not found.`);
+    throw new PortalNotFoundError(`Managed application "${appId}" was not found.`);
   }
   if (!res.ok || !res.data?.serviceToken) {
     throw new PortalError(`Could not issue a service token (${res.status}).`);
