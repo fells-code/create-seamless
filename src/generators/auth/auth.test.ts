@@ -116,5 +116,10 @@ describe("generateAuthServer docker mode", () => {
     expect(compose).toContain(`"${shared.apiToken}"`);
     expect(compose).toContain("volumes:\n  pgdata:");
     expect(compose.endsWith("\n")).toBe(true);
+
+    // The auth-only compose publishes on loopback for the same reason as the
+    // full stack: this instance returns OTP codes in the response body.
+    expect(compose).toContain('- "127.0.0.1:5432:5432"');
+    expect(compose).toContain('- "127.0.0.1:5312:5312"');
   });
 });

@@ -57,13 +57,16 @@ async function buildCompose(
   const includeAdminContainer = adminMode === "image" || adminMode === "source";
 
   return {
-    compose: `
+    compose: `# Ports are published on 127.0.0.1 so this stack is reachable from this machine
+# only. The auth server is configured to return OTP codes in the response for
+# local login, which would otherwise be an authentication bypass for anyone on
+# the same network. Drop the 127.0.0.1 prefix only if you know you want that.
 services:
   db:
     image: ${POSTGRES_IMAGE}
     container_name: seamless-db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: mypassword
@@ -111,7 +114,7 @@ async function authService(
       context: ./auth
       dockerfile: Dockerfile.dev
     ports:
-      - "5312:5312"
+      - "127.0.0.1:5312:5312"
     env_file:
       - ./auth/.env
     environment:
@@ -147,7 +150,7 @@ function apiService(shared: any, adminMode: AdminMode) {
     container_name: api
     build: ./api
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - ./api/.env
     environment:
@@ -173,7 +176,7 @@ function webService() {
     container_name: web
     build: ./web
     ports:
-      - "5173:80"
+      - "127.0.0.1:5173:80"
     environment:
       API_URL: http://localhost:3000/
     volumes:
@@ -213,7 +216,7 @@ async function authServiceDocker(
     image: ${SEAMLESS_AUTH_API_IMAGE}
     container_name: seamless-auth
     ports:
-      - "5312:5312"
+      - "127.0.0.1:5312:5312"
     environment:
 ${envBlock}
     depends_on:
@@ -231,7 +234,7 @@ function adminService(mode: "image" | "source") {
     container_name: admin
     build: ./admin
     ports:
-      - "5174:80"
+      - "127.0.0.1:5174:80"
     environment:
       API_URL: http://localhost:3000/
       AUTH_MODE: server
@@ -248,7 +251,7 @@ function adminService(mode: "image" | "source") {
     image: ${SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE}
     container_name: admin
     ports:
-      - "5174:80"
+      - "127.0.0.1:5174:80"
     environment:
       API_URL: http://localhost:3000/
     depends_on:
