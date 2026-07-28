@@ -1,5 +1,7 @@
 import { confirm, select } from "@clack/prompts";
 
+import { orCancel } from "../core/cancel.js";
+
 import type { RegistryEntry, TemplateKind } from "../core/templates.js";
 
 type AuthMode = "local" | "docker";
@@ -51,20 +53,24 @@ export async function runManagedTemplatePrompts(
   if (webTemplateId) {
     console.log(`Web example: ${labelFor(templates, webTemplateId)}`);
   } else {
-    webTemplateId = (await select({
-      message: "Web example",
-      options: toOptions(templates, "web"),
-    })) as string;
+    webTemplateId = orCancel(
+      await select({
+        message: "Web example",
+        options: toOptions(templates, "web"),
+      }),
+    ) as string;
   }
 
   let apiTemplateId = preselect.apiTemplateId;
   if (apiTemplateId) {
     console.log(`Backend: ${labelFor(templates, apiTemplateId)}`);
   } else {
-    apiTemplateId = (await select({
-      message: "Backend framework",
-      options: toOptions(templates, "api"),
-    })) as string;
+    apiTemplateId = orCancel(
+      await select({
+        message: "Backend framework",
+        options: toOptions(templates, "api"),
+      }),
+    ) as string;
   }
 
   return { webTemplateId, apiTemplateId };
@@ -78,65 +84,75 @@ export async function runProjectSetupPrompts(
   if (webTemplateId) {
     console.log(`Web example: ${labelFor(templates, webTemplateId)}`);
   } else {
-    webTemplateId = (await select({
-      message: "Web example",
-      options: toOptions(templates, "web"),
-    })) as string;
+    webTemplateId = orCancel(
+      await select({
+        message: "Web example",
+        options: toOptions(templates, "web"),
+      }),
+    ) as string;
   }
 
   let apiTemplateId = preselect.apiTemplateId;
   if (apiTemplateId) {
     console.log(`Backend: ${labelFor(templates, apiTemplateId)}`);
   } else {
-    apiTemplateId = (await select({
-      message: "Backend framework",
-      options: toOptions(templates, "api"),
-    })) as string;
+    apiTemplateId = orCancel(
+      await select({
+        message: "Backend framework",
+        options: toOptions(templates, "api"),
+      }),
+    ) as string;
   }
 
-  const authMode = (await select({
-    message: "How would you like to run SeamlessAuth?",
-    options: [
-      {
-        value: "docker",
-        label: "Docker container (recommended)",
-      },
-      {
-        value: "local",
-        label: "Local dev server (advanced)",
-      },
-    ],
-  })) as AuthMode;
+  const authMode = orCancel(
+    await select({
+      message: "How would you like to run SeamlessAuth?",
+      options: [
+        {
+          value: "docker",
+          label: "Docker container (recommended)",
+        },
+        {
+          value: "local",
+          label: "Local dev server (advanced)",
+        },
+      ],
+    }),
+  ) as AuthMode;
 
-  const adminMode = (await select({
-    message: "How would you like to host the admin console?",
-    options: [
-      {
-        value: "api",
-        label: "Served by your API at /console (recommended)",
-      },
-      {
-        value: "image",
-        label: "Separate container — official Docker image",
-      },
-      {
-        value: "source",
-        label: "Separate container — clone repo for modification",
-      },
-      {
-        value: "none",
-        label: "Don't include the admin console",
-      },
-    ],
-    initialValue: "api",
-  })) as AdminMode;
+  const adminMode = orCancel(
+    await select({
+      message: "How would you like to host the admin console?",
+      options: [
+        {
+          value: "api",
+          label: "Served by your API at /console (recommended)",
+        },
+        {
+          value: "image",
+          label: "Separate container — official Docker image",
+        },
+        {
+          value: "source",
+          label: "Separate container — clone repo for modification",
+        },
+        {
+          value: "none",
+          label: "Don't include the admin console",
+        },
+      ],
+      initialValue: "api",
+    }),
+  ) as AdminMode;
 
   if (authMode === "local") {
-    const confirmDocker = await confirm({
-      message:
-        "Auth server still requires Docker for full stack. Enable Docker?",
-      initialValue: true,
-    });
+    const confirmDocker = orCancel(
+      await confirm({
+        message:
+          "Auth server still requires Docker for full stack. Enable Docker?",
+        initialValue: true,
+      }),
+    );
 
     if (!confirmDocker) {
       console.log(

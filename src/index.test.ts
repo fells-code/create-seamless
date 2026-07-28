@@ -116,10 +116,27 @@ describe("index dispatcher", () => {
     expect(mod[fnName]).toHaveBeenCalledWith(["sub", "--flag"]);
   });
 
-  it("treats an unknown command as an init template alias", async () => {
+  // An unmatched first arg used to be scaffolded as a project name, so every
+  // typo silently created a directory.
+  it("rejects an unknown command instead of scaffolding it", async () => {
     await dispatch(["frobnicate"]);
+
     const { runCLI } = await import("./commands/init.js");
-    expect(runCLI).toHaveBeenCalledWith("frobnicate");
+    expect(runCLI).not.toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(1);
+
+    const errors = errSpy.mock.calls.map((c) => c[0] as string).join("\n");
+    expect(errors).toContain('Unknown command "frobnicate"');
+    expect(errors).toContain("seamless init frobnicate");
+    expect(errors).toContain("apps");
+  });
+
+  it("does not offer init as a fix for a flag-like argument", async () => {
+    await dispatch(["--frobnicate"]);
+
+    const errors = errSpy.mock.calls.map((c) => c[0] as string).join("\n");
+    expect(errors).toContain('Unknown command "--frobnicate"');
+    expect(errors).not.toContain("seamless init --frobnicate");
   });
 
   it("logs the error and exits 1 when a command rejects", async () => {
@@ -133,6 +150,25 @@ describe("index dispatcher", () => {
 
     expect(errSpy).toHaveBeenCalledWith("Error:", "kaboom");
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  // Ctrl-C is not a failure: it reports as a cancellation on stdout and uses the
+  // conventional interrupt status rather than the generic error path.
+  it("reports a cancellation and exits 130", async () => {
+    process.argv = ["node", "index.js", "check"];
+    const { runCheck } = await import("./commands/check.js");
+    const { CancelledError } = await import("./core/cancel.js");
+    vi.mocked(runCheck).mockRejectedValueOnce(new CancelledError());
+
+    await import("./index.js");
+    await flush();
+    await flush();
+
+    // Only positive assertions here: both rejection tests import index fresh and
+    // main() settles on its own schedule, so one test's tail can still be in
+    // flight while the next runs and would pollute a "never called" check.
+    expect(logSpy).toHaveBeenCalledWith("Cancelled.");
+    expect(exitSpy).toHaveBeenCalledWith(130);
   });
 
   it("exports VERSION from package.json", async () => {

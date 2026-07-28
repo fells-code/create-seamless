@@ -7,10 +7,15 @@ import {
   runProjectSetupPrompts,
 } from "./projectSetup.js";
 
-vi.mock("@clack/prompts", () => ({
-  select: vi.fn(),
-  confirm: vi.fn(),
-}));
+vi.mock("@clack/prompts", () => {
+  const CANCEL = Symbol("cancel");
+  return {
+    CANCEL,
+    select: vi.fn(),
+    confirm: vi.fn(),
+    isCancel: (value: unknown) => value === CANCEL,
+  };
+});
 
 interface SelectArgs {
   message: string;

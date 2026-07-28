@@ -7,13 +7,18 @@ vi.mock("../core/bootstrapSecret.js", () => ({
   resolveBootstrapSecret: vi.fn(),
 }));
 
-vi.mock("@clack/prompts", () => ({
-  intro: vi.fn(),
-  outro: vi.fn(),
-  text: vi.fn(),
-  confirm: vi.fn(),
-  spinner: vi.fn(),
-}));
+vi.mock("@clack/prompts", () => {
+  const CANCEL = Symbol("cancel");
+  return {
+    CANCEL,
+    intro: vi.fn(),
+    outro: vi.fn(),
+    text: vi.fn(),
+    confirm: vi.fn(),
+    spinner: vi.fn(),
+    isCancel: (value: unknown) => value === CANCEL,
+  };
+});
 
 import { intro, outro, text, confirm, spinner } from "@clack/prompts";
 

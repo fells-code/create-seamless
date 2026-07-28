@@ -1,5 +1,6 @@
-import { select, isCancel, cancel } from "@clack/prompts";
+import { select } from "@clack/prompts";
 
+import { orCancel } from "../core/cancel.js";
 import { resolveAppInstanceUrl, type PortalApp } from "../core/portal.js";
 
 export class NoApplicationsError extends Error {
@@ -13,13 +14,13 @@ export class NoApplicationsError extends Error {
 
 // Resolves which managed application the scaffold connects to. `--app` matches an
 // id or infra id; a single application is auto-selected; otherwise the developer
-// picks. Returns null only when an interactive selection is cancelled.
+// picks. Cancelling throws CancelledError, so init can unwind what it created.
 // Generic over the app type so a caller that has already narrowed to applications
 // with a resolvable instance URL keeps that guarantee on the selected one.
 export async function selectApplication<T extends PortalApp>(
   apps: T[],
   preselectId?: string,
-): Promise<T | null> {
+): Promise<T> {
   if (apps.length === 0) {
     throw new NoApplicationsError();
   }
@@ -44,19 +45,20 @@ export async function selectApplication<T extends PortalApp>(
     return apps[0];
   }
 
-  const choice = await select({
-    message: "Which managed application should this project connect to?",
-    options: apps.map((a) => ({
-      value: a.id,
-      label: a.name,
-      hint: resolveAppInstanceUrl(a),
-    })),
-  });
+  const choice = orCancel(
+    await select({
+      message: "Which managed application should this project connect to?",
+      options: apps.map((a) => ({
+        value: a.id,
+        label: a.name,
+        hint: resolveAppInstanceUrl(a),
+      })),
+    }),
+  );
 
-  if (isCancel(choice)) {
-    cancel("Cancelled.");
-    return null;
+  const chosen = apps.find((a) => a.id === choice);
+  if (!chosen) {
+    throw new Error(`Selected application "${String(choice)}" is no longer available.`);
   }
-
-  return apps.find((a) => a.id === choice) ?? null;
+  return chosen;
 }

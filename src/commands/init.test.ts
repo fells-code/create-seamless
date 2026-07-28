@@ -24,6 +24,7 @@ import { listApplications, rotateServiceToken } from "../core/portal.js";
 import { selectApplication } from "../prompts/appSelect.js";
 import { parseEnv, writeEnv } from "../core/env.js";
 
+import { CancelledError } from "../core/cancel.js";
 import { runCLI } from "./init.js";
 
 // Defensive: templates.ts transitively imports ../index.js (which runs main() at
@@ -35,6 +36,7 @@ vi.mock("fs", () => {
     existsSync: vi.fn(),
     mkdirSync: vi.fn(),
     readdirSync: vi.fn(),
+    rmSync: vi.fn(),
   };
   return { default: fns, ...fns };
 });
@@ -218,6 +220,110 @@ describe("runCLI directory handling", () => {
 
     expect(fs.mkdirSync).toHaveBeenCalledWith("/work/myapp");
     expect(out()).toContain("Creating project in /work/myapp");
+    expect(fs.rmSync).not.toHaveBeenCalled();
+  });
+
+  // A husk left behind by a failed attempt makes the retry fail with
+  // "Directory already exists", which is the actual bug developers hit.
+  it("discards the directory it created when the scaffold fails", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockRejectedValue(new Error("registry 500"));
+
+    await expect(runCLI("myapp", [])).rejects.toThrow("registry 500");
+
+    expect(fs.rmSync).toHaveBeenCalledWith("/work/myapp", {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  it("discards the directory it created when a prompt is cancelled", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockRejectedValue(new CancelledError());
+
+    await expect(runCLI("myapp", [])).rejects.toBeInstanceOf(CancelledError);
+
+    expect(fs.rmSync).toHaveBeenCalledWith("/work/myapp", {
+      recursive: true,
+      force: true,
+    });
+  });
+
+  // Without a project name the target is the developer's own working directory,
+  // which this command must never remove.
+  it("never removes the working directory when no name was given", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockRejectedValue(new Error("registry 500"));
+
+    await expect(runCLI(undefined, [])).rejects.toThrow("registry 500");
+
+    expect(fs.rmSync).not.toHaveBeenCalled();
+  });
+
+  it("leaves an existing directory alone when it refuses to scaffold", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    await expect(runCLI("myapp")).rejects.toThrow(/already exists/);
+
+    expect(fs.rmSync).not.toHaveBeenCalled();
+  });
+
+  // Ctrl-C during a download or a git clone is a real signal, not a cancelled
+  // prompt, so it has to be caught before the process ends.
+  it("discards the directory when interrupted outside a prompt", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((() => {
+      throw new Error("exit:130");
+    }) as never);
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockImplementation(async () => {
+      const listeners = process.listeners("SIGINT");
+      const onInterrupt = listeners[listeners.length - 1] as () => void;
+      expect(() => onInterrupt()).toThrow("exit:130");
+      throw new Error("interrupted");
+    });
+
+    await expect(runCLI("myapp", [])).rejects.toThrow("interrupted");
+
+    expect(fs.rmSync).toHaveBeenCalledWith("/work/myapp", {
+      recursive: true,
+      force: true,
+    });
+    expect(exitSpy).toHaveBeenCalledWith(130);
+  });
+
+  it("survives a directory that cannot be removed", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockRejectedValue(new Error("registry 500"));
+    vi.mocked(fs.rmSync).mockImplementation(() => {
+      throw new Error("permission denied");
+    });
+
+    // The scaffold failure is what the developer needs to see, not a cleanup
+    // error stacked on top of it.
+    await expect(runCLI("myapp", [])).rejects.toThrow("registry 500");
+  });
+
+  it("removes the interrupt handler once the scaffold finishes", async () => {
+    const before = process.listenerCount("SIGINT");
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockRejectedValue(new Error("registry 500"));
+
+    await expect(runCLI("myapp", [])).rejects.toThrow("registry 500");
+
+    expect(process.listenerCount("SIGINT")).toBe(before);
   });
 });
 
@@ -627,10 +733,13 @@ describe("scaffoldManaged", () => {
     vi.mocked(selectApplication).mockResolvedValue(existing as never);
     vi.mocked(confirm).mockResolvedValue(false as never);
 
-    await runCLI(undefined, []);
+    // Declining cancels the command rather than returning quietly, so init can
+    // discard anything it created.
+    await expect(runCLI(undefined, [])).rejects.toThrow(
+      "Cancelled. No token was issued.",
+    );
 
     expect(rotateServiceToken).not.toHaveBeenCalled();
-    expect(out()).toContain("Cancelled. No token was issued.");
     expect(printManagedSuccessOutput).not.toHaveBeenCalled();
   });
 
@@ -642,18 +751,17 @@ describe("scaffoldManaged", () => {
     vi.mocked(confirm).mockResolvedValue(Symbol("cancel") as never);
     vi.mocked(isCancel).mockReturnValue(true);
 
-    await runCLI(undefined, []);
+    await expect(runCLI(undefined, [])).rejects.toBeInstanceOf(CancelledError);
 
     expect(rotateServiceToken).not.toHaveBeenCalled();
-    expect(out()).toContain("Cancelled. No token was issued.");
   });
 
-  it("returns early when no application is selected", async () => {
+  it("stops when the application selection is cancelled", async () => {
     loggedIn();
     vi.mocked(listApplications).mockResolvedValue([] as never);
-    vi.mocked(selectApplication).mockResolvedValue(undefined as never);
+    vi.mocked(selectApplication).mockRejectedValue(new CancelledError());
 
-    await runCLI(undefined, []);
+    await expect(runCLI(undefined, [])).rejects.toBeInstanceOf(CancelledError);
 
     expect(rotateServiceToken).not.toHaveBeenCalled();
     expect(printManagedSuccessOutput).not.toHaveBeenCalled();
@@ -744,20 +852,20 @@ describe("integrateExistingProject", () => {
     expect(out()).toContain("svc-token");
   });
 
-  it("returns early when no application is selected", async () => {
+  it("stops when the application selection is cancelled", async () => {
     vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     vi.mocked(listApplications).mockResolvedValue([] as never);
-    vi.mocked(selectApplication).mockResolvedValue(undefined as never);
+    vi.mocked(selectApplication).mockRejectedValue(new CancelledError());
 
-    await runCLI(undefined, []);
+    await expect(runCLI(undefined, [])).rejects.toBeInstanceOf(CancelledError);
 
     expect(rotateServiceToken).not.toHaveBeenCalled();
     expect(writeEnv).not.toHaveBeenCalled();
   });
 
-  it("returns early when token issuance is declined", async () => {
+  it("stops when token issuance is declined", async () => {
     vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
@@ -766,7 +874,7 @@ describe("integrateExistingProject", () => {
     vi.mocked(selectApplication).mockResolvedValue(existing as never);
     vi.mocked(confirm).mockResolvedValue(false as never);
 
-    await runCLI(undefined, []);
+    await expect(runCLI(undefined, [])).rejects.toBeInstanceOf(CancelledError);
 
     expect(rotateServiceToken).not.toHaveBeenCalled();
     expect(writeEnv).not.toHaveBeenCalled();
