@@ -1,10 +1,15 @@
 import kleur from "kleur";
 
-import { createPortalClient, ReauthRequiredError } from "../core/authClient.js";
+import {
+  createPortalClient,
+  ReauthRequiredError,
+  type AuthClient,
+} from "../core/authClient.js";
 import {
   getApplication,
   listApplications,
   PortalError,
+  PortalNotFoundError,
   resolveAppInstanceUrl,
   type PortalApp,
 } from "../core/portal.js";
@@ -63,14 +68,17 @@ async function appsList(rest: string[]): Promise<void> {
     return;
   }
 
+  // The id leads because it is the value you copy into `apps get` and
+  // `init --app`, and a UUID is not something you can retype from memory.
   const rows = apps.map((app) => [
+    app.id,
     app.name,
     app.servicePlan ?? "-",
     app.status ?? "-",
     resolveAppInstanceUrl(app) ?? NOT_PROVISIONED,
   ]);
 
-  printTable(["NAME", "PLAN", "STATUS", "INSTANCE"], rows);
+  printTable(["ID", "NAME", "PLAN", "STATUS", "INSTANCE"], rows);
   console.log(
     kleur.dim(
       `\n${apps.length} application${apps.length === 1 ? "" : "s"}. Inspect one with: seamless apps get <id>`,
@@ -80,14 +88,14 @@ async function appsList(rest: string[]): Promise<void> {
 
 async function appsGet(rest: string[]): Promise<void> {
   const json = rest.includes("--json");
-  const id = rest.find((arg) => !arg.startsWith("--"));
-  if (!id) {
-    console.error(kleur.red("Usage: seamless apps get <id>"));
+  const ref = rest.find((arg) => !arg.startsWith("--"));
+  if (!ref) {
+    console.error(kleur.red("Usage: seamless apps get <id|name|infra-id>"));
     process.exit(1);
   }
 
   const client = await createPortalClient();
-  const app = await getApplication(client, id);
+  const app = await resolveApp(client, ref);
 
   if (json) {
     console.log(JSON.stringify(app, null, 2));
@@ -95,6 +103,46 @@ async function appsGet(rest: string[]): Promise<void> {
   }
 
   printApp(app);
+}
+
+// The control plane looks applications up by primary key only, but a developer
+// reading the list is as likely to reach for a name or an infra id. Try the id
+// first, then fall back to matching the list client-side.
+async function resolveApp(
+  client: AuthClient,
+  ref: string,
+): Promise<PortalApp> {
+  try {
+    return await getApplication(client, ref);
+  } catch (err) {
+    if (!(err instanceof PortalNotFoundError)) throw err;
+    return matchApplication(await listApplications(client), ref, err);
+  }
+}
+
+function matchApplication(
+  apps: PortalApp[],
+  ref: string,
+  notFound: PortalNotFoundError,
+): PortalApp {
+  const needle = ref.toLowerCase();
+  const matches = apps.filter(
+    (app) =>
+      app.infraId?.toLowerCase() === needle ||
+      app.name.toLowerCase() === needle,
+  );
+
+  if (matches.length === 1) return matches[0];
+
+  if (matches.length > 1) {
+    throw new PortalError(
+      `"${ref}" matches ${matches.length} applications. Use an id: ${matches
+        .map((app) => app.id)
+        .join(", ")}.`,
+    );
+  }
+
+  throw notFound;
 }
 
 function printApp(app: PortalApp): void {

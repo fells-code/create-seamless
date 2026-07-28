@@ -100,7 +100,12 @@ describe("apps list", () => {
 
     expect(paths[0]).toBe("http://localhost:3000/applications");
     const out = output();
+    expect(out).toContain("ID");
     expect(out).toContain("NAME");
+    // The id is what `apps get` and `init --app` take, so it has to be readable
+    // straight off the list.
+    expect(out).toContain("app-1");
+    expect(out).toContain("app-2");
     expect(out).toContain("Acme");
     expect(out).toContain("https://acme.seamlessauth.com");
     expect(out).toContain("Pending");
@@ -215,21 +220,79 @@ describe("apps get", () => {
     expect(JSON.parse(logSpy.mock.calls[0][0] as string).id).toBe("app-1");
   });
 
-  it("requires an id", async () => {
+  it("requires a reference", async () => {
     await expect(runApps(["get"])).rejects.toThrow("exit:1");
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("Usage: seamless apps get <id>"),
+      expect.stringContaining("Usage: seamless apps get <id|name|infra-id>"),
     );
   });
 
-  it("reports a missing application", async () => {
-    const { client } = fakeClient([response(404, null)]);
+  it("falls back to matching a name when the id lookup 404s", async () => {
+    const { client, paths } = fakeClient([
+      response(404, null),
+      response(200, { applications: [acme, pending] }),
+    ]);
+    vi.mocked(createPortalClient).mockResolvedValue(client);
+
+    await runApps(["get", "acme"]);
+
+    expect(paths).toEqual([
+      "http://localhost:3000/applications/acme",
+      "http://localhost:3000/applications",
+    ]);
+    expect(output()).toContain("Acme");
+  });
+
+  it("matches an infra id", async () => {
+    const { client } = fakeClient([
+      response(404, null),
+      response(200, { applications: [{ ...acme, infraId: "acme-infra" }] }),
+    ]);
+    vi.mocked(createPortalClient).mockResolvedValue(client);
+
+    await runApps(["get", "ACME-INFRA"]);
+
+    expect(output()).toContain("Acme");
+  });
+
+  it("asks for an id when a name is ambiguous", async () => {
+    const { client } = fakeClient([
+      response(404, null),
+      response(200, {
+        applications: [acme, { ...acme, id: "app-9" }],
+      }),
+    ]);
+    vi.mocked(createPortalClient).mockResolvedValue(client);
+
+    await expect(runApps(["get", "Acme"])).rejects.toThrow("exit:1");
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("matches 2 applications"),
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("app-1, app-9"),
+    );
+  });
+
+  it("reports a missing application when nothing matches", async () => {
+    const { client } = fakeClient([
+      response(404, null),
+      response(200, { applications: [acme] }),
+    ]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
     await expect(runApps(["get", "ghost"])).rejects.toThrow("exit:1");
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Managed application "ghost" was not found.'),
     );
+  });
+
+  it("does not fall back on a non-404 failure", async () => {
+    const { client, paths } = fakeClient([response(500, null)]);
+    vi.mocked(createPortalClient).mockResolvedValue(client);
+
+    await expect(runApps(["get", "app-1"])).rejects.toThrow("exit:1");
+    expect(paths).toHaveLength(1);
+    expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("500"));
   });
 });
 

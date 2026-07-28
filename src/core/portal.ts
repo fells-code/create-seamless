@@ -21,6 +21,15 @@ export class PortalError extends Error {
   }
 }
 
+// Split out so a caller can retry a lookup by another reference (a name or infra
+// id) without matching on message text.
+export class PortalNotFoundError extends PortalError {
+  constructor(message: string) {
+    super(message);
+    this.name = "PortalNotFoundError";
+  }
+}
+
 // A managed application as the CLI needs it, mapped from the portal's
 // serializeApplication payload (documented there as a CLI-facing contract).
 //
@@ -148,7 +157,7 @@ export async function getApplication(
     throw unauthorized("read this application");
   }
   if (res.status === 404) {
-    throw new PortalError(`Managed application "${appId}" was not found.`);
+    throw new PortalNotFoundError(`Managed application "${appId}" was not found.`);
   }
   if (!res.ok) {
     throw new PortalError(`Could not load application "${appId}" (${res.status}).`);
@@ -186,7 +195,7 @@ export async function rotateServiceToken(
     throw unauthorized("issue a service token");
   }
   if (res.status === 404) {
-    throw new PortalError(`Managed application "${appId}" was not found.`);
+    throw new PortalNotFoundError(`Managed application "${appId}" was not found.`);
   }
   if (!res.ok || !res.data?.serviceToken) {
     throw new PortalError(`Could not issue a service token (${res.status}).`);

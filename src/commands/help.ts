@@ -91,10 +91,10 @@ COMMANDS
     session (seamless login), not an instance profile.
 
     apps list [--json]
-      • Table of name, plan, status, and instance URL
+      • Table of id, name, plan, status, and instance URL
       • Applications still provisioning are listed with (provisioning)
 
-    apps get <id> [--json]
+    apps get <id|name|infra-id> [--json]
       • Detail for one application, including the console URL, owners, and
         whether a service token has been issued (masked, never the live value)
 

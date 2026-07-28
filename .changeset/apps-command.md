@@ -11,3 +11,5 @@ Applications are now read through the portal's `instanceUrl`, which is derived f
 plan, rather than the stored `domain` column that goes stale when a trial is upgraded. Applications
 that have not finished provisioning are listed instead of being silently dropped. `init` is
 unchanged: it still reads `domain` and still considers only applications that have one.
+
+`apps list` includes the application id, and `apps get` accepts a name or infra id as well as an id.

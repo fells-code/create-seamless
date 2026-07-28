@@ -64,9 +64,10 @@ own source is never overwritten.
 ### Seeing your managed applications
 
 ```bash
-seamless apps list              # name, plan, status, instance URL
+seamless apps list              # id, name, plan, status, instance URL
 seamless apps list --json
 seamless apps get <id>          # detail for one application
+seamless apps get my-app        # a name or infra id works too
 seamless apps get <id> --json
 ```
 
