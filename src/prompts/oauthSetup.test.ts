@@ -4,11 +4,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { OAUTH_PROVIDER_CATALOG } from "../core/oauthProviders.js";
 import { runOAuthSetupPrompts } from "./oauthSetup.js";
 
-vi.mock("@clack/prompts", () => ({
-  multiselect: vi.fn(),
-  text: vi.fn(),
-  password: vi.fn(),
-}));
+vi.mock("@clack/prompts", () => {
+  const CANCEL = Symbol("cancel");
+  return {
+    CANCEL,
+    multiselect: vi.fn(),
+    text: vi.fn(),
+    password: vi.fn(),
+    isCancel: (value: unknown) => value === CANCEL,
+  };
+});
 
 afterEach(() => {
   vi.restoreAllMocks();

@@ -1,6 +1,7 @@
 import { intro, outro, text, confirm, spinner } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
+import { orCancel } from "../core/cancel.js";
 import { resolveBootstrapSecret } from "../core/bootstrapSecret.js";
 import { scrubTokens } from "../core/keychain.js";
 
@@ -26,21 +27,25 @@ export async function runBootstrapAdmin(args: string[] = []) {
   let email = rest.find((a) => !a.startsWith("-"));
 
   if (!email) {
-    email = (await text({
-      message: "Admin email address",
-      placeholder: "admin@example.com",
-      validate: (value) => {
-        if (!value || !value.includes("@")) {
-          return "Enter a valid email address";
-        }
-      },
-    })) as string;
+    email = orCancel(
+      await text({
+        message: "Admin email address",
+        placeholder: "admin@example.com",
+        validate: (value) => {
+          if (!value || !value.includes("@")) {
+            return "Enter a valid email address";
+          }
+        },
+      }),
+    ) as string;
   }
 
-  const proceed = await confirm({
-    message: "Create bootstrap admin invite?",
-    initialValue: true,
-  });
+  const proceed = orCancel(
+    await confirm({
+      message: "Create bootstrap admin invite?",
+      initialValue: true,
+    }),
+  );
 
   if (!proceed) {
     outro("Cancelled.");
@@ -60,13 +65,15 @@ export async function runBootstrapAdmin(args: string[] = []) {
       "This may happen if the project is not initialized locally or running in production.",
     );
 
-    secret = (await text({
-      message: "Bootstrap secret",
-      placeholder: "Enter your bootstrap secret",
-      validate: (value) => {
-        if (!value) return "Bootstrap secret is required";
-      },
-    })) as string;
+    secret = orCancel(
+      await text({
+        message: "Bootstrap secret",
+        placeholder: "Enter your bootstrap secret",
+        validate: (value) => {
+          if (!value) return "Bootstrap secret is required";
+        },
+      }),
+    ) as string;
   }
 
   const s = spinner();

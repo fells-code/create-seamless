@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { select, isCancel, cancel } from "@clack/prompts";
+import { CancelledError } from "../core/cancel.js";
 import type { PortalApp } from "../core/portal.js";
 import { NoApplicationsError, selectApplication } from "./appSelect.js";
 
@@ -69,27 +70,28 @@ describe("selectApplication", () => {
     expect(cancel).not.toHaveBeenCalled();
   });
 
-  it("returns null and cancels when the interactive prompt is cancelled", async () => {
+  it("cancels when the interactive prompt is cancelled", async () => {
     const a = app({ id: "app-1" });
     const b = app({ id: "app-2" });
     const cancelSymbol = Symbol("cancel");
     vi.mocked(select).mockResolvedValue(cancelSymbol as never);
     vi.mocked(isCancel).mockReturnValue(true);
 
-    const result = await selectApplication([a, b]);
-
-    expect(cancel).toHaveBeenCalledWith("Cancelled.");
-    expect(result).toBeNull();
+    // Throwing rather than returning null is what lets init unwind the project
+    // directory it created.
+    await expect(selectApplication([a, b])).rejects.toBeInstanceOf(
+      CancelledError,
+    );
   });
 
-  it("returns null when the selected value no longer matches any application", async () => {
+  it("errors when the selected value no longer matches any application", async () => {
     const a = app({ id: "app-1" });
     const b = app({ id: "app-2" });
     vi.mocked(select).mockResolvedValue("app-3" as never);
     vi.mocked(isCancel).mockReturnValue(false);
 
-    const result = await selectApplication([a, b]);
-
-    expect(result).toBeNull();
+    await expect(selectApplication([a, b])).rejects.toThrow(
+      /no longer available/,
+    );
   });
 });

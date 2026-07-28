@@ -1,7 +1,7 @@
 import path from "path";
 import fs from "fs";
 
-import { confirm, isCancel } from "@clack/prompts";
+import { confirm } from "@clack/prompts";
 import kleur from "kleur";
 
 import {
@@ -25,6 +25,7 @@ import {
   type TemplateSource,
 } from "../core/templates.js";
 import { runOAuthSetupPrompts } from "../prompts/oauthSetup.js";
+import { CancelledError, orCancel } from "../core/cancel.js";
 import type { CollectedOAuthProvider } from "../core/oauthProviders.js";
 import {
   createPortalClient,
@@ -74,6 +75,9 @@ export async function runCLI(
   }
 
   let root = cwd;
+  // Only ever set to a directory mkdir just created, never one that already
+  // existed, so discarding it can never take a developer's own files with it.
+  let created: string | null = null;
 
   if (projectName) {
     root = path.join(cwd, projectName);
@@ -83,9 +87,47 @@ export async function runCLI(
     }
 
     fs.mkdirSync(root);
+    created = root;
     console.log(`Creating project in ${root}`);
   }
 
+  // Ctrl-C inside a prompt comes back as a CancelledError and unwinds through
+  // the catch below, but during a download or a git clone it arrives as a real
+  // signal that would otherwise end the process with the husk still on disk.
+  const onInterrupt = () => {
+    discard(created);
+    process.exit(130);
+  };
+  if (created) process.on("SIGINT", onInterrupt);
+
+  try {
+    await scaffold(root, projectName, aliases, opts);
+  } catch (err) {
+    // Anything short of a completed scaffold leaves nothing behind, so a retry
+    // is not blocked by "Directory already exists" from a half-built attempt.
+    discard(created);
+    throw err;
+  } finally {
+    if (created) process.off("SIGINT", onInterrupt);
+  }
+}
+
+function discard(dir: string | null): void {
+  if (!dir) return;
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+  } catch {
+    // The original failure is what the developer needs to see; a cleanup error
+    // on top of it would only bury the cause.
+  }
+}
+
+async function scaffold(
+  root: string,
+  projectName: string | undefined,
+  aliases: string[],
+  opts: InitOptions,
+) {
   // A portal session makes the managed path the default; --local forces the
   // self-hosted stack. A missing session or an unreachable control plane falls
   // back to local, unless managed was requested explicitly (handled below).
@@ -176,7 +218,6 @@ async function scaffoldManaged(
   // or an authorization failure leaves nothing behind.
   const apps = await listApplications(client);
   const app = await selectApplication(connectable(apps), opts.appId);
-  if (!app) return;
 
   // Copy templates before rotating the service token. Rotation invalidates the
   // app's previous token (see rotateServiceToken), so it runs as late as possible;
@@ -187,7 +228,6 @@ async function scaffoldManaged(
   }
 
   const serviceToken = await issueServiceToken(client, app);
-  if (serviceToken === null) return;
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
 
@@ -360,10 +400,8 @@ async function integrateExistingProject(
 
   const apps = await listApplications(client);
   const app = await selectApplication(connectable(apps), opts.appId);
-  if (!app) return;
 
   const serviceToken = await issueServiceToken(client, app);
-  if (serviceToken === null) return;
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
   const apiDir = path.join(root, "api");
@@ -435,20 +473,21 @@ function printManagedValues(authServerUrl: string, serviceToken: string) {
 }
 
 // Issues the app's service token, confirming first when one already exists so a
-// scaffold does not silently break an app that is already deployed. Returns null
-// only when the developer declines the rotation.
+// scaffold does not silently break an app that is already deployed. Declining
+// cancels the whole command, so nothing is left half-wired.
 async function issueServiceToken(
   client: AuthClient,
   app: PortalApp,
-): Promise<string | null> {
+): Promise<string> {
   if (app.hasServiceToken) {
-    const proceed = await confirm({
-      message: `"${app.name}" already has a service token. Issuing a new one invalidates the existing token. Continue?`,
-      initialValue: false,
-    });
-    if (isCancel(proceed) || !proceed) {
-      console.log("Cancelled. No token was issued.");
-      return null;
+    const proceed = orCancel(
+      await confirm({
+        message: `"${app.name}" already has a service token. Issuing a new one invalidates the existing token. Continue?`,
+        initialValue: false,
+      }),
+    );
+    if (!proceed) {
+      throw new CancelledError("Cancelled. No token was issued.");
     }
   }
   return rotateServiceToken(client, app.id);

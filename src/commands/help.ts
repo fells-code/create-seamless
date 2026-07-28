@@ -201,14 +201,6 @@ COMMANDS
 
 ────────────────────────────────────────────
 
-BEHAVIOR
-
-  seamless <project-name>
-
-    • Shortcut for: seamless init <project-name>
-
-────────────────────────────────────────────
-
 GETTING STARTED
 
   1. seamless init
@@ -239,9 +231,6 @@ EXAMPLES
 
   seamless init --oauth my-app
     → Create ./my-app from the OAuth example starter
-
-  seamless my-app
-    → Shortcut for init
 
   seamless check
     → Validate your project

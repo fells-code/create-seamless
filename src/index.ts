@@ -16,8 +16,27 @@ import { runConfig } from "./commands/config.js";
 import { runUsers } from "./commands/users.js";
 import { runOrg } from "./commands/org.js";
 import { runApps } from "./commands/apps.js";
+import { isCancelled } from "./core/cancel.js";
+import kleur from "kleur";
 
 export const VERSION = pkg.version;
+
+const COMMANDS = [
+  "init",
+  "check",
+  "bootstrap-admin",
+  "verify",
+  "profile",
+  "login",
+  "apps",
+  "whoami",
+  "logout",
+  "sessions",
+  "config",
+  "users",
+  "org",
+];
+
 const args = process.argv.slice(2);
 
 const command = args[0];
@@ -117,10 +136,27 @@ async function main() {
     return;
   }
 
-  await runCLI(command);
+  // An unrecognized command used to be treated as a project name and scaffolded,
+  // which made every typo create a directory with no indication the command was
+  // not understood. Scaffolding is `init` and nothing else.
+  console.error(kleur.red(`Unknown command "${command}".`));
+  if (!command.startsWith("-")) {
+    console.error(
+      kleur.dim("To scaffold a project, run: ") +
+        kleur.cyan(`seamless init ${command}`),
+    );
+  }
+  console.error(kleur.dim(`Commands: ${COMMANDS.join(", ")}`));
+  console.error(kleur.dim("Run seamless --help for details."));
+  process.exit(1);
 }
 
 main().catch((err) => {
+  if (isCancelled(err)) {
+    console.log(err.message);
+    // 130 is the conventional exit status for a command ended by Ctrl-C.
+    process.exit(130);
+  }
   console.error("Error:", err.message);
   process.exit(1);
 });
