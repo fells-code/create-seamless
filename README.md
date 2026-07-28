@@ -56,6 +56,11 @@ What happens:
 - It issues the application's service token from the control plane (the real credential, not a
   locally generated secret) and writes it, the managed auth server URL, and the JWKS key id into
   `api/.env`. The frontend is pointed at the same auth server URL.
+- It reads the application's bundled database and writes `DATABASE_URL` into `api/.env` as
+  `postgres://USER:PASSWORD@host:port/db?sslmode=require`. **The user and password stay as literal
+  placeholders**: the CLI never asks the control plane to reveal them, so no live database credential
+  reaches your disk or your terminal. Copy them from the dashboard. An application whose database is
+  still provisioning gets a warning instead, and the scaffold continues.
 - No local auth server, Docker Compose, or admin dashboard is generated. Auth, users, and OAuth
   providers are managed from the dashboard.
 

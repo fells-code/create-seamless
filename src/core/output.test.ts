@@ -1,5 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { printManagedSuccessOutput, printSuccessOutput } from "./output.js";
+import {
+  maskDatabaseUrl,
+  printManagedSuccessOutput,
+  printSuccessOutput,
+} from "./output.js";
 
 let logSpy: ReturnType<typeof vi.spyOn>;
 
@@ -189,6 +193,8 @@ describe("printManagedSuccessOutput", () => {
       apiFramework: "fastify",
       authServerUrl: "https://auth.example.com",
       appName: "Acme App",
+      databaseUrl:
+        "postgres://USER:PASSWORD@db.example.com:5432/tenant?sslmode=require",
     });
 
     const out = allLogs();
@@ -243,6 +249,20 @@ describe("printManagedSuccessOutput", () => {
     expect(out).not.toContain("# Web app");
     expect(out).toContain(
       "Sign in from the web app to confirm the session resolves.",
+    );
+  });
+});
+
+describe("maskDatabaseUrl", () => {
+  it("masks userinfo in anything printed as a connection string", () => {
+    expect(
+      maskDatabaseUrl("postgres://real:s3cret@db.example.com:5432/tenant"),
+    ).toBe("postgres://****:****@db.example.com:5432/tenant");
+  });
+
+  it("leaves a URL without userinfo alone", () => {
+    expect(maskDatabaseUrl("postgres://db.example.com:5432/tenant")).toBe(
+      "postgres://db.example.com:5432/tenant",
     );
   });
 });

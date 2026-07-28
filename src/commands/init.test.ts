@@ -20,7 +20,11 @@ import {
   openTemplateSource,
 } from "../core/templates.js";
 import { createPortalClient, ReauthRequiredError } from "../core/authClient.js";
-import { listApplications, rotateServiceToken } from "../core/portal.js";
+import {
+  getApplicationDatabase,
+  listApplications,
+  rotateServiceToken,
+} from "../core/portal.js";
 import { selectApplication } from "../prompts/appSelect.js";
 import {
   chooseExistingDirectoryAction,
@@ -91,6 +95,11 @@ vi.mock("../core/authClient.js", () => {
 vi.mock("../core/portal.js", () => ({
   listApplications: vi.fn(),
   rotateServiceToken: vi.fn(),
+  getApplicationDatabase: vi.fn(),
+  buildScaffoldDatabaseUrl: vi.fn(
+    (db: { host: string; port: number; database: string }) =>
+      `postgres://USER:PASSWORD@${db.host}:${db.port}/${db.database}?sslmode=require`,
+  ),
 }));
 vi.mock("../core/config.js", () => ({
   normalizeInstanceUrl: vi.fn((u: string) => `norm:${u}`),
@@ -194,6 +203,7 @@ beforeEach(() => {
   // Default answers for the mode prompts; individual tests override.
   vi.mocked(chooseExistingDirectoryAction).mockResolvedValue("integrate");
   vi.mocked(chooseScaffoldTarget).mockResolvedValue("managed");
+  vi.mocked(getApplicationDatabase).mockResolvedValue(null);
   vi.mocked(confirmLocalFallback).mockResolvedValue(undefined);
 });
 
@@ -929,6 +939,103 @@ describe("init mode selection", () => {
   });
 });
 
+describe("managed database wiring", () => {
+  function connected() {
+    vi.mocked(createPortalClient).mockResolvedValue({
+      profile: { name: "default", instanceUrl: "https://auth" },
+    } as never);
+    vi.mocked(listApplications).mockResolvedValue([app()] as never);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+    } as never);
+  }
+
+  it("writes a placeholder connection string into the scaffold context", async () => {
+    connected();
+    vi.mocked(getApplicationDatabase).mockResolvedValue({
+      host: "db.example.com",
+      port: 5432,
+      database: "tenant",
+    } as never);
+
+    await runCLI(undefined, [], { appId: "app-1" });
+
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({
+        databaseUrl:
+          "postgres://USER:PASSWORD@db.example.com:5432/tenant?sslmode=require",
+      }),
+    );
+  });
+
+  // Mid-deploy applications have no database yet, which is a warning rather
+  // than a reason to fail a scaffold that is otherwise fine.
+  it("warns and carries an empty string when none is provisioned", async () => {
+    connected();
+    vi.mocked(getApplicationDatabase).mockResolvedValue(null as never);
+
+    await runCLI(undefined, [], { appId: "app-1" });
+
+    expect(out()).toContain("No managed database is available");
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ databaseUrl: "" }),
+    );
+    expect(printManagedSuccessOutput).toHaveBeenCalled();
+  });
+
+  // Reading it after rotation would mean reporting a missing database against a
+  // project whose token had already been invalidated.
+  it("reads the database before the token is rotated", async () => {
+    connected();
+    const order: string[] = [];
+    vi.mocked(getApplicationDatabase).mockImplementation(async () => {
+      order.push("database");
+      return null as never;
+    });
+    vi.mocked(rotateServiceToken).mockImplementation(async () => {
+      order.push("rotate");
+      return "svc-token";
+    });
+
+    await runCLI(undefined, [], { appId: "app-1" });
+
+    expect(order).toEqual(["database", "rotate"]);
+  });
+
+  it("scaffolds a local stack with no connection string", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "image",
+      useDocker: true,
+      ownerEmail: "dev@example.com",
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+
+    await runCLI(undefined, []);
+
+    expect(getApplicationDatabase).not.toHaveBeenCalled();
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      expect.objectContaining({ databaseUrl: "" }),
+    );
+  });
+});
+
 describe("integrateExistingProject", () => {
   beforeEach(() => {
     // Non-empty directory triggers the existing-project path.
@@ -983,6 +1090,49 @@ describe("integrateExistingProject", () => {
       }),
     );
     expect(out()).toContain("Updated");
+  });
+
+  it("adds DATABASE_URL to an existing project, but never overwrites one", async () => {
+    vi.mocked(createPortalClient).mockResolvedValue({
+      profile: { name: "default", instanceUrl: "https://auth" },
+    } as never);
+    vi.mocked(listApplications).mockResolvedValue([app()] as never);
+    vi.mocked(selectApplication).mockResolvedValue(app() as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token");
+    vi.mocked(getApplicationDatabase).mockResolvedValue({
+      host: "db.example.com",
+      port: 5432,
+      database: "tenant",
+    } as never);
+    vi.mocked(fs.existsSync).mockReturnValue(true);
+
+    // An existing project may already hold a working connection string,
+    // credentials and all; a placeholder must not replace it.
+    vi.mocked(parseEnv).mockReturnValue({
+      DATABASE_URL: "postgres://real:creds@db.example.com:5432/tenant",
+    } as never);
+
+    await runCLI(undefined, []);
+
+    expect(writeEnv).toHaveBeenCalledWith(
+      "/work/api/.env",
+      expect.objectContaining({
+        DATABASE_URL: "postgres://real:creds@db.example.com:5432/tenant",
+      }),
+    );
+
+    vi.mocked(writeEnv).mockClear();
+    vi.mocked(parseEnv).mockReturnValue({} as never);
+
+    await runCLI(undefined, []);
+
+    expect(writeEnv).toHaveBeenCalledWith(
+      "/work/api/.env",
+      expect.objectContaining({
+        DATABASE_URL:
+          "postgres://USER:PASSWORD@db.example.com:5432/tenant?sslmode=require",
+      }),
+    );
   });
 
   it("preserves existing api/.env values when the file is present", async () => {

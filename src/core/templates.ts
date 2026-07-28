@@ -58,6 +58,10 @@ export interface ScaffoldContext {
   // "true" when the app API should serve the admin console at /console, "false"
   // when the console is hosted elsewhere (a standalone container) or omitted.
   serveAdminConsole?: string;
+  // Connection string for a managed bundled database, with placeholder
+  // credentials. Empty for a local stack, whose starter falls back to its
+  // discrete DB_* values.
+  databaseUrl?: string;
 }
 
 // Build artifacts and local-only files that must never be copied into a scaffold,
@@ -250,6 +254,7 @@ function resolveToken(token: string, ctx: ScaffoldContext): string {
     apiToken: ctx.apiToken,
     jwksKid: ctx.jwksKid,
     serveAdminConsole: ctx.serveAdminConsole,
+    databaseUrl: ctx.databaseUrl,
   };
 
   if (token in known) {

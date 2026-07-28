@@ -41,6 +41,8 @@ import { getPortalSession, normalizeInstanceUrl } from "../core/config.js";
 import { parseEnv, writeEnv } from "../core/env.js";
 import { generateSecret } from "../core/secrets.js";
 import {
+  buildScaffoldDatabaseUrl,
+  getApplicationDatabase,
   listApplications,
   rotateServiceToken,
   type PortalApp,
@@ -194,6 +196,27 @@ async function scaffold(
   await scaffoldLocal(root, projectName, aliases);
 }
 
+// The bundled database as a connection string with placeholder credentials, or
+// an empty string when the control plane has not provisioned one yet. Never
+// requests ?reveal=true, so no live credential reaches this machine.
+async function resolveDatabaseUrl(
+  client: AuthClient,
+  app: PortalApp,
+): Promise<string> {
+  const database = await getApplicationDatabase(client, app.id);
+
+  if (!database) {
+    console.log(
+      kleur.yellow(
+        `No managed database is available for "${app.name}" yet. Set DATABASE_URL in api/.env once it finishes provisioning.`,
+      ),
+    );
+    return "";
+  }
+
+  return buildScaffoldDatabaseUrl(database);
+}
+
 // The old message told an account whose only application was still provisioning
 // that it had none and should create one.
 function noConnectableMessage(hasProvisioning: boolean): string {
@@ -257,6 +280,11 @@ async function scaffoldManaged(
     await source.copyInto(entry, dir);
   }
 
+  // Read before rotating: a database that is not provisioned yet is a warning,
+  // not a failure, and finding that out after the token is rotated would mean
+  // reporting it against a half-wired project.
+  const databaseUrl = await resolveDatabaseUrl(client, app);
+
   const serviceToken = await issueServiceToken(client, app);
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
@@ -273,6 +301,7 @@ async function scaffoldManaged(
       // A managed instance hosts its own dashboard, so the app API does not proxy
       // the console. Keeps the template's SERVE_ADMIN_CONSOLE gate off.
       serveAdminConsole: "false",
+      databaseUrl,
     };
 
     for (const { manifest, dir } of selected) {
@@ -301,6 +330,7 @@ async function scaffoldManaged(
       apiFramework: apiEntry.framework,
       authServerUrl,
       appName: app.name,
+      databaseUrl,
     });
   } catch (err) {
     console.error(
@@ -377,6 +407,9 @@ async function scaffoldLocal(
     apiToken: sharedConfig.apiToken,
     jwksKid: sharedConfig.kid,
     serveAdminConsole: answers.adminMode === "api" ? "true" : "false",
+    // The local stack runs its own postgres from the compose file, which the
+    // starter reaches through its discrete DB_* values.
+    databaseUrl: "",
   };
 
   for (const { manifest, dir } of selected) {
@@ -420,6 +453,11 @@ async function integrateExistingProject(
 ) {
   const app = await selectApplication(apps, opts.appId);
 
+  // Read before rotating: a database that is not provisioned yet is a warning,
+  // not a failure, and finding that out after the token is rotated would mean
+  // reporting it against a half-wired project.
+  const databaseUrl = await resolveDatabaseUrl(client, app);
+
   const serviceToken = await issueServiceToken(client, app);
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
@@ -433,7 +471,7 @@ async function integrateExistingProject(
   // The token is already rotated (old one invalidated); if the write fails, print
   // it so the app can be re-wired by hand rather than left bricked.
   try {
-    wireApiEnv(apiDir, authServerUrl, serviceToken);
+    wireApiEnv(apiDir, authServerUrl, serviceToken, databaseUrl);
   } catch (err) {
     console.error(
       kleur.red(
@@ -457,6 +495,7 @@ function wireApiEnv(
   apiDir: string,
   authServerUrl: string,
   serviceToken: string,
+  databaseUrl: string,
 ) {
   const envPath = path.join(apiDir, ".env");
   const values = fs.existsSync(envPath) ? parseEnv(envPath) : {};
@@ -466,6 +505,11 @@ function wireApiEnv(
   values.JWKS_KID = values.JWKS_KID || MANAGED_JWKS_KID;
   values.COOKIE_SIGNING_KEY =
     values.COOKIE_SIGNING_KEY || generateSecret(32);
+  // Never overwritten: an existing project may already hold a working
+  // connection string, credentials and all, and this one carries placeholders.
+  if (databaseUrl && !values.DATABASE_URL) {
+    values.DATABASE_URL = databaseUrl;
+  }
 
   fs.mkdirSync(apiDir, { recursive: true });
   writeEnv(envPath, values);
