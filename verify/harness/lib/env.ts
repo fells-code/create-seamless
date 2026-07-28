@@ -11,10 +11,9 @@ export const MOCK_OIDC_PORT = Number(process.env.SEAMLESS_MOCK_OIDC_PORT ?? 9000
 export const API_SERVICE_TOKEN =
   process.env.SEAMLESS_API_SERVICE_TOKEN ?? 'verify-dev-service-token';
 
-// Must match the API's SEAMLESS_BOOTSTRAP_SECRET so the harness can mint the
-// first admin invite (bootstrap-promotion flow).
-export const BOOTSTRAP_SECRET =
-  process.env.SEAMLESS_BOOTSTRAP_SECRET ?? 'verify-dev-bootstrap-secret';
+// Must match the API's OWNER_EMAIL so the harness can assert that registering
+// the tenant owner grants the admin role at signup.
+export const OWNER_EMAIL = process.env.SEAMLESS_OWNER_EMAIL ?? 'owner@verify.local';
 
 // Non-production seam: makes the API return OTP / magic-link tokens in the
 // response `delivery` object instead of sending real email/SMS.

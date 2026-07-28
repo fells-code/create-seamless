@@ -397,16 +397,18 @@ export async function runVerify(args: string[] = []): Promise<void> {
   const serviceToken =
     process.env.API_SERVICE_TOKEN ??
     "verify-dev-service-token-not-a-real-secret";
+  // Fixed before the stack boots so the harness can register exactly this
+  // address and assert the API's owner-admin grant.
+  const ownerEmail = process.env.OWNER_EMAIL ?? "owner@verify.local";
   const baseEnv: NodeJS.ProcessEnv = {
     ...process.env,
     SEAMLESS_API_DIR: apiDir,
     API_SERVICE_TOKEN: serviceToken,
     JWKS_KID: process.env.JWKS_KID ?? "dev-main",
-    SEAMLESS_BOOTSTRAP_SECRET:
-      process.env.SEAMLESS_BOOTSTRAP_SECRET ??
-      "verify-dev-bootstrap-secret-not-a-real-secret",
+    OWNER_EMAIL: ownerEmail,
     // consumed by the harness
     SEAMLESS_API_SERVICE_TOKEN: serviceToken,
+    SEAMLESS_OWNER_EMAIL: ownerEmail,
     SEAMLESS_API_URL: "http://localhost:5312",
     SEAMLESS_ADAPTER_URL: "http://localhost:3000",
   };
