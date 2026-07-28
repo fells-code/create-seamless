@@ -9,8 +9,8 @@ import {
   getApplication,
   listApplications,
   PortalError,
-  PortalNotFoundError,
   resolveAppInstanceUrl,
+  resolveAppRef,
   type PortalApp,
 } from "../core/portal.js";
 
@@ -68,10 +68,10 @@ async function appsList(rest: string[]): Promise<void> {
     return;
   }
 
-  // The id leads because it is the value you copy into `apps get` and
-  // `init --app`, and a UUID is not something you can retype from memory.
+  // The reference leads because it is the value you copy into `apps get` and
+  // `init --app`, neither of which you can retype from the name alone.
   const rows = apps.map((app) => [
-    app.id,
+    resolveAppRef(app),
     app.name,
     app.servicePlan ?? "-",
     app.status ?? "-",
@@ -105,34 +105,32 @@ async function appsGet(rest: string[]): Promise<void> {
   printApp(app);
 }
 
-// The control plane looks applications up by primary key only, but a developer
-// reading the list is as likely to reach for a name or an infra id. Try the id
-// first, then fall back to matching the list client-side.
-async function resolveApp(
-  client: AuthClient,
-  ref: string,
-): Promise<PortalApp> {
-  try {
-    return await getApplication(client, ref);
-  } catch (err) {
-    if (!(err instanceof PortalNotFoundError)) throw err;
-    return matchApplication(await listApplications(client), ref, err);
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// The control plane looks applications up by primary key only, but `apps list`
+// shows the infra id, so that is what a developer pastes. A UUID goes straight
+// to the endpoint; anything else is matched against the list rather than spending
+// a request that could only 404.
+async function resolveApp(client: AuthClient, ref: string): Promise<PortalApp> {
+  if (UUID.test(ref)) {
+    return getApplication(client, ref);
   }
+
+  const match = matchApplication(await listApplications(client), ref);
+  if (match) return match;
+
+  // Nothing matched by name or infra id. Ask the control plane anyway, so a
+  // future id format that is not a UUID still resolves (and 404s honestly).
+  return getApplication(client, ref);
 }
 
-function matchApplication(
-  apps: PortalApp[],
-  ref: string,
-  notFound: PortalNotFoundError,
-): PortalApp {
+function matchApplication(apps: PortalApp[], ref: string): PortalApp | null {
   const needle = ref.toLowerCase();
   const matches = apps.filter(
     (app) =>
       app.infraId?.toLowerCase() === needle ||
       app.name.toLowerCase() === needle,
   );
-
-  if (matches.length === 1) return matches[0];
 
   if (matches.length > 1) {
     throw new PortalError(
@@ -142,7 +140,7 @@ function matchApplication(
     );
   }
 
-  throw notFound;
+  return matches[0] ?? null;
 }
 
 function printApp(app: PortalApp): void {

@@ -70,6 +70,14 @@ export function resolveAppInstanceUrl(app: PortalApp): string | undefined {
   return app.instanceUrl ?? app.domain;
 }
 
+// The shortest reference that still identifies the application, for display and
+// for pasting into `apps get` or `init --app`. Both accept an infra id, and it
+// is far easier to read than the UUID primary key. Applications that have not
+// been provisioned have no infra id yet, so they fall back to the id.
+export function resolveAppRef(app: PortalApp): string {
+  return app.infraId ?? app.id;
+}
+
 function str(raw: Record<string, unknown>, key: string): string | undefined {
   const value = raw[key];
   return typeof value === "string" && value ? value : undefined;

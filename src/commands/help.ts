@@ -91,7 +91,8 @@ COMMANDS
     session (seamless login), not an instance profile.
 
     apps list [--json]
-      • Table of id, name, plan, status, and instance URL
+      • Table of reference, name, plan, status, and instance URL
+      • The reference is the infra id, or the id before one is assigned
       • Applications still provisioning are listed with (provisioning)
 
     apps get <id|name|infra-id> [--json]

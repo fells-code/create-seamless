@@ -46,8 +46,13 @@ function fakeClient(replies: ApiResponse<unknown>[]): {
   return { client, paths };
 }
 
+// Real UUIDs: `apps get` sends a UUID straight to the control plane and resolves
+// anything else against the list, so the id format decides which path runs.
+const ACME_ID = "11111111-1111-4111-8111-111111111111";
+const PENDING_ID = "22222222-2222-4222-8222-222222222222";
+
 const acme = {
-  id: "app-1",
+  id: ACME_ID,
   name: "Acme",
   instanceUrl: "https://acme.seamlessauth.com",
   consoleUrl: "https://acme.seamlessauth.com/console",
@@ -64,7 +69,8 @@ const acme = {
   },
 };
 
-const pending = { id: "app-2", name: "Pending", status: "provisioning" };
+// No infraId: not provisioned yet, so it has no short reference to show.
+const pending = { id: PENDING_ID, name: "Pending", status: "provisioning" };
 
 let logSpy: ReturnType<typeof vi.spyOn>;
 let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -102,10 +108,11 @@ describe("apps list", () => {
     const out = output();
     expect(out).toContain("ID");
     expect(out).toContain("NAME");
-    // The id is what `apps get` and `init --app` take, so it has to be readable
-    // straight off the list.
-    expect(out).toContain("app-1");
-    expect(out).toContain("app-2");
+    // The reference is what `apps get` and `init --app` take, so it has to be
+    // readable straight off the list: the infra id when there is one, and the
+    // UUID for an application that has not been provisioned yet.
+    expect(out).toContain("acme");
+    expect(out).toContain(PENDING_ID);
     expect(out).toContain("Acme");
     expect(out).toContain("https://acme.seamlessauth.com");
     expect(out).toContain("Pending");
@@ -141,7 +148,8 @@ describe("apps list", () => {
 
     const parsed = JSON.parse(logSpy.mock.calls[0][0] as string);
     expect(parsed[0]).toMatchObject({
-      id: "app-1",
+      id: ACME_ID,
+      infraId: "acme",
       instanceUrl: "https://acme.seamlessauth.com",
       hasServiceToken: true,
     });
@@ -150,15 +158,15 @@ describe("apps list", () => {
 });
 
 describe("apps get", () => {
-  it("prints the detail view including masked token metadata", async () => {
+  it("sends a UUID straight to the control plane and prints the detail view", async () => {
     const { client, paths } = fakeClient([
       response(200, { application: acme }),
     ]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
-    await runApps(["get", "app-1"]);
+    await runApps(["get", ACME_ID]);
 
-    expect(paths[0]).toBe("http://localhost:3000/applications/app-1");
+    expect(paths).toEqual([`http://localhost:3000/applications/${ACME_ID}`]);
     const out = output();
     expect(out).toContain("Acme");
     expect(out).toContain("us-east-1");
@@ -215,9 +223,9 @@ describe("apps get", () => {
     const { client } = fakeClient([response(200, { application: acme })]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
-    await runApps(["get", "app-1", "--json"]);
+    await runApps(["get", ACME_ID, "--json"]);
 
-    expect(JSON.parse(logSpy.mock.calls[0][0] as string).id).toBe("app-1");
+    expect(JSON.parse(logSpy.mock.calls[0][0] as string).id).toBe(ACME_ID);
   });
 
   it("requires a reference", async () => {
@@ -227,40 +235,34 @@ describe("apps get", () => {
     );
   });
 
-  it("falls back to matching a name when the id lookup 404s", async () => {
+  it("resolves an infra id against the list, without a doomed lookup first", async () => {
     const { client, paths } = fakeClient([
-      response(404, null),
       response(200, { applications: [acme, pending] }),
     ]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
-    await runApps(["get", "acme"]);
+    await runApps(["get", "ACME"]);
 
-    expect(paths).toEqual([
-      "http://localhost:3000/applications/acme",
-      "http://localhost:3000/applications",
-    ]);
+    // Only the list request: the control plane looks up by primary key, so
+    // asking it for an infra id could only 404.
+    expect(paths).toEqual(["http://localhost:3000/applications"]);
     expect(output()).toContain("Acme");
   });
 
-  it("matches an infra id", async () => {
+  it("resolves a name", async () => {
     const { client } = fakeClient([
-      response(404, null),
-      response(200, { applications: [{ ...acme, infraId: "acme-infra" }] }),
+      response(200, { applications: [acme, pending] }),
     ]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
-    await runApps(["get", "ACME-INFRA"]);
+    await runApps(["get", "pending"]);
 
-    expect(output()).toContain("Acme");
+    expect(output()).toContain("Pending");
   });
 
-  it("asks for an id when a name is ambiguous", async () => {
+  it("asks for an id when a reference is ambiguous", async () => {
     const { client } = fakeClient([
-      response(404, null),
-      response(200, {
-        applications: [acme, { ...acme, id: "app-9" }],
-      }),
+      response(200, { applications: [acme, { ...acme, id: "app-9" }] }),
     ]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
@@ -269,28 +271,32 @@ describe("apps get", () => {
       expect.stringContaining("matches 2 applications"),
     );
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("app-1, app-9"),
+      expect.stringContaining(`${ACME_ID}, app-9`),
     );
   });
 
-  it("reports a missing application when nothing matches", async () => {
-    const { client } = fakeClient([
-      response(404, null),
+  it("asks the control plane when nothing in the list matches", async () => {
+    const { client, paths } = fakeClient([
       response(200, { applications: [acme] }),
+      response(404, null),
     ]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
     await expect(runApps(["get", "ghost"])).rejects.toThrow("exit:1");
+    expect(paths).toEqual([
+      "http://localhost:3000/applications",
+      "http://localhost:3000/applications/ghost",
+    ]);
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining('Managed application "ghost" was not found.'),
     );
   });
 
-  it("does not fall back on a non-404 failure", async () => {
+  it("reports a non-404 failure without falling back", async () => {
     const { client, paths } = fakeClient([response(500, null)]);
     vi.mocked(createPortalClient).mockResolvedValue(client);
 
-    await expect(runApps(["get", "app-1"])).rejects.toThrow("exit:1");
+    await expect(runApps(["get", ACME_ID])).rejects.toThrow("exit:1");
     expect(paths).toHaveLength(1);
     expect(errorSpy).toHaveBeenCalledWith(expect.stringContaining("500"));
   });
