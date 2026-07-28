@@ -12,20 +12,11 @@ export async function chooseExistingDirectoryAction(
   canIntegrate: boolean,
 ): Promise<ExistingDirectoryAction> {
   if (!canIntegrate) {
-    const proceed = orCancel(
-      await confirm({
-        message:
-          "This directory is not empty. Scaffold a project here anyway? Starter files overwrite anything with the same name.",
-        initialValue: false,
-      }),
-    );
-    if (!proceed) {
-      throw new CancelledError("Nothing was written.");
-    }
+    await confirmOverwrite();
     return "scaffold";
   }
 
-  return orCancel(
+  const action = orCancel(
     await select({
       message: "This directory is not empty. What would you like to do?",
       options: [
@@ -42,6 +33,28 @@ export async function chooseExistingDirectoryAction(
       ],
     }),
   ) as ExistingDirectoryAction;
+
+  // The hint on the option is not consent. Writing over a directory a developer
+  // already has work in gets its own confirmation, on every route that reaches
+  // it, so the destructive choice is never one keystroke away.
+  if (action === "scaffold") {
+    await confirmOverwrite();
+  }
+
+  return action;
+}
+
+async function confirmOverwrite(): Promise<void> {
+  const proceed = orCancel(
+    await confirm({
+      message:
+        "This directory is not empty. Scaffold a project here anyway? Starter files overwrite anything with the same name.",
+      initialValue: false,
+    }),
+  );
+  if (!proceed) {
+    throw new CancelledError("Nothing was written.");
+  }
 }
 
 export type ScaffoldTarget = "managed" | "local";

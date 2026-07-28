@@ -47,9 +47,35 @@ describe("chooseExistingDirectoryAction", () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("returns the scaffold choice", async () => {
+  // Picking "scaffold here" off a list is not consent to write over existing
+  // files; the hint on the option is easy to skim past.
+  it("confirms the overwrite after the scaffold choice is picked", async () => {
     vi.mocked(select).mockResolvedValue("scaffold" as never);
+    vi.mocked(confirm).mockResolvedValue(true as never);
+
     await expect(chooseExistingDirectoryAction(true)).resolves.toBe("scaffold");
+
+    expect(confirm).toHaveBeenCalledTimes(1);
+    const args = lastCall(vi.mocked(confirm));
+    expect(args.message).toMatch(/overwrite/);
+    expect(args.initialValue).toBe(false);
+  });
+
+  it("cancels when the overwrite confirmation after the list is declined", async () => {
+    vi.mocked(select).mockResolvedValue("scaffold" as never);
+    vi.mocked(confirm).mockResolvedValue(false as never);
+
+    await expect(chooseExistingDirectoryAction(true)).rejects.toBeInstanceOf(
+      CancelledError,
+    );
+  });
+
+  it("does not confirm anything when integrating", async () => {
+    vi.mocked(select).mockResolvedValue("integrate" as never);
+
+    await expect(chooseExistingDirectoryAction(true)).resolves.toBe("integrate");
+
+    expect(confirm).not.toHaveBeenCalled();
   });
 
   it("asks for confirmation instead when integrating is not possible", async () => {

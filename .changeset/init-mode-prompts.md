@@ -13,9 +13,10 @@ That message now distinguishes "no applications yet" from "still provisioning", 
 `NoApplicationsError` got wrong for anyone mid-provision.
 
 A directory that already has files is no longer forced down the integrate path. `init` asks whether
-to connect it to a managed application or scaffold in place, and warns that starter files overwrite
-anything with the same name. Scaffolding into a non-empty directory was previously impossible, so a
-stray `README` or `.git` was enough to block a local project.
+to connect it to a managed application or scaffold in place. Scaffolding into a non-empty directory
+was previously impossible, so a stray `README` or `.git` was enough to block a local project, and
+every route that now reaches it confirms first: starter files overwrite anything with the same name,
+and the confirmation defaults to no.
 
 An unreachable control plane asks before scaffolding a local stack rather than degrading silently.
 
