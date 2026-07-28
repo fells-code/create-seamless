@@ -6,7 +6,9 @@ import type { Profile } from "./config.js";
 import {
   DEFAULT_PORTAL_API_URL,
   PortalError,
+  buildScaffoldDatabaseUrl,
   getApplication,
+  getApplicationDatabase,
   getPortalApiUrl,
   listApplications,
   resolveAppInstanceUrl,
@@ -259,6 +261,102 @@ describe("getApplication", () => {
     const idless = fakeClient([response(200, { application: { name: "x" } })]);
     await expect(getApplication(idless.client, "app-1")).rejects.toThrow(
       /unexpected response/,
+    );
+  });
+});
+
+describe("getApplicationDatabase", () => {
+  beforeEach(() => {
+    process.env.SEAMLESS_PORTAL_API_URL = "http://localhost:5001";
+  });
+  afterEach(() => {
+    delete process.env.SEAMLESS_PORTAL_API_URL;
+  });
+
+  it("reads the masked database without asking for credentials", async () => {
+    const { client, calls } = fakeClient([
+      response(200, {
+        database: {
+          host: "db.example.com",
+          port: 5432,
+          database: "tenant",
+          username: "tenant_user",
+          engine: "postgres",
+          connectionString:
+            "postgres://tenant_user:****@db.example.com:5432/tenant?sslmode=require",
+          masked: true,
+        },
+      }),
+    ]);
+
+    const db = await getApplicationDatabase(client, "app-1");
+
+    // No reveal=true anywhere: the password never reaches this machine.
+    expect(calls[0]).toEqual({
+      method: "GET",
+      path: "http://localhost:5001/applications/app-1/database",
+    });
+    expect(db).toEqual({
+      host: "db.example.com",
+      port: 5432,
+      database: "tenant",
+      engine: "postgres",
+    });
+    // The username is returned by the control plane and deliberately dropped.
+    expect(db as Record<string, unknown>).not.toHaveProperty("username");
+    expect(db as Record<string, unknown>).not.toHaveProperty("password");
+  });
+
+  it("defaults a missing or unusable port to 5432", async () => {
+    const { client } = fakeClient([
+      response(200, { database: { host: "h", database: "d", port: "nope" } }),
+    ]);
+    await expect(getApplicationDatabase(client, "app-1")).resolves.toMatchObject(
+      { port: 5432 },
+    );
+  });
+
+  // Normal for an application mid-deploy, so it must not fail a scaffold.
+  it("returns null when no database is provisioned yet", async () => {
+    const { client } = fakeClient([response(404, null)]);
+    await expect(getApplicationDatabase(client, "app-1")).resolves.toBeNull();
+  });
+
+  it("returns null for a payload it cannot use", async () => {
+    const missing = fakeClient([response(200, {})]);
+    await expect(
+      getApplicationDatabase(missing.client, "app-1"),
+    ).resolves.toBeNull();
+
+    const partial = fakeClient([response(200, { database: { host: "h" } })]);
+    await expect(
+      getApplicationDatabase(partial.client, "app-1"),
+    ).resolves.toBeNull();
+  });
+
+  it("treats a 401 or 403 as an authorization failure", async () => {
+    const { client } = fakeClient([response(403, null)]);
+    await expect(
+      getApplicationDatabase(client, "app-1"),
+    ).rejects.toBeInstanceOf(PortalError);
+  });
+
+  it("reports other failures with the status code", async () => {
+    const { client } = fakeClient([response(500, null)]);
+    await expect(getApplicationDatabase(client, "app-1")).rejects.toThrow(/500/);
+  });
+});
+
+describe("buildScaffoldDatabaseUrl", () => {
+  it("carries placeholders instead of credentials, and requires TLS", () => {
+    const url = buildScaffoldDatabaseUrl({
+      host: "db.example.com",
+      port: 5432,
+      database: "tenant",
+    });
+
+    expect(url).toBe(
+      "postgres://USER:PASSWORD@db.example.com:5432/tenant?sslmode=require",
     );
   });
 });

@@ -185,6 +185,71 @@ export async function getApplication(
   return app;
 }
 
+// The bundled database the control plane provisions alongside a managed
+// application, as much of it as the CLI is willing to hold.
+//
+// The username and password are deliberately absent. The control plane only
+// returns them for `?reveal=true`, which this CLI never asks for, so a live
+// database credential never reaches the developer's disk or terminal through
+// here. They copy those from the dashboard themselves.
+export interface PortalDatabase {
+  host: string;
+  port: number;
+  database: string;
+  engine?: string;
+}
+
+// Reads the bundled database. Returns null when the control plane has not
+// provisioned one yet, which is a normal state for an application mid-deploy
+// and must not fail a scaffold.
+export async function getApplicationDatabase(
+  client: AuthClient,
+  appId: string,
+): Promise<PortalDatabase | null> {
+  const url = joinUrl(
+    getPortalApiUrl(),
+    `/applications/${encodeURIComponent(appId)}/database`,
+  );
+  const res = await client.get<{ database?: unknown }>(url);
+
+  if (res.status === 401 || res.status === 403) {
+    throw unauthorized("read this application's database");
+  }
+  if (res.status === 404) {
+    return null;
+  }
+  if (!res.ok) {
+    throw new PortalError(
+      `Could not read the database for "${appId}" (${res.status}).`,
+    );
+  }
+
+  const raw = res.data?.database;
+  if (!raw || typeof raw !== "object") return null;
+
+  const record = raw as Record<string, unknown>;
+  const host = str(record, "host");
+  const database = str(record, "database");
+  if (!host || !database) return null;
+
+  const port = Number(record.port);
+
+  return {
+    host,
+    database,
+    port: Number.isFinite(port) && port > 0 ? port : 5432,
+    engine: str(record, "engine"),
+  };
+}
+
+// The connection string written into a scaffolded api/.env. USER and PASSWORD
+// stay as literal placeholders: obvious to spot, obvious to replace, and
+// impossible to mistake for working credentials. sslmode=require matches what
+// the control plane hands out, and is what makes the starter negotiate TLS.
+export function buildScaffoldDatabaseUrl(db: PortalDatabase): string {
+  return `postgres://USER:PASSWORD@${db.host}:${db.port}/${db.database}?sslmode=require`;
+}
+
 // Issues (rotates) the application's service token. The control plane only ever
 // returns a raw token at rotation time (it is stored write-once), so this is the
 // real credential flow: the token the auth instance already recognizes for this

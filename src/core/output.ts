@@ -180,9 +180,16 @@ export function printManagedSuccessOutput(config: {
   apiFramework: string | null;
   authServerUrl: string;
   appName: string;
+  databaseUrl?: string;
 }) {
-  const { projectName, webFramework, apiFramework, authServerUrl, appName } =
-    config;
+  const {
+    projectName,
+    webFramework,
+    apiFramework,
+    authServerUrl,
+    appName,
+    databaseUrl,
+  } = config;
 
   const title = kleur.bold().cyan("SEAMLESS");
 
@@ -224,6 +231,22 @@ export function printManagedSuccessOutput(config: {
   console.log("");
 
   console.log(kleur.bold("Next steps:\n"));
+
+  // The placeholders are the only thing standing between the scaffold and a
+  // working database, so they lead rather than sitting in a footnote.
+  if (databaseUrl) {
+    console.log(kleur.dim("  # Database"));
+    console.log(
+      "  Fill in the credentials in " +
+        kleur.cyan("api/.env") +
+        kleur.dim(" (DATABASE_URL):"),
+    );
+    console.log("  " + kleur.dim(maskDatabaseUrl(databaseUrl)));
+    console.log(
+      kleur.dim("  Copy the user and password from the dashboard.\n"),
+    );
+  }
+
   if (apiFramework) {
     console.log(kleur.dim("  # API server"));
     console.log("  cd api && npm install && npm run dev\n");
@@ -254,6 +277,13 @@ export function printManagedSuccessOutput(config: {
   );
 
   console.log(kleur.bold().green("Setup complete.\n"));
+}
+
+// Belt and braces: the CLI only ever holds a placeholder connection string, but
+// anything printed as a connection string gets its userinfo masked so a real one
+// pasted through here could never be echoed back in full.
+export function maskDatabaseUrl(url: string): string {
+  return url.replace(/\/\/[^@/]*@/, "//****:****@");
 }
 
 function formatFramework(name: string) {
