@@ -9,7 +9,7 @@
 #   SEAMLESS_ADAPTER_DIR  absolute path to the express adapter source
 #   API_SERVICE_TOKEN     shared secret between API and adapter
 #   JWKS_KID              key id the adapter expects (must match the API's active kid)
-#   SEAMLESS_BOOTSTRAP_SECRET  bearer secret for POST /bootstrap/admin-invite
+#   OWNER_EMAIL           tenant owner; this email gets the admin role at signup
 
 name: seamless-verify
 
@@ -72,8 +72,9 @@ services:
       DB_PASSWORD: seamless
       DB_NAME: seamless_auth
       API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
-      SEAMLESS_BOOTSTRAP_ENABLED: 'true'
-      SEAMLESS_BOOTSTRAP_SECRET: ${SEAMLESS_BOOTSTRAP_SECRET}
+      # The first admin comes from the OWNER_EMAIL grant at signup, so the
+      # harness can assert admin promotion without a separate invite flow.
+      OWNER_EMAIL: ${OWNER_EMAIL}
       # OAuth: a single "mock" provider backed by the harness's in-process OIDC.
       # authorizationUrl is browser/harness-visible (localhost); token/userInfo are
       # called server-side from the container, so they go via host.docker.internal.
