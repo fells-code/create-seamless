@@ -7,7 +7,6 @@ import pkg from "../package.json" with { type: "json" };
 vi.mock("./commands/init.js", () => ({ runCLI: vi.fn() }));
 vi.mock("./commands/check.js", () => ({ runCheck: vi.fn() }));
 vi.mock("./commands/help.js", () => ({ printHelp: vi.fn() }));
-vi.mock("./commands/bootstrapAdmin.js", () => ({ runBootstrapAdmin: vi.fn() }));
 vi.mock("./commands/verify.js", () => ({ runVerify: vi.fn() }));
 vi.mock("./commands/profile.js", () => ({ runProfile: vi.fn() }));
 vi.mock("./commands/login.js", () => ({ runLogin: vi.fn() }));
@@ -82,16 +81,6 @@ describe("index dispatcher", () => {
     await dispatch(["check"]);
     const { runCheck } = await import("./commands/check.js");
     expect(runCheck).toHaveBeenCalledTimes(1);
-  });
-
-  it("dispatches bootstrap-admin with the remaining arguments", async () => {
-    await dispatch(["bootstrap-admin", "--profile", "prod", "admin@example.com"]);
-    const { runBootstrapAdmin } = await import("./commands/bootstrapAdmin.js");
-    expect(runBootstrapAdmin).toHaveBeenCalledWith([
-      "--profile",
-      "prod",
-      "admin@example.com",
-    ]);
   });
 
   it("dispatches verify with the remaining args", async () => {

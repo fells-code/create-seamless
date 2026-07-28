@@ -5,7 +5,6 @@ import { extractFlag } from "./core/args.js";
 import { runCheck } from "./commands/check.js";
 import { printHelp } from "./commands/help.js";
 import pkg from "../package.json" with { type: "json" };
-import { runBootstrapAdmin } from "./commands/bootstrapAdmin.js";
 import { runVerify } from "./commands/verify.js";
 import { runProfile } from "./commands/profile.js";
 import { runLogin } from "./commands/login.js";
@@ -24,7 +23,6 @@ export const VERSION = pkg.version;
 const COMMANDS = [
   "init",
   "check",
-  "bootstrap-admin",
   "verify",
   "profile",
   "login",
@@ -78,11 +76,6 @@ async function main() {
 
   if (command === "check") {
     await runCheck();
-    return;
-  }
-
-  if (command === "bootstrap-admin") {
-    await runBootstrapAdmin(args.slice(1));
     return;
   }
 

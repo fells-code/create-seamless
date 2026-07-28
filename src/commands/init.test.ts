@@ -94,6 +94,7 @@ vi.mock("../core/portal.js", () => ({
 }));
 vi.mock("../core/config.js", () => ({
   normalizeInstanceUrl: vi.fn((u: string) => `norm:${u}`),
+  getPortalSession: vi.fn(() => undefined),
 }));
 vi.mock("../core/env.js", () => ({
   parseEnv: vi.fn(() => ({})),
@@ -224,6 +225,7 @@ describe("runCLI directory handling", () => {
       adminMode: "image",
       includeAdmin: true,
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({
       apiToken: "tok",
@@ -354,6 +356,7 @@ describe("resolveManagedClient", () => {
       adminMode: "image",
       includeAdmin: true,
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
 
@@ -373,6 +376,7 @@ describe("resolveManagedClient", () => {
       authMode: "docker",
       adminMode: "image",
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
 
@@ -405,6 +409,7 @@ describe("resolveManagedClient", () => {
       adminMode: "image",
       includeAdmin: true,
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
 
@@ -431,6 +436,7 @@ describe("scaffoldLocal", () => {
       adminMode: "image",
       includeAdmin: true,
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({
       apiToken: "docker-token",
@@ -441,6 +447,7 @@ describe("scaffoldLocal", () => {
 
     expect(generateAuthServer).not.toHaveBeenCalled();
     expect(generateDockerCompose).toHaveBeenCalledWith("/work", {
+      ownerEmail: "dev@example.com",
       authMode: "docker",
       adminMode: "image",
       oauth: [],
@@ -480,6 +487,7 @@ describe("scaffoldLocal", () => {
       apiTemplateId: "api-express",
       authMode: "local",
       adminMode: "image",
+      ownerEmail: "dev@example.com",
       includeAdmin: true,
       useDocker: false,
     } as never);
@@ -510,6 +518,7 @@ describe("scaffoldLocal", () => {
         expect.objectContaining({ catalog: { label: "Google" } }),
       ]),
       "image",
+      "dev@example.com",
     );
     // Docker not requested, so the compose generator is untouched.
     expect(generateDockerCompose).not.toHaveBeenCalled();
@@ -525,6 +534,7 @@ describe("scaffoldLocal", () => {
       apiTemplateId: "api-express",
       authMode: "local",
       adminMode: "image",
+      ownerEmail: "dev@example.com",
       includeAdmin: false,
       useDocker: false,
     } as never);
@@ -551,6 +561,7 @@ describe("template alias resolution", () => {
       adminMode: "image",
       includeAdmin: true,
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
   });
@@ -560,6 +571,7 @@ describe("template alias resolution", () => {
     expect(runProjectSetupPrompts).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ webTemplateId: "web-oauth" }),
+      undefined,
     );
   });
 
@@ -630,6 +642,7 @@ describe("findEntry", () => {
       adminMode: "image",
       includeAdmin: true,
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
 
     await expect(runCLI(undefined, [])).rejects.toThrow(
@@ -801,6 +814,7 @@ describe("init mode selection", () => {
       authMode: "docker",
       adminMode: "image",
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
   }
@@ -867,6 +881,7 @@ describe("init mode selection", () => {
       authMode: "docker",
       adminMode: "image",
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
 
@@ -934,6 +949,7 @@ describe("integrateExistingProject", () => {
       authMode: "docker",
       adminMode: "image",
       useDocker: true,
+      ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
 

@@ -1,4 +1,4 @@
-import { confirm, select } from "@clack/prompts";
+import { confirm, select, text } from "@clack/prompts";
 
 import { orCancel } from "../core/cancel.js";
 
@@ -79,6 +79,7 @@ export async function runManagedTemplatePrompts(
 export async function runProjectSetupPrompts(
   templates: RegistryEntry[],
   preselect: Preselect = {},
+  knownEmail?: string,
 ) {
   let webTemplateId = preselect.webTemplateId;
   if (webTemplateId) {
@@ -103,6 +104,19 @@ export async function runProjectSetupPrompts(
       }),
     ) as string;
   }
+
+  // Written to the auth server as OWNER_EMAIL, which grants the admin role to
+  // this address at signup. Asking here means registering in the scaffolded app
+  // is the only step between `docker compose up` and a working admin.
+  const ownerEmail = orCancel(
+    await text({
+      message: "Your email (becomes the admin when you register)",
+      placeholder: knownEmail ?? "you@example.com",
+      initialValue: knownEmail ?? "",
+      validate: (value) =>
+        (value ?? "").includes("@") ? undefined : "Enter a valid email address",
+    }),
+  ) as string;
 
   const authMode = orCancel(
     await select({
@@ -172,5 +186,6 @@ export async function runProjectSetupPrompts(
     useDocker: true,
 
     adminMode,
+    ownerEmail: ownerEmail.trim(),
   };
 }

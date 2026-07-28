@@ -89,8 +89,11 @@ describe("buildAuthEnv", () => {
     expect(env.AUTH_MODE).toBe("server");
     expect(env.PORT).toBe("5312");
     expect(env.NODE_ENV).toBe("development");
-    expect(env.SEAMLESS_BOOTSTRAP_ENABLED).toBe("true");
-    expect(env.SEAMLESS_BOOTSTRAP_SECRET).toBe(shared.bootstrapSecret);
+    // The scaffolded stack no longer enables the bootstrap route: the first
+    // admin comes from the OWNER_EMAIL grant at signup.
+    expect(env.SEAMLESS_BOOTSTRAP_ENABLED).toBeUndefined();
+    expect(env.SEAMLESS_BOOTSTRAP_SECRET).toBeUndefined();
+    expect("bootstrapSecret" in shared).toBe(false);
     expect(env.API_SERVICE_TOKEN).toBe(shared.apiToken);
     expect(env.REFRESH_TOKEN_LOOKUP_SECRET).toMatch(/^[0-9a-f]{64}$/);
     expect(env.TOTP_SECRET_ENCRYPTION_KEY).toMatch(/^[0-9a-f]{64}$/);
@@ -295,5 +298,20 @@ describe("generateDockerCompose", () => {
     expect(compose).toContain(`API_SERVICE_TOKEN: ${shared.apiToken}`);
     expect(compose).toContain(`JWKS_KID: ${shared.kid}`);
     expect(compose).toContain("OAUTH_PROVIDERS");
+  });
+});
+
+describe("buildAuthEnv owner grant", () => {
+  it("writes OWNER_EMAIL so the first signup becomes an admin", () => {
+    const { env } = buildAuthEnv({}, "docker", [], "api", "dev@example.com");
+    expect(env.OWNER_EMAIL).toBe("dev@example.com");
+    // withOwnerAdminRole only grants when admin is an available role, which the
+    // auth server's own .env.example supplies.
+    expect(env.AVAILABLE_ROLES ?? "user,admin").toContain("admin");
+  });
+
+  it("omits OWNER_EMAIL when no owner was collected", () => {
+    const { env } = buildAuthEnv({}, "docker");
+    expect("OWNER_EMAIL" in env).toBe(false);
   });
 });

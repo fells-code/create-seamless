@@ -21,6 +21,7 @@ export async function generateDockerCompose(
     authMode: "local" | "docker";
     adminMode: AdminMode;
     oauth?: CollectedOAuthProvider[];
+    ownerEmail?: string;
   },
 ) {
   const { compose, shared } = await buildCompose(options, root);
@@ -39,16 +40,18 @@ async function buildCompose(
     authMode: "local" | "docker";
     adminMode: AdminMode;
     oauth?: CollectedOAuthProvider[];
+    ownerEmail?: string;
   },
   root: string,
 ) {
-  const { authMode, adminMode, oauth } = options;
+  const { authMode, adminMode, oauth, ownerEmail } = options;
 
   const { service: authBlock, shared } = await authService(
     authMode,
     root,
     oauth,
     adminMode,
+    ownerEmail,
   );
 
   const includeAdminContainer = adminMode === "image" || adminMode === "source";
@@ -92,6 +95,7 @@ async function authService(
   root: string,
   oauth: CollectedOAuthProvider[] = [],
   adminMode: AdminMode = "api",
+  ownerEmail?: string,
 ) {
   if (mode === "local") {
     // auth/.env was already written by generateAuthServer (with its secrets and any
@@ -124,7 +128,7 @@ async function authService(
     };
   }
 
-  return await authServiceDocker(oauth, adminMode);
+  return await authServiceDocker(oauth, adminMode, ownerEmail);
 }
 
 // The app API's CORS allowlist. The console is same-origin here in API-served
@@ -188,11 +192,18 @@ function webService() {
 async function authServiceDocker(
   oauth: CollectedOAuthProvider[] = [],
   adminMode: AdminMode = "api",
+  ownerEmail?: string,
 ) {
   const raw = await fetchEnvExample();
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "docker", oauth, adminMode);
+  const { env, shared } = buildAuthEnv(
+    parsed,
+    "docker",
+    oauth,
+    adminMode,
+    ownerEmail,
+  );
 
   const envBlock = envToDockerBlock(env);
 
@@ -264,13 +275,18 @@ export function buildAuthEnv(
   mode: "local" | "docker",
   oauth: CollectedOAuthProvider[] = [],
   adminMode: AdminMode = "api",
+  ownerEmail?: string,
 ) {
   const apiToken = generateSecret(32);
-  const bootstrapSecret = generateSecret(32);
   const kid = "dev-main";
 
-  env.SEAMLESS_BOOTSTRAP_ENABLED = "true";
-  env.SEAMLESS_BOOTSTRAP_SECRET = bootstrapSecret;
+  // The auth server grants the admin role at signup to an address listed here,
+  // so registering in the scaffolded app produces a working /console admin with
+  // no separate promotion step. Signup-time only: setting this after an account
+  // already exists promotes nobody.
+  if (ownerEmail) {
+    env.OWNER_EMAIL = ownerEmail;
+  }
 
   env.PORT = "5312";
   env.NODE_ENV = "development";
@@ -320,7 +336,6 @@ export function buildAuthEnv(
     shared: {
       apiToken,
       kid,
-      bootstrapSecret,
     },
   };
 }
@@ -373,6 +388,7 @@ export async function configureAuthLocalEnv(
   root: string,
   oauth: CollectedOAuthProvider[] = [],
   adminMode: AdminMode = "api",
+  ownerEmail?: string,
 ) {
   const authDir = path.join(root, "auth");
   const envExamplePath = path.join(authDir, ".env.example");
@@ -386,7 +402,13 @@ export async function configureAuthLocalEnv(
 
   const parsed = parseEnvString(raw);
 
-  const { env, shared } = buildAuthEnv(parsed, "local", oauth, adminMode);
+  const { env, shared } = buildAuthEnv(
+    parsed,
+    "local",
+    oauth,
+    adminMode,
+    ownerEmail,
+  );
 
   writeEnvFile(envPath, env);
 

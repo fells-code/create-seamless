@@ -8,9 +8,17 @@ export function printSuccessOutput(config: {
   authMode: "local" | "docker";
   useDocker: boolean | symbol;
   adminMode: "api" | "image" | "source" | "none";
+  ownerEmail: string;
 }) {
-  const { projectName, webFramework, apiFramework, authMode, useDocker, adminMode } =
-    config;
+  const {
+    projectName,
+    webFramework,
+    apiFramework,
+    authMode,
+    useDocker,
+    adminMode,
+    ownerEmail,
+  } = config;
 
   // Where the admin console lives: proxied by the app API at /console, or a
   // standalone container on 5174. "none" scaffolds no console at all.
@@ -78,11 +86,10 @@ export function printSuccessOutput(config: {
     console.log("  1. Start services");
     console.log(kleur.cyan("     docker compose up\n"));
 
-    console.log("  2. Create your first admin user");
-    console.log(kleur.cyan("     seamless bootstrap-admin\n"));
-
-    console.log("  3. Complete registration in the browser");
-    console.log(kleur.dim("     This grants admin access to the system\n"));
+    console.log("  2. Register in the browser with " + kleur.bold(ownerEmail));
+    console.log(
+      kleur.dim("     That address is the owner, so it becomes an admin\n"),
+    );
   } else {
     if (authMode === "local") {
       console.log(kleur.dim("  # Auth server"));
@@ -114,8 +121,7 @@ export function printSuccessOutput(config: {
       console.log("  cd web && npm install && npm run dev\n");
     }
 
-    console.log("  2. Create your first admin user");
-    console.log(kleur.cyan("     seamless bootstrap-admin\n"));
+    console.log("  Register with " + kleur.bold(ownerEmail) + " to become an admin.\n");
   }
 
   console.log(kleur.bold("Available services:\n"));
@@ -150,7 +156,14 @@ export function printSuccessOutput(config: {
     );
   }
   console.log(
-    kleur.dim("  • Bootstrap command provisions the first admin user"),
+    kleur.dim(
+      `  • ${ownerEmail} is the owner: registering with it grants the admin role`,
+    ),
+  );
+  console.log(
+    kleur.dim(
+      "  • The grant happens at signup, so change OWNER_EMAIL in auth before registering",
+    ),
   );
   console.log(kleur.dim("  • All secrets and keys are pre-configured\n"));
 

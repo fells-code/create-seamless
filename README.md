@@ -191,25 +191,23 @@ npm run dev
 
 ## Creating the first admin
 
-A fresh instance has no admin yet. `seamless bootstrap-admin` issues the first admin invite:
+`init` asks for your email and writes it to the auth server as `OWNER_EMAIL`. The auth server grants
+the admin role at account creation to any signup matching that address, so registering in the
+scaffolded web app is all it takes:
 
 ```bash
-seamless bootstrap-admin admin@example.com                          # local app API (default)
-seamless bootstrap-admin admin@example.com --api-url https://api...  # a specific app API
-seamless bootstrap-admin                                            # prompts for the email
+seamless init my-app
+cd my-app
+docker compose up
+# register at http://localhost:5173 with the email you gave init
 ```
 
-The invited user then completes registration to receive admin access.
+Both signup paths (email OTP and a verified OAuth profile) establish control of the address before
+the account is created, so only someone who actually receives mail there can claim it.
 
-**Where it points.** The bootstrap invite route is served by your app API (the SeamlessAuth
-server adapter), not the auth server directly, so the target is resolved independently of any
-login profile: `--api-url` wins, then `SEAMLESS_API_URL`, then the local default
-`http://localhost:3000`.
-
-**How it authenticates.** Bootstrap runs _before_ any admin exists, so it can't use a login
-session. Instead it uses the instance's shared bootstrap secret, resolved automatically from a
-local `.env`, `auth/.env`, or `docker-compose.yml`, and prompted for if none is found (for example
-when bootstrapping a production instance from a machine without the project checked out).
+**The grant is signup-time only.** Changing `OWNER_EMAIL` after an account already exists promotes
+nobody. To hand ownership to a different address, set it in `auth/` (or the compose file) before that
+person registers.
 
 ## Authenticating against an instance
 

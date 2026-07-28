@@ -1,4 +1,4 @@
-import { confirm, select } from "@clack/prompts";
+import { confirm, select, text } from "@clack/prompts";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { RegistryEntry } from "../core/templates.js";
@@ -13,6 +13,7 @@ vi.mock("@clack/prompts", () => {
     CANCEL,
     select: vi.fn(),
     confirm: vi.fn(),
+    text: vi.fn(),
     isCancel: (value: unknown) => value === CANCEL,
   };
 });
@@ -71,6 +72,8 @@ function fullRegistry(): RegistryEntry[] {
 let logs: string[];
 
 beforeEach(() => {
+  // Every full run answers the owner-email prompt; tests that care override it.
+  vi.mocked(text).mockResolvedValue("dev@example.com" as never);
   logs = [];
   vi.spyOn(console, "log").mockImplementation((msg?: unknown) => {
     logs.push(String(msg ?? ""));
@@ -159,6 +162,7 @@ describe("runProjectSetupPrompts", () => {
       authMode: "docker",
       useDocker: true,
       adminMode: "api",
+      ownerEmail: "dev@example.com",
     });
     expect(confirm).not.toHaveBeenCalled();
   });
@@ -178,6 +182,29 @@ describe("runProjectSetupPrompts", () => {
     expect(result.apiTemplateId).toBe("api-a");
     expect(out()).toContain("Web example: Vue");
     expect(out()).toContain("Backend: Express");
+  });
+
+  it("validates the owner email prompt", async () => {
+    mockSelect({
+      "Web example": "web-a",
+      "Backend framework": "api-a",
+      "How would you like to run SeamlessAuth?": "docker",
+      "How would you like to host the admin console?": "api",
+    });
+
+    await runProjectSetupPrompts(fullRegistry(), {}, "known@example.com");
+
+    const args = vi.mocked(text).mock.calls[0][0] as {
+      placeholder: string;
+      initialValue: string;
+      validate: (v: string) => string | undefined;
+    };
+    // A signed-in developer should not retype the address the grant will match.
+    expect(args.initialValue).toBe("known@example.com");
+    expect(args.placeholder).toBe("known@example.com");
+    expect(args.validate("dev@example.com")).toBeUndefined();
+    expect(args.validate("nope")).toMatch(/valid email/);
+    expect(args.validate("")).toMatch(/valid email/);
   });
 
   it("returns the chosen console hosting mode", async () => {
