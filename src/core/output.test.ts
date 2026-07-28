@@ -25,6 +25,7 @@ describe("printSuccessOutput", () => {
       authMode: "local",
       useDocker: true,
       adminMode: "image",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();
@@ -41,9 +42,8 @@ describe("printSuccessOutput", () => {
     expect(out).toContain("Admin console");
     expect(out).toContain("1. Start services");
     expect(out).toContain("docker compose up");
-    expect(out).toContain("2. Create your first admin user");
-    expect(out).toContain("seamless bootstrap-admin");
-    expect(out).toContain("3. Complete registration in the browser");
+    expect(out).toContain("2. Register in the browser with");
+    expect(out).toContain("dev@example.com");
     expect(out).toContain("http://localhost:5312");
     expect(out).toContain("http://localhost:3000");
     expect(out).toContain("http://localhost:5173");
@@ -62,6 +62,7 @@ describe("printSuccessOutput", () => {
       authMode: "docker",
       useDocker: true,
       adminMode: "api",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();
@@ -80,6 +81,7 @@ describe("printSuccessOutput", () => {
       authMode: "docker",
       useDocker: true,
       adminMode: "none",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();
@@ -96,6 +98,7 @@ describe("printSuccessOutput", () => {
       authMode: "docker",
       useDocker: false,
       adminMode: "image",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();
@@ -110,7 +113,8 @@ describe("printSuccessOutput", () => {
     // No API/Web url lines
     expect(out).not.toContain("API:    ");
     expect(out).not.toContain("Web:    ");
-    expect(out).toContain("2. Create your first admin user");
+    // Non-docker branch has no numbered start-services step to hang it off.
+    expect(out).toContain("Register with");
   });
 
   it("prints local (non-docker) auth server setup steps when authMode is local and useDocker is false", () => {
@@ -121,6 +125,7 @@ describe("printSuccessOutput", () => {
       authMode: "local",
       useDocker: false,
       adminMode: "image",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();
@@ -151,6 +156,7 @@ describe("printSuccessOutput", () => {
       authMode: "docker",
       useDocker: true,
       adminMode: "image",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();
@@ -166,6 +172,7 @@ describe("printSuccessOutput", () => {
       authMode: "docker",
       useDocker: Symbol("cancel"),
       adminMode: "none",
+      ownerEmail: "dev@example.com",
     });
 
     const out = allLogs();

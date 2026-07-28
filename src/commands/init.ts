@@ -37,7 +37,7 @@ import {
   ReauthRequiredError,
   type AuthClient,
 } from "../core/authClient.js";
-import { normalizeInstanceUrl } from "../core/config.js";
+import { getPortalSession, normalizeInstanceUrl } from "../core/config.js";
 import { parseEnv, writeEnv } from "../core/env.js";
 import { generateSecret } from "../core/secrets.js";
 import {
@@ -323,6 +323,7 @@ async function scaffoldLocal(
   const answers = await runProjectSetupPrompts(
     source.registry.templates,
     preselect,
+    getPortalSession()?.email,
   );
 
   const selected = await resolveSelectedTemplates(
@@ -353,6 +354,7 @@ async function scaffoldLocal(
       "local",
       oauthProviders,
       answers.adminMode,
+      answers.ownerEmail,
     );
   }
 
@@ -361,6 +363,7 @@ async function scaffoldLocal(
       authMode: answers.authMode,
       adminMode: answers.adminMode,
       oauth: oauthProviders,
+      ownerEmail: answers.ownerEmail,
     });
 
     if (answers.authMode === "docker") {
@@ -399,6 +402,7 @@ async function scaffoldLocal(
     authMode: answers.authMode,
     useDocker: answers.useDocker,
     adminMode: answers.adminMode,
+    ownerEmail: answers.ownerEmail,
   });
 
   printOAuthNextSteps(oauthProviders);

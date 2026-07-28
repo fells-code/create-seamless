@@ -55,7 +55,7 @@ guidance may extend them but must not contradict them.
 - Install dependencies: `npm install`
 - Build (type-check and emit): `npm run build` (`tsc`, output in `dist/`)
 - Run from source: `npm run dev -- <command>` (`tsx`); or after building, `node dist/index.js <command>`
-- Commands: `init [name]`, `check`, `bootstrap-admin [email]`, `verify [flags]`,
+- Commands: `init [name]`, `check`, `verify [flags]`, `apps`,
   and the instance-management commands `profile`, `login`, `whoami`, `logout`,
   `sessions`, `config`, `users`, `org` (all dispatched from `src/index.ts`)
 
@@ -80,7 +80,6 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
     the auth server env (`OAUTH_PROVIDERS`, per-provider `*_CLIENT_SECRET`, the `oauth` login
     method) by `buildAuthEnv` in [src/generators/docker/docker.ts](src/generators/docker/docker.ts).
 - **check** health-checks a running stack (local or managed).
-- **bootstrap-admin** mints the first admin invite against the app API.
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
 - **instance management** — `profile` (targets, plus `profile login`),
   `logout`/`whoami`, `sessions`, `config` (system config + OAuth providers),

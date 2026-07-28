@@ -12,7 +12,6 @@ USAGE
 
   seamless init [project-name] [--<example>]
   seamless check
-  seamless bootstrap-admin [email] [--api-url <url>]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
   seamless profile <list|add|use|remove|login>
   seamless login [identifier] [--identifier <email>] [--local]
@@ -180,34 +179,15 @@ COMMANDS
     seamless-auth-server, override with SEAMLESS_SERVER_DIR) instead of the
     published npm packages — so you can catch SDK regressions before publishing.
 
-  bootstrap-admin [email] [--api-url <url>]
-    Create a bootstrap admin invite
-
-    Targets your app API (the SeamlessAuth server adapter), which exposes the
-    bootstrap route and delivers the invite — not the auth server directly.
-    Defaults to http://localhost:3000; override with --api-url or SEAMLESS_API_URL.
-
-    Automatically resolves bootstrap secret from:
-      • .env
-      • auth/.env
-      • docker-compose.yml
-
-    If not found, you will be prompted.
-
-    Examples:
-      seamless bootstrap-admin
-      seamless bootstrap-admin admin@example.com
-      seamless bootstrap-admin admin@example.com --api-url http://localhost:3000
-
 ────────────────────────────────────────────
 
 GETTING STARTED
 
   1. seamless init
-  2. docker-compose up
-  3. seamless bootstrap-admin
+  2. docker compose up
+  3. Register in the browser with the email you gave init
 
-    → Complete registration to become admin
+    → That address is the owner, so it becomes an admin
 
 ────────────────────────────────────────────
 
@@ -234,9 +214,6 @@ EXAMPLES
 
   seamless check
     → Validate your project
-
-  seamless bootstrap-admin
-    → Create your first admin user
 
 ────────────────────────────────────────────
 

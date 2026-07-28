@@ -19,11 +19,12 @@ export async function generateAuthServer(
   mode: "local" | "docker" | Symbol,
   oauth: CollectedOAuthProvider[] = [],
   adminMode: AdminMode = "api",
+  ownerEmail?: string,
 ) {
   const { root } = context;
 
   if (mode === "local") {
-    return await setupLocalAuth(root, oauth, adminMode);
+    return await setupLocalAuth(root, oauth, adminMode, ownerEmail);
   }
 
   return await setupDockerAuth(root);
@@ -33,6 +34,7 @@ async function setupLocalAuth(
   root: string,
   oauth: CollectedOAuthProvider[] = [],
   adminMode: AdminMode = "api",
+  ownerEmail?: string,
 ) {
   const authDir = path.join(root, "auth");
 
@@ -42,7 +44,7 @@ async function setupLocalAuth(
 
   console.log("Writing auth environment...");
 
-  const shared = await configureAuthLocalEnv(root, oauth, adminMode);
+  const shared = await configureAuthLocalEnv(root, oauth, adminMode, ownerEmail);
 
   console.log("Auth server ready in /auth");
   return shared;
