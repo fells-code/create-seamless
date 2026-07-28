@@ -25,6 +25,11 @@ import {
   type TemplateSource,
 } from "../core/templates.js";
 import { runOAuthSetupPrompts } from "../prompts/oauthSetup.js";
+import {
+  chooseExistingDirectoryAction,
+  chooseScaffoldTarget,
+  confirmLocalFallback,
+} from "../prompts/initMode.js";
 import { CancelledError, orCancel } from "../core/cancel.js";
 import type { CollectedOAuthProvider } from "../core/oauthProviders.js";
 import {
@@ -128,9 +133,8 @@ async function scaffold(
   aliases: string[],
   opts: InitOptions,
 ) {
-  // A portal session makes the managed path the default; --local forces the
-  // self-hosted stack. A missing session or an unreachable control plane falls
-  // back to local, unless managed was requested explicitly (handled below).
+  // --local forces the self-hosted stack without asking the control plane
+  // anything.
   let client: AuthClient | null = null;
   let fallbackReason: "no-session" | "unreachable" | null = null;
   if (!opts.local) {
@@ -149,27 +153,53 @@ async function scaffold(
     );
   }
 
+  // Whether managed is even possible is settled before the first prompt, so a
+  // session with nothing to connect never costs a round of questions first.
+  const allApps = client ? await listApplications(client) : [];
+  const apps = connectable(allApps);
+  const canConnect = client !== null && apps.length > 0;
+
   const isEmpty = fs.readdirSync(root).length === 0;
-
   if (!isEmpty) {
-    await integrateExistingProject(root, client, opts);
-    return;
+    // --app is explicit managed intent, so it skips the question and integrates.
+    const action = opts.appId
+      ? "integrate"
+      : await chooseExistingDirectoryAction(canConnect);
+    if (action === "integrate") {
+      await integrateExistingProject(root, client!, apps, opts);
+      return;
+    }
   }
 
-  if (client) {
-    await scaffoldManaged(root, projectName, aliases, client, opts);
-  } else {
-    if (fallbackReason) {
-      console.log(
-        kleur.yellow(
-          fallbackReason === "unreachable"
-            ? "Could not reach the control plane; scaffolding a local project instead. Use --local to skip this check."
-            : "Not logged in; scaffolding a local project. Run `seamless login` first to connect a managed instance.",
-        ),
-      );
+  if (canConnect) {
+    const target = opts.appId
+      ? "managed"
+      : await chooseScaffoldTarget(apps.length);
+    if (target === "managed") {
+      await scaffoldManaged(root, projectName, aliases, client!, apps, opts);
+      return;
     }
-    await scaffoldLocal(root, projectName, aliases);
+  } else if (client) {
+    console.log(kleur.yellow(noConnectableMessage(allApps.length > 0)));
+  } else if (fallbackReason === "unreachable") {
+    await confirmLocalFallback();
+  } else if (fallbackReason === "no-session") {
+    console.log(
+      kleur.yellow(
+        "Not logged in; scaffolding a local project. Run `seamless login` first to connect a managed instance.",
+      ),
+    );
   }
+
+  await scaffoldLocal(root, projectName, aliases);
+}
+
+// The old message told an account whose only application was still provisioning
+// that it had none and should create one.
+function noConnectableMessage(hasProvisioning: boolean): string {
+  return hasProvisioning
+    ? "Your managed applications are still provisioning, so there is nothing to connect to yet. Scaffolding a local project instead."
+    : "Your account has no managed applications yet (create one at https://dashboard.seamlessauth.com). Scaffolding a local project instead.";
 }
 
 type ManagedResolution =
@@ -198,6 +228,7 @@ async function scaffoldManaged(
   projectName: string | undefined,
   aliases: string[],
   client: AuthClient,
+  apps: ConnectableApp[],
   opts: InitOptions,
 ) {
   const source = await openTemplateSource();
@@ -216,8 +247,7 @@ async function scaffoldManaged(
 
   // Resolve the target application before writing files, so a cancelled selection
   // or an authorization failure leaves nothing behind.
-  const apps = await listApplications(client);
-  const app = await selectApplication(connectable(apps), opts.appId);
+  const app = await selectApplication(apps, opts.appId);
 
   // Copy templates before rotating the service token. Rotation invalidates the
   // app's previous token (see rotateServiceToken), so it runs as late as possible;
@@ -380,26 +410,11 @@ async function scaffoldLocal(
 // to paste in by hand.
 async function integrateExistingProject(
   root: string,
-  client: AuthClient | null,
+  client: AuthClient,
+  apps: ConnectableApp[],
   opts: InitOptions,
 ) {
-  if (!client) {
-    console.log("Existing project detected.");
-    console.log(
-      "Log in first to connect it to a managed instance: " +
-        kleur.cyan("seamless login") +
-        ".",
-    );
-    console.log(
-      kleur.dim(
-        "Run init in an empty directory to scaffold a new local project.",
-      ),
-    );
-    return;
-  }
-
-  const apps = await listApplications(client);
-  const app = await selectApplication(connectable(apps), opts.appId);
+  const app = await selectApplication(apps, opts.appId);
 
   const serviceToken = await issueServiceToken(client, app);
 
