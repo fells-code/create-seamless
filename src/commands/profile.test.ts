@@ -295,3 +295,69 @@ describe("runProfile remove", () => {
     expect(logs().some((l) => l.includes('Profile "prod" removed.'))).toBe(true);
   });
 });
+
+describe("profile add: reserved names", () => {
+  it("rejects the name used for the portal session", async () => {
+    await expect(
+      runProfile([
+        "add",
+        "__portal__",
+        "--instance-url",
+        "https://auth.example.com",
+      ]),
+    ).rejects.toThrow("exit:1");
+
+    expect(outro).toHaveBeenCalledWith(
+      expect.stringContaining("reserved for the portal session"),
+    );
+    expect(loadConfig().profiles.__portal__).toBeUndefined();
+  });
+});
+
+describe("profile login", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const body = url.endsWith("/login")
+          ? { token: "e1", identifierType: "email", loginMethods: ["email_otp"] }
+          : url.endsWith("/otp/generate-login-email-otp")
+            ? { message: "sent" }
+            : { token: "a", refreshToken: "r", email: "dev@example.com" };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("signs in to the named profile without changing the active one", async () => {
+    upsertProfile({ name: "default", instanceUrl: "https://auth.example.com" });
+    const prod = { name: "prod", instanceUrl: "https://prod.example.com" };
+    upsertProfile(prod);
+    vi.mocked(text).mockResolvedValueOnce("123456");
+
+    await runProfile(["login", "prod", "dev@example.com"]);
+
+    expect(await getTokens(prod)).not.toBeNull();
+    expect(loadConfig().activeProfile).toBe("default");
+    expect(loadConfig().portal).toBeUndefined();
+  });
+
+  it("accepts --identifier and falls back to the active profile", async () => {
+    const active = { name: "default", instanceUrl: "https://auth.example.com" };
+    upsertProfile(active);
+    vi.mocked(text).mockResolvedValueOnce("123456");
+
+    await runProfile(["login", "--identifier", "dev@example.com"]);
+
+    expect(await getTokens(active)).not.toBeNull();
+    // Only the code prompt ran; the identifier came from the flag.
+    expect(vi.mocked(text)).toHaveBeenCalledTimes(1);
+  });
+});

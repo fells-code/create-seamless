@@ -14,8 +14,8 @@ USAGE
   seamless check
   seamless bootstrap-admin [email] [--api-url <url>]
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
-  seamless profile <list|add|use|remove>
-  seamless login [identifier] [--identifier <email>] [--local] [--profile <name>]
+  seamless profile <list|add|use|remove|login>
+  seamless login [identifier] [--identifier <email>] [--local]
   seamless whoami [--profile <name>]
   seamless logout [--all] [--profile <name>]
   seamless sessions [list]
@@ -46,9 +46,11 @@ COMMANDS
         GitLab) and wires the ones you configure into the auth server
       • Run an unknown flag to see the available examples
 
-  profile <list|add|use|remove>
+  profile <list|add|use|remove|login>
     Manage the Seamless Auth instances the CLI targets, stored as named
     profiles in ~/.config/seamless/config.json (respects XDG_CONFIG_HOME).
+    A profile is an instance you administer, which is a different account from
+    your portal login: it lives in that instance's own user pool.
 
     profile list
       • Show configured profiles; the active one is marked with *
@@ -62,30 +64,35 @@ COMMANDS
     profile remove <name>
       • Delete a profile
 
+    profile login [name] [identifier] [--identifier <email>] [--local]
+      • Log in to that instance so users, config, org, and sessions can run
+      • Defaults to the active profile, and does not change which one is active
+
     The active profile can also be chosen per command with --profile <name> or
     the SEAMLESS_PROFILE environment variable.
 
   login [identifier]
-    Log in to the active profile's Seamless Auth instance using email OTP.
-    Prompts for the identifier (or pass it positionally or with --identifier)
-    and the code sent to your inbox, then stores the session in the OS keychain.
+    Sign in to the Seamless portal, the managed control plane. This is the
+    account that authorizes connecting a project to a managed application, and
+    it needs no profile. Prompts for the identifier (or pass it positionally or
+    with --identifier) and the emailed code, then stores the session in the OS
+    keychain. Use seamless profile login to sign in to an auth instance.
 
     --local
-      • For local instances only. Asks the instance to return the OTP in the
+      • For a local portal only. Asks the instance to return the OTP in the
         response instead of emailing it, and verifies with it automatically.
       • Requires the auth API to run outside production with
         ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true.
-
-    --profile <name>
-      • Log in against a specific profile instead of the active one
-      • Also selectable with the SEAMLESS_PROFILE environment variable
+      • Point SEAMLESS_PORTAL_AUTH_URL at a local instance to develop against it.
 
   whoami
-    Show the identity behind the active profile's session (sub, email, roles),
-    alongside the profile name and instance URL. Fails cleanly if not logged in.
+    Show the identity behind your portal session (sub, email, roles), alongside
+    the instance URL. Pass --profile <name> to report an instance session
+    instead. Fails cleanly if not logged in.
 
   logout [--all]
-    End the current session on the instance and clear the local keychain tokens.
+    End your portal session and clear the local keychain tokens. Pass
+    --profile <name> to log out of an instance instead.
     --all revokes every session for the user before clearing local tokens.
 
   sessions [list]

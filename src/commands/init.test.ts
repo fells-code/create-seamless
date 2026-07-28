@@ -19,7 +19,7 @@ import {
   assertCliSupports,
   openTemplateSource,
 } from "../core/templates.js";
-import { createAuthClient, ReauthRequiredError } from "../core/authClient.js";
+import { createPortalClient, ReauthRequiredError } from "../core/authClient.js";
 import { listApplications, rotateServiceToken } from "../core/portal.js";
 import { selectApplication } from "../prompts/appSelect.js";
 import { parseEnv, writeEnv } from "../core/env.js";
@@ -74,7 +74,7 @@ vi.mock("../core/templates.js", () => ({
 }));
 vi.mock("../core/authClient.js", () => {
   class ReauthRequiredError extends Error {}
-  return { createAuthClient: vi.fn(), ReauthRequiredError };
+  return { createPortalClient: vi.fn(), ReauthRequiredError };
 });
 vi.mock("../core/portal.js", () => ({
   listApplications: vi.fn(),
@@ -197,7 +197,7 @@ describe("runCLI directory handling", () => {
 
   it("creates the project directory and logs it", async () => {
     // New named project: does not exist, then scaffold local runs.
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
@@ -223,7 +223,7 @@ describe("runCLI directory handling", () => {
 
 describe("resolveManagedClient", () => {
   it("falls back to the local stack when no session exists", async () => {
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
@@ -245,7 +245,7 @@ describe("resolveManagedClient", () => {
   });
 
   it("falls back to local (with a warning) when the control plane is unreachable", async () => {
-    vi.mocked(createAuthClient).mockRejectedValue(new Error("boom"));
+    vi.mocked(createPortalClient).mockRejectedValue(new Error("boom"));
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
     vi.mocked(runProjectSetupPrompts).mockResolvedValue({
       webTemplateId: "web-basic",
@@ -264,7 +264,7 @@ describe("resolveManagedClient", () => {
   });
 
   it("errors when --app is given but there is no session (no silent local fallback)", async () => {
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
 
@@ -288,14 +288,14 @@ describe("resolveManagedClient", () => {
 
     await runCLI(undefined, [], { local: true });
 
-    expect(createAuthClient).not.toHaveBeenCalled();
+    expect(createPortalClient).not.toHaveBeenCalled();
     expect(runProjectSetupPrompts).toHaveBeenCalled();
   });
 });
 
 describe("scaffoldLocal", () => {
   beforeEach(() => {
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
@@ -418,7 +418,7 @@ describe("scaffoldLocal", () => {
 
 describe("template alias resolution", () => {
   beforeEach(() => {
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
@@ -497,7 +497,7 @@ describe("template alias resolution", () => {
 
 describe("findEntry", () => {
   it("throws when a selected template id is not in the registry", async () => {
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
@@ -518,7 +518,7 @@ describe("findEntry", () => {
 
 describe("scaffoldManaged", () => {
   function loggedIn() {
-    vi.mocked(createAuthClient).mockResolvedValue({
+    vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
@@ -667,7 +667,7 @@ describe("integrateExistingProject", () => {
   });
 
   it("prints login guidance when there is no session", async () => {
-    vi.mocked(createAuthClient).mockRejectedValue(
+    vi.mocked(createPortalClient).mockRejectedValue(
       new ReauthRequiredError("no session"),
     );
 
@@ -678,7 +678,7 @@ describe("integrateExistingProject", () => {
   });
 
   it("updates api/.env when an api directory exists", async () => {
-    vi.mocked(createAuthClient).mockResolvedValue({
+    vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     vi.mocked(listApplications).mockResolvedValue([app()] as never);
@@ -704,7 +704,7 @@ describe("integrateExistingProject", () => {
   });
 
   it("preserves existing api/.env values when the file is present", async () => {
-    vi.mocked(createAuthClient).mockResolvedValue({
+    vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     vi.mocked(listApplications).mockResolvedValue([app()] as never);
@@ -729,7 +729,7 @@ describe("integrateExistingProject", () => {
   });
 
   it("prints the managed values to paste when there is no api directory", async () => {
-    vi.mocked(createAuthClient).mockResolvedValue({
+    vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     vi.mocked(listApplications).mockResolvedValue([app()] as never);
@@ -745,7 +745,7 @@ describe("integrateExistingProject", () => {
   });
 
   it("returns early when no application is selected", async () => {
-    vi.mocked(createAuthClient).mockResolvedValue({
+    vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     vi.mocked(listApplications).mockResolvedValue([] as never);
@@ -758,7 +758,7 @@ describe("integrateExistingProject", () => {
   });
 
   it("returns early when token issuance is declined", async () => {
-    vi.mocked(createAuthClient).mockResolvedValue({
+    vi.mocked(createPortalClient).mockResolvedValue({
       profile: { name: "default", instanceUrl: "https://auth" },
     } as never);
     const existing = app({ hasServiceToken: true });

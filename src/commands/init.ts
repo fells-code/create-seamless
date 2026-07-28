@@ -27,7 +27,7 @@ import {
 import { runOAuthSetupPrompts } from "../prompts/oauthSetup.js";
 import type { CollectedOAuthProvider } from "../core/oauthProviders.js";
 import {
-  createAuthClient,
+  createPortalClient,
   ReauthRequiredError,
   type AuthClient,
 } from "../core/authClient.js";
@@ -62,6 +62,17 @@ export async function runCLI(
 ) {
   const cwd = process.cwd();
 
+  // Managed connect now reads the portal session, so a profile no longer selects
+  // anything here. Warn rather than silently ignoring it.
+  // TODO(#125): drop the flag one minor version after release.
+  if (opts.profileFlag) {
+    console.log(
+      kleur.yellow(
+        "init no longer takes --profile; managed connect uses your portal session. Run: seamless login",
+      ),
+    );
+  }
+
   let root = cwd;
 
   if (projectName) {
@@ -75,13 +86,13 @@ export async function runCLI(
     console.log(`Creating project in ${root}`);
   }
 
-  // A logged-in profile makes the managed path the default; --local forces the
+  // A portal session makes the managed path the default; --local forces the
   // self-hosted stack. A missing session or an unreachable control plane falls
-  // back to local — unless managed was requested explicitly (handled below).
+  // back to local, unless managed was requested explicitly (handled below).
   let client: AuthClient | null = null;
   let fallbackReason: "no-session" | "unreachable" | null = null;
   if (!opts.local) {
-    const resolution = await resolveManagedClient(opts.profileFlag);
+    const resolution = await resolveManagedClient();
     client = resolution.client;
     if (!client) fallbackReason = resolution.reason;
   }
@@ -123,14 +134,15 @@ type ManagedResolution =
   | { client: AuthClient; reason: null }
   | { client: null; reason: "no-session" | "unreachable" };
 
-// Resolves an authenticated control-plane client. A missing session
-// ("no-session") and an unreachable/errored control plane ("unreachable") both
-// yield a null client so init can fall back to local (or, with --app, error).
-async function resolveManagedClient(
-  profileFlag?: string,
-): Promise<ManagedResolution> {
+// Resolves an authenticated control-plane client from the portal session. A
+// missing session ("no-session") and an unreachable/errored control plane
+// ("unreachable") both yield a null client so init can fall back to local (or,
+// with --app, error). Instance profiles are deliberately not consulted: a session
+// for an auth instance the developer administers says nothing about whether they
+// have a managed account, and sending its token to the control plane would fail.
+async function resolveManagedClient(): Promise<ManagedResolution> {
   try {
-    return { client: await createAuthClient({ profileFlag }), reason: null };
+    return { client: await createPortalClient(), reason: null };
   } catch (err) {
     if (err instanceof ReauthRequiredError) {
       return { client: null, reason: "no-session" };

@@ -3,13 +3,20 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
+  assertUsableProfileName,
+  clearPortalSession,
+  DEFAULT_PORTAL_AUTH_URL,
   getConfigPath,
+  getPortalAuthUrl,
+  getPortalSession,
   getProfile,
   listProfiles,
   loadConfig,
   normalizeInstanceUrl,
+  PORTAL_PROFILE_NAME,
   removeProfile,
   resolveActiveProfileName,
+  savePortalSession,
   setActiveProfile,
   upsertProfile,
 } from "./config.js";
@@ -26,6 +33,89 @@ afterEach(() => {
   fs.rmSync(configHome, { recursive: true, force: true });
   delete process.env.XDG_CONFIG_HOME;
   delete process.env.SEAMLESS_PROFILE;
+  delete process.env.SEAMLESS_PORTAL_AUTH_URL;
+});
+
+describe("getPortalAuthUrl", () => {
+  it("defaults to the managed portal auth instance", () => {
+    expect(getPortalAuthUrl()).toBe(DEFAULT_PORTAL_AUTH_URL);
+  });
+
+  it("honors SEAMLESS_PORTAL_AUTH_URL and normalizes it", () => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = "http://localhost:5312/";
+    expect(getPortalAuthUrl()).toBe("http://localhost:5312");
+  });
+
+  it("rejects an override that is not a valid instance URL", () => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = "not-a-url";
+    expect(() => getPortalAuthUrl()).toThrow(/Invalid instance URL/);
+  });
+});
+
+describe("assertUsableProfileName", () => {
+  it("rejects the reserved portal name", () => {
+    expect(() => assertUsableProfileName(PORTAL_PROFILE_NAME)).toThrow(
+      /reserved for the portal session/,
+    );
+  });
+
+  it("accepts an ordinary name", () => {
+    expect(() => assertUsableProfileName("prod")).not.toThrow();
+  });
+});
+
+describe("portal session", () => {
+  beforeEach(() => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = "https://portal.example.com";
+  });
+
+  it("is undefined before signing in", () => {
+    expect(getPortalSession()).toBeUndefined();
+  });
+
+  it("round-trips and stays out of the profile map", () => {
+    savePortalSession({
+      instanceUrl: "https://portal.example.com",
+      sub: "user-1",
+      email: "dev@example.com",
+      identifierType: "email",
+    });
+
+    const session = getPortalSession()!;
+    expect(session.name).toBe(PORTAL_PROFILE_NAME);
+    expect(session.email).toBe("dev@example.com");
+    expect(loadConfig().profiles).toEqual({});
+    expect(listProfiles()).toEqual([]);
+  });
+
+  // Tokens are keyed by host, so a session for another portal is unusable here
+  // and must read as signed out rather than being silently reused.
+  it("is undefined when it belongs to a different portal host", () => {
+    savePortalSession({ instanceUrl: "https://portal.example.com" });
+    process.env.SEAMLESS_PORTAL_AUTH_URL = "https://other.example.com";
+
+    expect(getPortalSession()).toBeUndefined();
+    expect(loadConfig().portal).toBeDefined();
+  });
+
+  it("clears", () => {
+    savePortalSession({ instanceUrl: "https://portal.example.com" });
+    clearPortalSession();
+
+    expect(getPortalSession()).toBeUndefined();
+    expect(loadConfig().portal).toBeUndefined();
+  });
+
+  it("survives a reload and ignores a malformed stored value", () => {
+    savePortalSession({ instanceUrl: "https://portal.example.com" });
+    expect(loadConfig().portal?.instanceUrl).toBe("https://portal.example.com");
+
+    fs.writeFileSync(
+      getConfigPath(),
+      JSON.stringify({ activeProfile: "default", profiles: {}, portal: 42 }),
+    );
+    expect(loadConfig().portal).toBeUndefined();
+  });
 });
 
 describe("loadConfig", () => {

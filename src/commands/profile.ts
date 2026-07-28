@@ -2,6 +2,7 @@ import { intro, outro, text, isCancel, cancel } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import {
+  assertUsableProfileName,
   DEFAULT_PROFILE_NAME,
   loadConfig,
   normalizeInstanceUrl,
@@ -12,6 +13,7 @@ import {
   type IdentifierType,
 } from "../core/config.js";
 import { deleteTokens, KeychainUnavailableError } from "../core/keychain.js";
+import { loginToInstance } from "./instanceLogin.js";
 
 export async function runProfile(args: string[]): Promise<void> {
   const sub = args[0];
@@ -30,11 +32,14 @@ export async function runProfile(args: string[]): Promise<void> {
     case "remove":
       await profileRemove(rest);
       return;
+    case "login":
+      await profileLogin(rest);
+      return;
     default:
       console.error(
         kleur.red(`Unknown profile subcommand: ${sub ?? "(none)"}`),
       );
-      console.log("Usage: seamless profile <list|add|use|remove>");
+      console.log("Usage: seamless profile <list|add|use|remove|login>");
       process.exit(1);
   }
 }
@@ -89,6 +94,13 @@ async function profileAdd(rest: string[]): Promise<void> {
     name = (answer as string) || DEFAULT_PROFILE_NAME;
   }
 
+  try {
+    assertUsableProfileName(name);
+  } catch (err) {
+    outro(kleur.red((err as Error).message));
+    process.exit(1);
+  }
+
   if (!instanceUrl) {
     const answer = await text({
       message: "Instance URL",
@@ -127,6 +139,21 @@ async function profileAdd(rest: string[]): Promise<void> {
   });
 
   outro(kleur.green(`Profile "${name}" saved (${normalized})`));
+}
+
+// Signs in to a profile's instance without switching the active profile, so a
+// one-off admin command against another instance does not disturb the default.
+async function profileLogin(rest: string[]): Promise<void> {
+  const local = rest.includes("--local");
+  const withoutLocal = rest.filter((a) => a !== "--local");
+  const idFlag = extractFlag(withoutLocal, "identifier");
+  const positional = idFlag.rest.filter((a) => !a.startsWith("-"));
+
+  await loginToInstance({
+    profileName: positional[0],
+    identifier: idFlag.value ?? positional[1],
+    local,
+  });
 }
 
 function profileUse(rest: string[]): void {
