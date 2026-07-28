@@ -1,6 +1,6 @@
 import { select, isCancel, cancel } from "@clack/prompts";
 
-import type { PortalApp } from "../core/portal.js";
+import { resolveAppInstanceUrl, type PortalApp } from "../core/portal.js";
 
 export class NoApplicationsError extends Error {
   constructor() {
@@ -14,10 +14,12 @@ export class NoApplicationsError extends Error {
 // Resolves which managed application the scaffold connects to. `--app` matches an
 // id or infra id; a single application is auto-selected; otherwise the developer
 // picks. Returns null only when an interactive selection is cancelled.
-export async function selectApplication(
-  apps: PortalApp[],
+// Generic over the app type so a caller that has already narrowed to applications
+// with a resolvable instance URL keeps that guarantee on the selected one.
+export async function selectApplication<T extends PortalApp>(
+  apps: T[],
   preselectId?: string,
-): Promise<PortalApp | null> {
+): Promise<T | null> {
   if (apps.length === 0) {
     throw new NoApplicationsError();
   }
@@ -36,7 +38,9 @@ export async function selectApplication(
   }
 
   if (apps.length === 1) {
-    console.log(`Managed application: ${apps[0].name} (${apps[0].domain})`);
+    console.log(
+      `Managed application: ${apps[0].name} (${resolveAppInstanceUrl(apps[0])})`,
+    );
     return apps[0];
   }
 
@@ -45,7 +49,7 @@ export async function selectApplication(
     options: apps.map((a) => ({
       value: a.id,
       label: a.name,
-      hint: a.domain,
+      hint: resolveAppInstanceUrl(a),
     })),
   });
 

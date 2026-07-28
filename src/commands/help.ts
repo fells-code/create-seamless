@@ -16,6 +16,7 @@ USAGE
   seamless verify [--api-only] [--filter=<flow>] [--keep-up]
   seamless profile <list|add|use|remove|login>
   seamless login [identifier] [--identifier <email>] [--local]
+  seamless apps <list|get>
   seamless whoami [--profile <name>]
   seamless logout [--all] [--profile <name>]
   seamless sessions [list]
@@ -84,6 +85,18 @@ COMMANDS
       • Requires the auth API to run outside production with
         ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true.
       • Point SEAMLESS_PORTAL_AUTH_URL at a local instance to develop against it.
+
+  apps <list|get>
+    Show the managed applications your portal account owns. Requires a portal
+    session (seamless login), not an instance profile.
+
+    apps list [--json]
+      • Table of name, plan, status, and instance URL
+      • Applications still provisioning are listed with (provisioning)
+
+    apps get <id> [--json]
+      • Detail for one application, including the console URL, owners, and
+        whether a service token has been issued (masked, never the live value)
 
   whoami
     Show the identity behind your portal session (sub, email, roles), alongside

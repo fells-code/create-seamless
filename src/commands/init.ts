@@ -175,7 +175,7 @@ async function scaffoldManaged(
   // Resolve the target application before writing files, so a cancelled selection
   // or an authorization failure leaves nothing behind.
   const apps = await listApplications(client);
-  const app = await selectApplication(apps, opts.appId);
+  const app = await selectApplication(connectable(apps), opts.appId);
   if (!app) return;
 
   // Copy templates before rotating the service token. Rotation invalidates the
@@ -359,7 +359,7 @@ async function integrateExistingProject(
   }
 
   const apps = await listApplications(client);
-  const app = await selectApplication(apps, opts.appId);
+  const app = await selectApplication(connectable(apps), opts.appId);
   if (!app) return;
 
   const serviceToken = await issueServiceToken(client, app);
@@ -452,6 +452,15 @@ async function issueServiceToken(
     }
   }
   return rotateServiceToken(client, app.id);
+}
+
+type ConnectableApp = PortalApp & { domain: string };
+
+// listApplications reports applications that have not finished provisioning too,
+// because `seamless apps list` has to show them. Managed connect needs an auth
+// server to point at, so it keeps considering only the ones that have one.
+function connectable(apps: PortalApp[]): ConnectableApp[] {
+  return apps.filter((app): app is ConnectableApp => !!app.domain);
 }
 
 interface SelectedTemplate {
