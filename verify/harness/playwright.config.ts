@@ -18,12 +18,17 @@ export default defineConfig({
     ['junit', { outputFile: 'results/junit.xml' }],
     ['html', { outputFolder: 'results/html', open: 'never' }],
   ],
+  // Each project scopes itself with testDir, not testMatch. A testMatch regex is
+  // applied to the absolute path, so `/api\/.*\.spec\.ts$/` also matched every
+  // adapter and react spec whenever the checkout lived under a directory
+  // containing "api/" (the seamless-auth-api conformance run does exactly that),
+  // pulling browser specs into a project with no baseURL.
   projects: [
-    { name: 'api', testMatch: /api\/.*\.spec\.ts$/ },
-    { name: 'adapter', testMatch: /adapter\/.*\.spec\.ts$/ },
+    { name: 'api', testDir: './api' },
+    { name: 'adapter', testDir: './adapter' },
     {
       name: 'react',
-      testMatch: /react\/.*\.spec\.ts$/,
+      testDir: './react',
       use: { ...devices['Desktop Chrome'], baseURL: REACT_URL },
     },
   ],
