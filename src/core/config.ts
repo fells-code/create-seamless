@@ -15,9 +15,27 @@ export interface Profile {
 export interface SeamlessConfig {
   activeProfile: string;
   profiles: Record<string, Profile>;
+  // The Seamless portal session. There is exactly one, so it lives beside the
+  // profile map rather than inside it: profiles are auth instances a developer
+  // administers, the portal is the managed control plane's own account.
+  portal?: Profile;
 }
 
 export const DEFAULT_PROFILE_NAME = "default";
+
+// Reserved profile name for the portal session's keychain entry, so it can never
+// collide with a developer's own profile (see assertUsableProfileName).
+export const PORTAL_PROFILE_NAME = "__portal__";
+
+// The portal's first-party auth instance (portal-auth in seamless-iac), which
+// issues the sessions api.seamlessauth.com accepts. Paired with getPortalApiUrl
+// in core/portal.ts, which lives there to avoid an import cycle.
+export const DEFAULT_PORTAL_AUTH_URL = "https://seamless.seamlessauth.com";
+
+export function getPortalAuthUrl(): string {
+  const override = process.env.SEAMLESS_PORTAL_AUTH_URL?.trim();
+  return normalizeInstanceUrl(override || DEFAULT_PORTAL_AUTH_URL);
+}
 
 export function getConfigDir(): string {
   const xdg = process.env.XDG_CONFIG_HOME?.trim();
@@ -66,7 +84,12 @@ function normalizeLoaded(parsed: unknown): SeamlessConfig {
       ? raw.activeProfile
       : DEFAULT_PROFILE_NAME;
 
-  return { activeProfile: active, profiles };
+  const config: SeamlessConfig = { activeProfile: active, profiles };
+
+  const portal = coerceProfile(PORTAL_PROFILE_NAME, raw.portal);
+  if (portal) config.portal = portal;
+
+  return config;
 }
 
 export function loadConfig(): SeamlessConfig {
@@ -167,6 +190,42 @@ export function getActiveProfile(
 ): Profile | undefined {
   const config = loadConfig();
   return config.profiles[resolveActiveProfileName(opts, config)];
+}
+
+// Rejects the reserved portal name so a developer's profile can never share a
+// keychain account with the portal session.
+export function assertUsableProfileName(name: string): void {
+  if (name === PORTAL_PROFILE_NAME) {
+    throw new Error(
+      `"${PORTAL_PROFILE_NAME}" is reserved for the portal session. Pick another profile name.`,
+    );
+  }
+}
+
+// The stored portal session, but only when it belongs to the portal the CLI is
+// currently pointed at. Switching SEAMLESS_PORTAL_AUTH_URL therefore reads as
+// logged out rather than silently reusing a session from the other host, whose
+// tokens are keyed to that host anyway.
+export function getPortalSession(
+  config: SeamlessConfig = loadConfig(),
+): Profile | undefined {
+  const portal = config.portal;
+  if (!portal) return undefined;
+  return portal.instanceUrl === getPortalAuthUrl() ? portal : undefined;
+}
+
+export function savePortalSession(session: Omit<Profile, "name">): SeamlessConfig {
+  const config = loadConfig();
+  config.portal = { ...session, name: PORTAL_PROFILE_NAME };
+  saveConfig(config);
+  return config;
+}
+
+export function clearPortalSession(): SeamlessConfig {
+  const config = loadConfig();
+  delete config.portal;
+  saveConfig(config);
+  return config;
 }
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);

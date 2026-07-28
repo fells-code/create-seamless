@@ -2,7 +2,12 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { upsertProfile } from "../core/config.js";
+import {
+  loadConfig,
+  PORTAL_PROFILE_NAME,
+  savePortalSession,
+  upsertProfile,
+} from "../core/config.js";
 import { getTokens, saveTokens, setBackendForTesting, type KeychainBackend } from "../core/keychain.js";
 import { runLogout } from "./logout.js";
 
@@ -45,6 +50,70 @@ afterEach(() => {
   setBackendForTesting(null);
   fs.rmSync(configHome, { recursive: true, force: true });
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.SEAMLESS_PORTAL_AUTH_URL;
+});
+
+describe("runLogout: portal", () => {
+  const portalUrl = "https://portal.example.com";
+  const portalTarget = { name: PORTAL_PROFILE_NAME, instanceUrl: portalUrl };
+
+  beforeEach(() => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = portalUrl;
+  });
+
+  it("revokes and clears the portal session by default", async () => {
+    savePortalSession({ instanceUrl: portalUrl, email: "dev@example.com" });
+    await saveTokens(portalTarget, { accessToken: "a", refreshToken: "r" });
+    upsertProfile(profile);
+    await saveTokens(profile, { accessToken: "ia", refreshToken: "ir" });
+
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return json({ ok: true });
+      }),
+    );
+
+    await runLogout([]);
+
+    expect(calls[0]).toBe(`${portalUrl}/logout`);
+    expect(await getTokens(portalTarget)).toBeNull();
+    expect(loadConfig().portal).toBeUndefined();
+    // The instance session is a separate account and must survive.
+    expect(await getTokens(profile)).not.toBeNull();
+    expect(logs().some((l) => l.includes("Logged out."))).toBe(true);
+  });
+
+  it("clears a stale portal session without a live token", async () => {
+    savePortalSession({ instanceUrl: portalUrl });
+
+    await runLogout([]);
+
+    expect(loadConfig().portal).toBeUndefined();
+    expect(logs().some((l) => l.includes("You are already logged out."))).toBe(
+      true,
+    );
+  });
+
+  it("targets an instance when --profile is given", async () => {
+    savePortalSession({ instanceUrl: portalUrl });
+    await saveTokens(portalTarget, { accessToken: "a", refreshToken: "r" });
+    upsertProfile(profile);
+    await saveTokens(profile, { accessToken: "ia", refreshToken: "ir" });
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ ok: true })),
+    );
+
+    await runLogout(["--profile", "default"]);
+
+    expect(await getTokens(profile)).toBeNull();
+    expect(loadConfig().portal).toBeDefined();
+    expect(await getTokens(portalTarget)).not.toBeNull();
+  });
 });
 
 function logs(): string[] {
@@ -54,7 +123,7 @@ function logs(): string[] {
 describe("runLogout", () => {
   it("does nothing when there is no active profile", async () => {
     await runLogout([]);
-    expect(logs().some((l) => l.includes("No active profile. Nothing to log out of."))).toBe(
+    expect(logs().some((l) => l.includes("No session to log out of."))).toBe(
       true,
     );
   });

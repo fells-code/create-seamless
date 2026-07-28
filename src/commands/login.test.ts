@@ -16,7 +16,7 @@ vi.mock("@clack/prompts", () => {
 });
 
 import { CANCEL, cancel, intro, outro, text } from "@clack/prompts";
-import { loadConfig, upsertProfile } from "../core/config.js";
+import { loadConfig, savePortalSession, upsertProfile } from "../core/config.js";
 import {
   KeychainUnavailableError,
   getTokens,
@@ -69,6 +69,9 @@ function mockRouter(routes: Record<string, Array<() => Response>>): Call[] {
 
 const profile = { name: "default", instanceUrl: "https://auth.example.com" };
 
+const PORTAL_URL = "https://portal.example.com";
+const portalTarget = { name: "__portal__", instanceUrl: PORTAL_URL };
+
 let configHome: string;
 let logSpy: ReturnType<typeof vi.spyOn>;
 let errorSpy: ReturnType<typeof vi.spyOn>;
@@ -79,6 +82,7 @@ beforeEach(() => {
   process.env.XDG_CONFIG_HOME = configHome;
   delete process.env.SEAMLESS_PROFILE;
   delete process.env.SEAMLESS_REFRESH_TOKEN;
+  process.env.SEAMLESS_PORTAL_AUTH_URL = PORTAL_URL;
 
   setBackendForTesting(fakeBackend());
 
@@ -100,28 +104,35 @@ afterEach(() => {
   setBackendForTesting(null);
   fs.rmSync(configHome, { recursive: true, force: true });
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.SEAMLESS_PORTAL_AUTH_URL;
 });
 
 function logs(): string[] {
   return logSpy.mock.calls.map((c) => c[0] as string);
 }
 
-describe("runLogin: no active profile", () => {
-  it("errors and exits 1", async () => {
-    await expect(runLogin([])).rejects.toThrow("exit:1");
-    expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("No active profile is configured."),
-    );
-    expect(logs().some((l) => l.includes("seamless profile add"))).toBe(true);
-    expect(exitSpy).toHaveBeenCalledWith(1);
+describe("runLogin: no configuration", () => {
+  it("signs in to the portal without a profile", async () => {
+    const calls = mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [
+        () => json({ token: "a", refreshToken: "r", email: "dev@example.com" }),
+      ],
+    });
+    vi.mocked(text).mockResolvedValueOnce("dev@example.com").mockResolvedValueOnce("123456");
+
+    await runLogin([]);
+
+    expect(loadConfig().profiles).toEqual({});
+    expect(calls.every((c) => c.url.startsWith(PORTAL_URL))).toBe(true);
+    expect(exitSpy).not.toHaveBeenCalled();
   });
 });
 
 describe("runLogin: identifier prompt", () => {
-  beforeEach(() => {
-    upsertProfile(profile);
-  });
-
   it("cancels when the identifier prompt is cancelled", async () => {
     vi.mocked(text).mockResolvedValueOnce(CANCEL);
 
@@ -164,12 +175,31 @@ describe("runLogin: identifier prompt", () => {
   });
 });
 
-describe("runLogin: success", () => {
-  beforeEach(() => {
-    upsertProfile(profile);
-  });
+describe("runLogin: prefill", () => {
+  it("offers the previous portal email as the default identifier", async () => {
+    savePortalSession({ instanceUrl: PORTAL_URL, email: "dev@example.com" });
+    mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [() => json({ token: "a", refreshToken: "r" })],
+    });
+    vi.mocked(text).mockResolvedValueOnce("dev@example.com").mockResolvedValueOnce("123456");
 
-  it("logs in, saves tokens, and updates the profile", async () => {
+    await runLogin([]);
+
+    const idCall = vi.mocked(text).mock.calls[0][0] as {
+      initialValue: string;
+      placeholder: string;
+    };
+    expect(idCall.initialValue).toBe("dev@example.com");
+    expect(idCall.placeholder).toBe("dev@example.com");
+  });
+});
+
+describe("runLogin: success", () => {
+  it("logs in, saves tokens, and records the portal session", async () => {
     mockRouter({
       "/login": [
         () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
@@ -189,16 +219,23 @@ describe("runLogin: success", () => {
 
     await runLogin([]);
 
-    const stored = await getTokens(profile);
+    const stored = await getTokens(portalTarget);
     expect(stored?.accessToken).toBe("access-1");
     expect(stored?.refreshToken).toBe("refresh-1");
 
-    const updated = loadConfig().profiles.default;
-    expect(updated.sub).toBe("user-1");
-    expect(updated.email).toBe("dev@example.com");
-    expect(updated.identifierType).toBe("email");
+    const portal = loadConfig().portal!;
+    expect(portal.instanceUrl).toBe(PORTAL_URL);
+    expect(portal.sub).toBe("user-1");
+    expect(portal.email).toBe("dev@example.com");
+    expect(portal.identifierType).toBe("email");
 
-    expect(outro).toHaveBeenCalledWith(expect.stringContaining("Logged in as dev@example.com."));
+    // The portal session must not leak into the profile map, which means auth
+    // instances the developer administers.
+    expect(loadConfig().profiles).toEqual({});
+
+    expect(outro).toHaveBeenCalledWith(
+      expect.stringContaining("Signed in to the Seamless portal as dev@example.com."),
+    );
   });
 
   it("falls back to the identifier in the outro message when the response omits email", async () => {
@@ -213,7 +250,9 @@ describe("runLogin: success", () => {
 
     await runLogin([]);
 
-    expect(outro).toHaveBeenCalledWith(expect.stringContaining("Logged in as dev@example.com."));
+    expect(outro).toHaveBeenCalledWith(
+      expect.stringContaining("Signed in to the Seamless portal as dev@example.com."),
+    );
   });
 
   it("cancels when the code prompt is cancelled", async () => {
@@ -367,7 +406,7 @@ describe("runLogin: success", () => {
 
 describe("runLogin: local delivery", () => {
   beforeEach(() => {
-    upsertProfile({ name: "default", instanceUrl: "http://localhost:5312" });
+    process.env.SEAMLESS_PORTAL_AUTH_URL = "http://localhost:5312";
   });
 
   it("auto-fills the OTP from the response without prompting for a code", async () => {
@@ -388,7 +427,10 @@ describe("runLogin: local delivery", () => {
 
     // Only the identifier prompt runs; the code is never prompted.
     expect(vi.mocked(text)).toHaveBeenCalledTimes(1);
-    const stored = await getTokens({ name: "default", instanceUrl: "http://localhost:5312" });
+    const stored = await getTokens({
+      name: "__portal__",
+      instanceUrl: "http://localhost:5312",
+    });
     expect(stored?.accessToken).toBe("a");
 
     const generate = calls.find((c) =>
@@ -399,22 +441,44 @@ describe("runLogin: local delivery", () => {
     ).toBe("external");
   });
 
-  it("rejects --local against a non-local instance", async () => {
-    upsertProfile({ name: "default", instanceUrl: "https://auth.example.com" });
+  it("rejects --local against a non-local portal", async () => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = PORTAL_URL;
 
     await expect(runLogin(["--local"])).rejects.toThrow("exit:1");
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("--local only works against a local instance"),
+      expect.stringContaining("--local only works against a local portal"),
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
 
-describe("runLogin: failure handling", () => {
-  beforeEach(() => {
+describe("runLogin: deprecated --profile shim", () => {
+  it("routes to instance login and warns", async () => {
     upsertProfile(profile);
-  });
+    const calls = mockRouter({
+      "/login": [
+        () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [
+        () => json({ token: "a", refreshToken: "r", email: "dev@example.com" }),
+      ],
+    });
+    vi.mocked(text).mockResolvedValueOnce("dev@example.com").mockResolvedValueOnce("123456");
 
+    await runLogin(["--profile", "default"]);
+
+    expect(
+      logs().some((l) => l.includes("seamless profile login default")),
+    ).toBe(true);
+    // The instance, not the portal, is the login target.
+    expect(calls.every((c) => c.url.startsWith(profile.instanceUrl))).toBe(true);
+    expect(await getTokens(profile)).not.toBeNull();
+    expect(loadConfig().portal).toBeUndefined();
+  });
+});
+
+describe("runLogin: failure handling", () => {
   it("exits 1 with a red message on a LoginError", async () => {
     vi.stubGlobal(
       "fetch",

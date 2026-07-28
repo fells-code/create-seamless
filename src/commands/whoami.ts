@@ -1,16 +1,29 @@
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
-import { createAuthClient, ReauthRequiredError } from "../core/authClient.js";
+import {
+  createAuthClient,
+  createPortalClient,
+  ReauthRequiredError,
+} from "../core/authClient.js";
 import { fetchIdentity, type Identity } from "../core/session.js";
-import type { Profile } from "../core/config.js";
+import { getPortalSession, type Profile } from "../core/config.js";
 
 export async function runWhoami(args: string[]): Promise<void> {
   const { value: profileFlag } = extractFlag(args, "profile");
 
   try {
-    const client = await createAuthClient({ profileFlag });
+    // Without --profile this reports the portal account. An instance profile is
+    // still a useful answer when there is no portal session (a local-only or
+    // self-hosted developer never signs in to the control plane), so fall back
+    // to it rather than reporting nothing.
+    const portal = !profileFlag && getPortalSession() !== undefined;
+    const client =
+      profileFlag || !portal
+        ? await createAuthClient({ profileFlag })
+        : await createPortalClient();
+
     const identity = await fetchIdentity(client);
-    printIdentity(client.profile, identity);
+    printIdentity(portal ? "Seamless portal" : client.profile.name, client.profile, identity);
   } catch (err) {
     if (err instanceof ReauthRequiredError) {
       console.log(kleur.yellow(err.message));
@@ -21,11 +34,15 @@ export async function runWhoami(args: string[]): Promise<void> {
   }
 }
 
-function printIdentity(profile: Profile, identity: Identity): void {
+function printIdentity(
+  target: string,
+  profile: Profile,
+  identity: Identity,
+): void {
   const line = (label: string, value: string) =>
     console.log(kleur.dim(`${label}:`.padEnd(11)) + value);
 
-  line("Profile", profile.name);
+  line("Account", target);
   line("Instance", profile.instanceUrl);
   line("Sub", identity.sub ?? profile.sub ?? "(unknown)");
   line("Email", identity.email ?? profile.email ?? "(unknown)");

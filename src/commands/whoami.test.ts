@@ -2,7 +2,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { upsertProfile } from "../core/config.js";
+import {
+  PORTAL_PROFILE_NAME,
+  savePortalSession,
+  upsertProfile,
+} from "../core/config.js";
 import { saveTokens, setBackendForTesting, type KeychainBackend } from "../core/keychain.js";
 import { runWhoami } from "./whoami.js";
 
@@ -54,6 +58,51 @@ afterEach(() => {
   setBackendForTesting(null);
   fs.rmSync(configHome, { recursive: true, force: true });
   delete process.env.XDG_CONFIG_HOME;
+  delete process.env.SEAMLESS_PORTAL_AUTH_URL;
+});
+
+describe("runWhoami: portal", () => {
+  const portalUrl = "https://portal.example.com";
+
+  beforeEach(async () => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = portalUrl;
+    savePortalSession({ instanceUrl: portalUrl, email: "dev@example.com" });
+    await saveTokens(
+      { name: PORTAL_PROFILE_NAME, instanceUrl: portalUrl },
+      { accessToken: "portal-access", refreshToken: "portal-refresh" },
+    );
+  });
+
+  it("reports the portal account by default, even with an active profile", async () => {
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        calls.push(url);
+        return json({ user: { id: "portal-user", email: "dev@example.com", roles: [] } });
+      }),
+    );
+
+    await runWhoami([]);
+
+    const lines = logSpy.mock.calls.map((c) => c[0] as string);
+    expect(lines.some((l) => l.includes("Account") && l.includes("Seamless portal"))).toBe(true);
+    expect(lines.some((l) => l.includes("portal-user"))).toBe(true);
+    expect(calls[0]).toBe(`${portalUrl}/users/me`);
+  });
+
+  it("still targets an instance when --profile is given", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => json({ user: { id: "instance-user", roles: [] } })),
+    );
+
+    await runWhoami(["--profile", "default"]);
+
+    const lines = logSpy.mock.calls.map((c) => c[0] as string);
+    expect(lines.some((l) => l.includes("Account") && l.includes("default"))).toBe(true);
+    expect(lines.some((l) => l.includes("instance-user"))).toBe(true);
+  });
 });
 
 describe("runWhoami", () => {
@@ -70,7 +119,7 @@ describe("runWhoami", () => {
     await runWhoami([]);
 
     const lines = logSpy.mock.calls.map((c) => c[0] as string);
-    expect(lines.some((l) => l.includes("Profile") && l.includes("default"))).toBe(true);
+    expect(lines.some((l) => l.includes("Account") && l.includes("default"))).toBe(true);
     expect(lines.some((l) => l.includes("Instance") && l.includes(profile.instanceUrl))).toBe(
       true,
     );
@@ -117,7 +166,7 @@ describe("runWhoami", () => {
     });
 
     await expect(runWhoami([])).rejects.toThrow("exit:1");
-    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Run: seamless login."));
+    expect(logSpy).toHaveBeenCalledWith(expect.stringContaining("Run: seamless profile login default."));
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
@@ -147,7 +196,7 @@ describe("runWhoami", () => {
     await runWhoami(["--profile", "other"]);
 
     const lines = logSpy.mock.calls.map((c) => c[0] as string);
-    expect(lines.some((l) => l.includes("Profile") && l.includes("other"))).toBe(true);
+    expect(lines.some((l) => l.includes("Account") && l.includes("other"))).toBe(true);
     expect(lines.some((l) => l.includes("other-user"))).toBe(true);
   });
 });

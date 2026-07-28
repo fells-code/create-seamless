@@ -35,13 +35,12 @@ You’ll be guided through a short setup process where you can choose:
 
 ## Connecting to a managed instance
 
-If you are logged in to a managed Seamless Auth account (see
-[Authenticating against an instance](#authenticating-against-an-instance)), `init` connects the new
-project to your managed instance instead of scaffolding a local auth server. This is the default
-whenever a profile has an active session.
+If you are signed in to the Seamless portal (`seamless login`), `init` connects the new project to
+your managed instance instead of scaffolding a local auth server. This is the default whenever a
+portal session exists.
 
 ```bash
-seamless login          # once, against your managed profile
+seamless login          # once, no profile needed
 seamless init my-app    # scaffolds web + api wired to the managed instance
 ```
 
@@ -64,9 +63,12 @@ own source is never overwritten.
 
 Escape hatches:
 
-- `seamless init --local` forces the self-hosted flow below, even when logged in.
-- With no active session, `init` uses the self-hosted flow automatically.
-- `SEAMLESS_PORTAL_API_URL` overrides the control-plane host (defaults to the managed service).
+- `seamless init --local` forces the self-hosted flow below, even when signed in.
+- With no portal session, `init` uses the self-hosted flow automatically. A profile session is not
+  consulted: signing in to an auth instance you administer says nothing about whether you have a
+  managed account.
+- `SEAMLESS_PORTAL_API_URL` overrides the control-plane host (defaults to the managed service), and
+  `SEAMLESS_PORTAL_AUTH_URL` overrides the portal auth instance the login targets.
 
 ---
 
@@ -186,6 +188,18 @@ Beyond scaffolding, the CLI can log in to a Seamless Auth instance (self-hosted,
 tenant, or local dev) and call its authenticated and admin endpoints from the terminal. It talks
 to the instance directly over Bearer and JSON, so no server or contract changes are required.
 
+### Two kinds of account
+
+The CLI signs in to two different things, and they are separate accounts even when they share an
+email address:
+
+| | Command | What it is | What it authorizes |
+| --- | --- | --- | --- |
+| Portal | `seamless login` | Your Seamless customer account on the managed control plane. There is one. | Listing managed applications and connecting a project to one (`init`) |
+| Instance | `seamless profile login <name>` | An admin account inside a specific auth instance's own user pool. There are many. | `users`, `config`, `org`, `sessions` against that instance |
+
+The portal session is stored beside the profile map in `config.json`, not inside it.
+
 ### Profiles
 
 The CLI targets instances through named profiles stored at `~/.config/seamless/config.json`
@@ -208,14 +222,24 @@ other than `localhost`, `127.0.0.1`, or `::1`.
 
 ### Logging in
 
-Login uses email OTP: you paste the code from your inbox, so nothing needs to be delivered to the
-CLI and no service token is required.
+Both logins use email OTP: you paste the code from your inbox, so nothing needs to be delivered to
+the CLI and no service token is required.
 
 ```bash
+# The portal, for managed work. Needs no profile.
 seamless login                       # prompts for the identifier, then the code
 seamless login you@example.com       # identifier as an argument
-seamless login --identifier you@example.com --profile prod
+
+# An auth instance, for admin work against it.
+seamless profile login prod          # defaults to the active profile
+seamless profile login prod --identifier you@example.com
 ```
+
+`seamless profile login` does not change which profile is active, so a one-off command against
+another instance leaves your default alone.
+
+`seamless login --profile <name>` still performs an instance login for one more minor version and
+prints a pointer to `seamless profile login`.
 
 The command honors the instance's advertised login methods, caps local retries so it does not trip
 the OTP rate limiter, and refreshes the code automatically if the five minute window lapses.
@@ -223,8 +247,10 @@ the OTP rate limiter, and refreshes the code automatically if the five minute wi
 ### Identity and sessions
 
 ```bash
-seamless whoami                 # sub, email, roles, active profile, and instance URL
-seamless logout                 # end the current session and clear local tokens
+seamless whoami                 # sub, email, roles, and instance URL for your portal session
+seamless whoami --profile prod  # the same for an instance session
+seamless logout                 # end the portal session and clear local tokens
+seamless logout --profile prod  # end an instance session instead
 seamless logout --all           # revoke every session for the user, then clear local tokens
 
 seamless sessions               # list active sessions (current one marked)

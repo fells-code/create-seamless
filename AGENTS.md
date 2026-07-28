@@ -82,9 +82,15 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
 - **check** health-checks a running stack (local or managed).
 - **bootstrap-admin** mints the first admin invite against the app API.
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
-- **instance management** — `profile` (targets), `login`/`logout`/`whoami`,
-  `sessions`, `config` (system config + OAuth providers), `users`, and `org` all
-  talk to a running instance and are authenticated by the stored session.
+- **instance management** — `profile` (targets, plus `profile login`),
+  `logout`/`whoami`, `sessions`, `config` (system config + OAuth providers),
+  `users`, and `org` all talk to a running instance and are authenticated by the
+  stored session.
+- **portal** — `login` signs in to the Seamless portal, a separate account from
+  any instance profile. Its session lives beside the profile map in
+  `config.json` and is the only one `init` uses to connect a managed
+  application ([src/core/authClient.ts](src/core/authClient.ts) exposes
+  `createPortalClient` for it).
 
 ## The verify harness
 

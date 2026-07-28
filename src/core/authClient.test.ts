@@ -2,7 +2,11 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { upsertProfile } from "./config.js";
+import {
+  PORTAL_PROFILE_NAME,
+  savePortalSession,
+  upsertProfile,
+} from "./config.js";
 import { isRateLimited } from "./http.js";
 import {
   getTokens,
@@ -13,6 +17,7 @@ import {
 } from "./keychain.js";
 import {
   createAuthClient,
+  createPortalClient,
   ReauthRequiredError,
   tokensFromAuthResponse,
 } from "./authClient.js";
@@ -88,6 +93,77 @@ describe("createAuthClient", () => {
 
   it("throws a reauth error when there is no session", async () => {
     await expect(createAuthClient()).rejects.toBeInstanceOf(ReauthRequiredError);
+  });
+
+  it("points at the instance login command when a profile has no session", async () => {
+    await expect(createAuthClient()).rejects.toThrow(
+      "Run: seamless profile login default.",
+    );
+  });
+});
+
+describe("createPortalClient", () => {
+  const portalUrl = "https://portal.example.com";
+  const portalTarget = { name: PORTAL_PROFILE_NAME, instanceUrl: portalUrl };
+
+  beforeEach(() => {
+    process.env.SEAMLESS_PORTAL_AUTH_URL = portalUrl;
+  });
+
+  afterEach(() => {
+    delete process.env.SEAMLESS_PORTAL_AUTH_URL;
+  });
+
+  it("throws a reauth error naming seamless login when signed out", async () => {
+    await expect(createPortalClient()).rejects.toBeInstanceOf(
+      ReauthRequiredError,
+    );
+    await expect(createPortalClient()).rejects.toThrow("Run: seamless login.");
+  });
+
+  // An instance profile with a session must not stand in for a portal account:
+  // its token is issued by a different host and the control plane would reject it.
+  it("ignores an instance profile session", async () => {
+    await saveTokens(profile, { accessToken: "a", refreshToken: "r" });
+
+    await expect(createPortalClient()).rejects.toBeInstanceOf(
+      ReauthRequiredError,
+    );
+  });
+
+  it("sends the portal session to an absolute control-plane URL", async () => {
+    savePortalSession({ instanceUrl: portalUrl });
+    await saveTokens(portalTarget, {
+      accessToken: "portal-access",
+      refreshToken: "portal-refresh",
+    });
+    const calls = mockFetch([() => json({ applications: [] })]);
+
+    const client = await createPortalClient();
+    await client.get("https://api.seamlessauth.com/applications");
+
+    expect(calls[0].url).toBe("https://api.seamlessauth.com/applications");
+    expect(authHeader(calls[0])).toBe("Bearer portal-access");
+  });
+
+  it("refreshes against the portal auth host, not the control plane", async () => {
+    savePortalSession({ instanceUrl: portalUrl });
+    await saveTokens(portalTarget, {
+      accessToken: "stale",
+      refreshToken: "portal-refresh",
+    });
+    const calls = mockFetch([
+      () => json({ error: "expired" }, 401),
+      () => json({ token: "fresh", refreshToken: "rotated" }),
+      () => json({ applications: [] }),
+    ]);
+
+    const client = await createPortalClient();
+    await client.get("https://api.seamlessauth.com/applications");
+
+    expect(calls[1].url).toBe(`${portalUrl}/refresh`);
+    expect(authHeader(calls[2])).toBe("Bearer fresh");
+    expect((await getTokens(portalTarget))?.refreshToken).toBe("rotated");
   });
 });
 

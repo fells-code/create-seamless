@@ -1,4 +1,8 @@
-import { getActiveProfile, type Profile } from "./config.js";
+import {
+  getActiveProfile,
+  getPortalSession,
+  type Profile,
+} from "./config.js";
 import {
   deleteTokens,
   getTokens,
@@ -50,20 +54,56 @@ export function tokensFromAuthResponse(
   };
 }
 
+// A client for an auth instance a developer administers, resolved from the active
+// profile. Portal calls use createPortalClient instead: the two sessions are
+// different accounts on different hosts and must never be interchanged.
 export async function createAuthClient(
   opts: { profileFlag?: string } = {},
 ): Promise<AuthClient> {
   const profile = getActiveProfile(opts);
   if (!profile) {
     throw new ReauthRequiredError(
-      "No active profile is configured. Add one with: seamless profile add <name> --instance-url <url>, then run seamless login.",
+      "No active profile is configured. Add one with: seamless profile add <name> --instance-url <url>, then run seamless profile login <name>.",
     );
   }
 
-  let tokens = await getTokens(profile);
+  return createClientForProfile(profile, {
+    label: `profile "${profile.name}"`,
+    reauthCommand: `seamless profile login ${profile.name}`,
+  });
+}
+
+// A client for the Seamless portal, used for control-plane calls
+// (core/portal.ts). Absolute URLs pass through joinUrl untouched, so the same
+// client reaches api.seamlessauth.com while refreshing against the portal's own
+// auth host.
+export async function createPortalClient(): Promise<AuthClient> {
+  const session = getPortalSession();
+  if (!session) {
+    throw new ReauthRequiredError(
+      "You are not signed in to the Seamless portal. Run: seamless login.",
+    );
+  }
+
+  return createClientForProfile(session, {
+    label: "the Seamless portal",
+    reauthCommand: "seamless login",
+  });
+}
+
+interface ReauthCopy {
+  label: string;
+  reauthCommand: string;
+}
+
+async function createClientForProfile(
+  profile: Profile,
+  copy: ReauthCopy,
+): Promise<AuthClient> {
+  const tokens = await getTokens(profile);
   if (!tokens || !tokens.refreshToken) {
     throw new ReauthRequiredError(
-      `No session for profile "${profile.name}". Run: seamless login.`,
+      `No session for ${copy.label}. Run: ${copy.reauthCommand}.`,
     );
   }
   const session = tokens;
@@ -100,7 +140,7 @@ export async function createAuthClient(
     if (!res.ok) {
       await clearSession();
       throw new ReauthRequiredError(
-        `Your session for "${profile.name}" has expired or was revoked. Run: seamless login.`,
+        `Your session for ${copy.label} has expired or was revoked. Run: ${copy.reauthCommand}.`,
       );
     }
 
@@ -108,7 +148,7 @@ export async function createAuthClient(
     if (!next) {
       await clearSession();
       throw new ReauthRequiredError(
-        `Received an unexpected refresh response from ${profile.instanceUrl}. Run: seamless login.`,
+        `Received an unexpected refresh response from ${profile.instanceUrl}. Run: ${copy.reauthCommand}.`,
       );
     }
 
