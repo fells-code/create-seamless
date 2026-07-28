@@ -58,13 +58,14 @@ async function setupDockerAuth(root: string) {
   const { env, shared } = buildAuthEnv(parsed, "docker");
   const envBlock = envToDockerBlock(env);
 
-  const dockerCompose = `
+  const dockerCompose = `# Ports are published on 127.0.0.1 so this stack is reachable from this machine
+# only. See the note in the full-stack compose for why that matters here.
 services:
   db:
     image: ${POSTGRES_IMAGE}
     container_name: seamless-db
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     environment:
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: mypassword
@@ -81,7 +82,7 @@ services:
     image: ${SEAMLESS_AUTH_API_IMAGE}
     container_name: seamless-auth
     ports:
-      - "5312:5312"
+      - "127.0.0.1:5312:5312"
     environment:
 ${envBlock}
     depends_on:

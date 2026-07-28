@@ -226,6 +226,39 @@ describe("generateDockerCompose", () => {
     expect(compose.endsWith("\n")).toBe(true);
   });
 
+  // Publishing on 0.0.0.0 put the auth server on the LAN, and it is configured to
+  // hand back OTP codes in the response for local login.
+  it("publishes every port on loopback only", async () => {
+    writeAuthEnvFixture(tmpDir, "SEAMLESS_JWKS_ACTIVE_KID");
+
+    await generateDockerCompose(tmpDir, {
+      authMode: "local",
+      adminMode: "image",
+    });
+
+    const compose = fs.readFileSync(
+      path.join(tmpDir, "docker-compose.yml"),
+      "utf-8",
+    );
+
+    for (const mapping of [
+      "127.0.0.1:5432:5432",
+      "127.0.0.1:5312:5312",
+      "127.0.0.1:3000:3000",
+      "127.0.0.1:5173:80",
+      "127.0.0.1:5174:80",
+    ]) {
+      expect(compose).toContain(`- "${mapping}"`);
+    }
+
+    // No mapping escapes the loopback prefix.
+    const published = compose.match(/^\s*- "[^"]*:\d+"$/gm) ?? [];
+    expect(published.length).toBeGreaterThan(0);
+    for (const line of published) {
+      expect(line).toContain('"127.0.0.1:');
+    }
+  });
+
   it("omits the admin container in API-served mode and trims 5174 from the api CORS origins", async () => {
     writeAuthEnvFixture(tmpDir, "SEAMLESS_JWKS_ACTIVE_KID");
 
