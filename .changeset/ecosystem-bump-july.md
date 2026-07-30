@@ -3,8 +3,16 @@
 ---
 
 Move the scaffold onto the current Seamless ecosystem: auth API `v0.6.0`, admin dashboard `v0.4.0`,
-and seamless-templates `v0.6.0` (which carries `@seamless-auth/react` `^0.7.0` in both React
+and seamless-templates `v0.7.0` (which carries `@seamless-auth/react` `^0.7.0` in both React
 starters and `@seamless-auth/express` `^0.11.0` in the Express starter).
+
+`seamless init` now offers Fastify as a backend, listed as "Fastify (beta)" beside Express. It
+serves the same surface as the Express starter on the same environment contract, including the
+admin console at `/console` behind `SERVE_ADMIN_CONSOLE`, which the Fastify adapter gained in
+`@seamless-auth/fastify` 0.2.0. Both Express and Fastify starters now ship `.env.example` secret
+placeholders long enough to clear the adapter's 32 character minimum, so the documented
+`cp .env.example .env && npm run dev` path boots. A project from `seamless init` was already
+unaffected, because the CLI fills `COOKIE_SIGNING_KEY` itself.
 
 Both React starters gain a protected `/session` route that shows the issued claims, roles,
 organization context, step-up freshness, and registered passkeys, so the first authenticated screen

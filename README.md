@@ -114,7 +114,7 @@ Depending on your selections, the CLI generates a project like this:
 my-app/
 ├─ auth/        # Seamless Auth server (optional)
 ├─ web/         # React web application (optional)
-├─ api/         # Express API server (optional)
+├─ api/         # Express or Fastify API server (optional)
 ├─ docker-compose.yml (optional)
 └─ README.md
 ```
