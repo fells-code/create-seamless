@@ -2,10 +2,10 @@
 "seamless-cli": minor
 ---
 
-Move the scaffold onto the current Seamless ecosystem: auth API `v0.7.0`, admin dashboard `v0.4.0`,
-and seamless-templates `v0.8.0` (which carries `@seamless-auth/react` `^0.8.0` in both React
+Move the scaffold onto the current Seamless ecosystem: auth API `v0.7.1`, admin dashboard `v0.4.0`,
+and seamless-templates `v0.8.1` (which carries `@seamless-auth/react` `^0.8.0` in both React
 starters, `@seamless-auth/express` `^0.12.0` in the Express starter, and `@seamless-auth/fastify`
-`^0.3.0` in the Fastify starter).
+`^0.3.1` in the Fastify starter).
 
 A scaffolded project can now finish registration without a passkey. Registration used to end on a
 screen with a single control, leaving anyone who did not want a passkey, or whose device could not
@@ -15,6 +15,14 @@ unauthenticated route on the auth server that returns the configured login metho
 screens can offer what an instance actually has enabled instead of a hardcoded guess. The API, the
 adapters, and the web templates all had to move together for it to work, which is why this bumps
 them as a set.
+
+Registration against a scaffolded Fastify API used to fail with a 500 and
+`TypeError: option maxAge is invalid: 300`. The auth server sent the registration response's `ttl`
+as the string `"300"`, and the Fastify adapter handed it to a cookie library that requires an
+integer. The Express starter never showed this, because its adapter multiplies the value into
+milliseconds and so coerced the string on the way past. It is fixed from both ends:
+`@seamless-auth/core` `0.12.1` parses the lifetime before it reaches an adapter and rejects anything
+that is not a positive whole number of seconds, and auth API `v0.7.1` sends the value as a number.
 
 `seamless init` now offers Fastify as a backend, listed as "Fastify (beta)" beside Express. It
 serves the same surface as the Express starter on the same environment contract, including the
