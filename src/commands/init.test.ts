@@ -195,10 +195,16 @@ function app(over: Record<string, any> = {}) {
   };
 }
 
+// Captured before any test flips it, so a suite run leaves the process as it
+// found it.
+const ORIGINAL_TTY = process.stdin.isTTY;
+
 let logs: string[];
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // The prompt paths refuse to run without a terminal, and vitest has none.
+  process.stdin.isTTY = true;
   logs = [];
   vi.spyOn(console, "log").mockImplementation((msg?: unknown) => {
     logs.push(String(msg ?? ""));
@@ -216,6 +222,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  process.stdin.isTTY = ORIGINAL_TTY;
   vi.restoreAllMocks();
 });
 
@@ -1462,5 +1469,64 @@ describe("non-interactive init (--yes)", () => {
 
     expect(rotateServiceToken).toHaveBeenCalled();
     expect(confirm).not.toHaveBeenCalled();
+  });
+});
+
+describe("init without a terminal", () => {
+  beforeEach(() => {
+    process.stdin.isTTY = false;
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+  });
+
+  // The prompts used to render to a pipe nobody could answer and wait forever,
+  // so a CI step hung until its job timed out.
+  it("fails fast rather than asking a question nobody can answer", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["src"] as never);
+
+    await expect(runCLI(undefined, [], { local: true })).rejects.toThrow(
+      /This directory is not empty.*needs an interactive terminal/s,
+    );
+    expect(chooseExistingDirectoryAction).not.toHaveBeenCalled();
+  });
+
+  it("refuses the managed-or-local question too", async () => {
+    vi.mocked(createPortalClient).mockResolvedValue({} as never);
+    vi.mocked(listApplications).mockResolvedValue([app()] as never);
+
+    await expect(runCLI(undefined, [])).rejects.toThrow(
+      /How should this project get its auth\?.*needs an interactive terminal/s,
+    );
+    expect(chooseScaffoldTarget).not.toHaveBeenCalled();
+  });
+
+  it("points at the flag that answers the question it stopped on", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["src"] as never);
+
+    await expect(runCLI(undefined, [], { local: true })).rejects.toThrow(
+      /--yes --force/,
+    );
+  });
+
+  it("runs to completion when every question is answered by a flag", async () => {
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "api",
+      useDocker: true,
+      ownerEmail: "dev@example.com",
+    } as never);
+
+    await expect(
+      runCLI(undefined, [], {
+        local: true,
+        yes: true,
+        email: "dev@example.com",
+      }),
+    ).resolves.toBeUndefined();
   });
 });
