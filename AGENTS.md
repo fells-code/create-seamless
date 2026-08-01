@@ -77,6 +77,13 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
     registry, so no per-flag code. `resolveTemplateAliases` runs in `runCLI` before the project
     directory is created and before the non-empty-directory confirmation, so an unknown flag can
     never route through a destructive prompt on its way to an error.
+  - `--yes` runs the whole thing without prompting: every question has a flag (`--web`, `--api`,
+    `--email`, `--auth`, `--admin`) and anything unspecified falls back to the option the prompt
+    marks "(recommended)". `--yes` is never enough for a destructive step: overwriting a non-empty
+    directory and rotating an existing service token both require `--force`, and choosing between a
+    managed application and a local stack requires `--app` or `--local`. Flag parsing lives in
+    `parseInitArgs` ([src/index.ts](src/index.ts)); everything it produces is validated in `runCLI`
+    before a directory is created.
   - **templates** ([src/commands/templates.ts](src/commands/templates.ts)) lists the registry
     (`seamless templates list [--json]`) so those ids and flags are discoverable without a
     checkout. It reads the same source `init` does and needs no login.

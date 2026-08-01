@@ -4,8 +4,17 @@ import { orCancel } from "../core/cancel.js";
 
 import type { RegistryEntry, TemplateKind } from "../core/templates.js";
 
-type AuthMode = "local" | "docker";
-type AdminMode = "api" | "image" | "source" | "none";
+export type AuthMode = "local" | "docker";
+export type AdminMode = "api" | "image" | "source" | "none";
+
+export const AUTH_MODES: AuthMode[] = ["docker", "local"];
+export const ADMIN_MODES: AdminMode[] = ["api", "image", "source", "none"];
+
+// What each question falls back to when --yes answers it. These match the
+// options labelled "(recommended)" in the prompts below, so an unattended run
+// gets the same stack a developer pressing Enter would.
+const DEFAULT_AUTH_MODE: AuthMode = "docker";
+const DEFAULT_ADMIN_MODE: AdminMode = "api";
 
 interface Option {
   value: string;
@@ -33,13 +42,57 @@ function toOptions(templates: RegistryEntry[], kind: TemplateKind): Option[] {
   }));
 }
 
-interface Preselect {
+// The registry lists templates in the order the prompt shows them, so the first
+// selectable one of a kind is what a developer pressing Enter would land on.
+function defaultTemplateId(
+  templates: RegistryEntry[],
+  kind: TemplateKind,
+): string {
+  const entry = templates.find(
+    (t) => t.kind === kind && t.status !== "coming-soon",
+  );
+  if (!entry) {
+    throw new Error(
+      `The template registry has no selectable ${kind} templates, so --yes has nothing to choose. Run \`seamless templates list\` to see what is available.`,
+    );
+  }
+  return entry.id;
+}
+
+// Answers supplied on the command line. Any field set here replaces its prompt;
+// under assumeYes the rest fall back to the recommended option, except
+// ownerEmail, which has no safe default and is required instead.
+export interface Preselect {
   webTemplateId?: string;
   apiTemplateId?: string;
+  ownerEmail?: string;
+  authMode?: AuthMode;
+  adminMode?: AdminMode;
 }
 
 function labelFor(templates: RegistryEntry[], id: string): string {
   return templates.find((t) => t.id === id)?.label ?? id;
+}
+
+async function resolveTemplateId(
+  templates: RegistryEntry[],
+  kind: TemplateKind,
+  preselected: string | undefined,
+  message: string,
+  echoLabel: string,
+  assumeYes: boolean,
+): Promise<string> {
+  const chosen =
+    preselected ?? (assumeYes ? defaultTemplateId(templates, kind) : undefined);
+
+  if (chosen) {
+    console.log(`${echoLabel}: ${labelFor(templates, chosen)}`);
+    return chosen;
+  }
+
+  return orCancel(
+    await select({ message, options: toOptions(templates, kind) }),
+  ) as string;
 }
 
 // Managed connect only needs the web and api templates: the auth server is the
@@ -48,30 +101,24 @@ function labelFor(templates: RegistryEntry[], id: string): string {
 export async function runManagedTemplatePrompts(
   templates: RegistryEntry[],
   preselect: Preselect = {},
+  assumeYes = false,
 ) {
-  let webTemplateId = preselect.webTemplateId;
-  if (webTemplateId) {
-    console.log(`Web example: ${labelFor(templates, webTemplateId)}`);
-  } else {
-    webTemplateId = orCancel(
-      await select({
-        message: "Web example",
-        options: toOptions(templates, "web"),
-      }),
-    ) as string;
-  }
-
-  let apiTemplateId = preselect.apiTemplateId;
-  if (apiTemplateId) {
-    console.log(`Backend: ${labelFor(templates, apiTemplateId)}`);
-  } else {
-    apiTemplateId = orCancel(
-      await select({
-        message: "Backend framework",
-        options: toOptions(templates, "api"),
-      }),
-    ) as string;
-  }
+  const webTemplateId = await resolveTemplateId(
+    templates,
+    "web",
+    preselect.webTemplateId,
+    "Web example",
+    "Web example",
+    assumeYes,
+  );
+  const apiTemplateId = await resolveTemplateId(
+    templates,
+    "api",
+    preselect.apiTemplateId,
+    "Backend framework",
+    "Backend",
+    assumeYes,
+  );
 
   return { webTemplateId, apiTemplateId };
 }
@@ -80,86 +127,90 @@ export async function runProjectSetupPrompts(
   templates: RegistryEntry[],
   preselect: Preselect = {},
   knownEmail?: string,
+  assumeYes = false,
 ) {
-  let webTemplateId = preselect.webTemplateId;
-  if (webTemplateId) {
-    console.log(`Web example: ${labelFor(templates, webTemplateId)}`);
-  } else {
-    webTemplateId = orCancel(
-      await select({
-        message: "Web example",
-        options: toOptions(templates, "web"),
-      }),
-    ) as string;
-  }
-
-  let apiTemplateId = preselect.apiTemplateId;
-  if (apiTemplateId) {
-    console.log(`Backend: ${labelFor(templates, apiTemplateId)}`);
-  } else {
-    apiTemplateId = orCancel(
-      await select({
-        message: "Backend framework",
-        options: toOptions(templates, "api"),
-      }),
-    ) as string;
-  }
+  const webTemplateId = await resolveTemplateId(
+    templates,
+    "web",
+    preselect.webTemplateId,
+    "Web example",
+    "Web example",
+    assumeYes,
+  );
+  const apiTemplateId = await resolveTemplateId(
+    templates,
+    "api",
+    preselect.apiTemplateId,
+    "Backend framework",
+    "Backend",
+    assumeYes,
+  );
 
   // Written to the auth server as OWNER_EMAIL, which grants the admin role to
   // this address at signup. Asking here means registering in the scaffolded app
-  // is the only step between `docker compose up` and a working admin.
-  const ownerEmail = orCancel(
-    await text({
-      message: "Your email (becomes the admin when you register)",
-      placeholder: knownEmail ?? "you@example.com",
-      initialValue: knownEmail ?? "",
-      validate: (value) =>
-        (value ?? "").includes("@") ? undefined : "Enter a valid email address",
-    }),
-  ) as string;
+  // is the only step between `docker compose up` and a working admin. There is
+  // no sane default for it, so --yes takes it from the flag or the portal
+  // session and otherwise refuses to guess.
+  const ownerEmail = await resolveOwnerEmail(
+    preselect.ownerEmail ?? (assumeYes ? knownEmail : undefined),
+    knownEmail,
+    assumeYes,
+  );
 
-  const authMode = orCancel(
-    await select({
-      message: "How would you like to run SeamlessAuth?",
-      options: [
-        {
-          value: "docker",
-          label: "Docker container (recommended)",
-        },
-        {
-          value: "local",
-          label: "Local dev server (advanced)",
-        },
-      ],
-    }),
-  ) as AuthMode;
+  const authMode = await resolveChoice<AuthMode>(
+    preselect.authMode,
+    assumeYes ? DEFAULT_AUTH_MODE : undefined,
+    "Auth server",
+    async () =>
+      orCancel(
+        await select({
+          message: "How would you like to run SeamlessAuth?",
+          options: [
+            {
+              value: "docker",
+              label: "Docker container (recommended)",
+            },
+            {
+              value: "local",
+              label: "Local dev server (advanced)",
+            },
+          ],
+        }),
+      ) as AuthMode,
+  );
 
-  const adminMode = orCancel(
-    await select({
-      message: "How would you like to host the admin console?",
-      options: [
-        {
-          value: "api",
-          label: "Served by your API at /console (recommended)",
-        },
-        {
-          value: "image",
-          label: "Separate container — official Docker image",
-        },
-        {
-          value: "source",
-          label: "Separate container — clone repo for modification",
-        },
-        {
-          value: "none",
-          label: "Don't include the admin console",
-        },
-      ],
-      initialValue: "api",
-    }),
-  ) as AdminMode;
+  const adminMode = await resolveChoice<AdminMode>(
+    preselect.adminMode,
+    assumeYes ? DEFAULT_ADMIN_MODE : undefined,
+    "Admin console",
+    async () =>
+      orCancel(
+        await select({
+          message: "How would you like to host the admin console?",
+          options: [
+            {
+              value: "api",
+              label: "Served by your API at /console (recommended)",
+            },
+            {
+              value: "image",
+              label: "Separate container — official Docker image",
+            },
+            {
+              value: "source",
+              label: "Separate container — clone repo for modification",
+            },
+            {
+              value: "none",
+              label: "Don't include the admin console",
+            },
+          ],
+          initialValue: "api",
+        }),
+      ) as AdminMode,
+  );
 
-  if (authMode === "local") {
+  if (authMode === "local" && !assumeYes) {
     const confirmDocker = orCancel(
       await confirm({
         message:
@@ -188,4 +239,48 @@ export async function runProjectSetupPrompts(
     adminMode,
     ownerEmail: ownerEmail.trim(),
   };
+}
+
+// A flag answers the question outright; --yes falls back to the recommended
+// option. Either way the choice is echoed, so an unattended run still reports
+// what it picked.
+async function resolveChoice<T extends string>(
+  supplied: T | undefined,
+  fallback: T | undefined,
+  echoLabel: string,
+  ask: () => Promise<T>,
+): Promise<T> {
+  const chosen = supplied ?? fallback;
+  if (chosen) {
+    console.log(`${echoLabel}: ${chosen}`);
+    return chosen;
+  }
+  return ask();
+}
+
+async function resolveOwnerEmail(
+  supplied: string | undefined,
+  knownEmail: string | undefined,
+  assumeYes: boolean,
+): Promise<string> {
+  if (supplied) {
+    console.log(`Owner email: ${supplied}`);
+    return supplied;
+  }
+
+  if (assumeYes) {
+    throw new Error(
+      "--yes needs an owner email, which becomes the admin when you register. Pass --email <address>, or run `seamless login` so it can be taken from your portal session.",
+    );
+  }
+
+  return orCancel(
+    await text({
+      message: "Your email (becomes the admin when you register)",
+      placeholder: knownEmail ?? "you@example.com",
+      initialValue: knownEmail ?? "",
+      validate: (value) =>
+        (value ?? "").includes("@") ? undefined : "Enter a valid email address",
+    }),
+  ) as string;
 }

@@ -279,3 +279,109 @@ describe("runProjectSetupPrompts", () => {
     expect(out()).toContain("Enabling automatically");
   });
 });
+
+describe("runProjectSetupPrompts with --yes", () => {
+  it("answers every question with the recommended option", async () => {
+    const result = await runProjectSetupPrompts(
+      fullRegistry(),
+      { ownerEmail: "owner@example.com" },
+      undefined,
+      true,
+    );
+
+    expect(result).toEqual({
+      web: true,
+      // The first selectable template of each kind, which is what a developer
+      // pressing Enter through the prompts would land on.
+      webTemplateId: "web-a",
+      api: true,
+      apiTemplateId: "api-a",
+      authMode: "docker",
+      useDocker: true,
+      adminMode: "api",
+      ownerEmail: "owner@example.com",
+    });
+    expect(select).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("echoes what it chose so an unattended run still reports the stack", async () => {
+    await runProjectSetupPrompts(
+      fullRegistry(),
+      { ownerEmail: "owner@example.com" },
+      undefined,
+      true,
+    );
+
+    expect(out()).toContain("Web example: React");
+    expect(out()).toContain("Backend: Express");
+    expect(out()).toContain("Owner email: owner@example.com");
+    expect(out()).toContain("Auth server: docker");
+    expect(out()).toContain("Admin console: api");
+  });
+
+  it("prefers supplied answers over the recommended options", async () => {
+    const result = await runProjectSetupPrompts(
+      fullRegistry(),
+      {
+        webTemplateId: "web-b",
+        apiTemplateId: "api-a",
+        ownerEmail: "owner@example.com",
+        authMode: "local",
+        adminMode: "none",
+      },
+      undefined,
+      true,
+    );
+
+    expect(result).toMatchObject({
+      webTemplateId: "web-b",
+      authMode: "local",
+      adminMode: "none",
+    });
+    // The Docker-is-required confirmation is a prompt, not a question --yes has
+    // an answer for; useDocker is true either way.
+    expect(confirm).not.toHaveBeenCalled();
+    expect(result.useDocker).toBe(true);
+  });
+
+  it("falls back to the portal session email", async () => {
+    const result = await runProjectSetupPrompts(
+      fullRegistry(),
+      {},
+      "session@example.com",
+      true,
+    );
+
+    expect(result.ownerEmail).toBe("session@example.com");
+  });
+
+  it("refuses to guess an owner email", async () => {
+    await expect(
+      runProjectSetupPrompts(fullRegistry(), {}, undefined, true),
+    ).rejects.toThrow(/--yes needs an owner email/);
+  });
+
+  it("refuses when no template of a kind is selectable", async () => {
+    const noSelectableWeb = fullRegistry().filter(
+      (t) => t.kind === "api" || t.status === "coming-soon",
+    );
+
+    await expect(
+      runProjectSetupPrompts(
+        noSelectableWeb,
+        { ownerEmail: "owner@example.com" },
+        undefined,
+        true,
+      ),
+    ).rejects.toThrow(/no selectable web templates/);
+  });
+
+  it("answers the managed template questions too", async () => {
+    const result = await runManagedTemplatePrompts(fullRegistry(), {}, true);
+
+    expect(result).toEqual({ webTemplateId: "web-a", apiTemplateId: "api-a" });
+    expect(select).not.toHaveBeenCalled();
+  });
+});

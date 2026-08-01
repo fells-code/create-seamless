@@ -148,6 +148,39 @@ registry `init` does, so `SEAMLESS_TEMPLATES_DIR` and `SEAMLESS_TEMPLATES_REF` a
 
 ---
 
+## Scripting init
+
+`--yes` answers every question with the recommended option instead of prompting, so `init` runs from
+CI, a Dockerfile, or a script with no terminal attached:
+
+```bash
+seamless init my-app --local --yes --email=you@example.com
+```
+
+Each question also has its own flag, honored with or without `--yes`:
+
+| Flag | Question | Default under `--yes` |
+| --- | --- | --- |
+| `--web=<id\|alias>` | Web example | first selectable web template |
+| `--api=<id\|alias>` | Backend framework | first selectable api template |
+| `--email=<address>` | Owner email (becomes the admin) | required |
+| `--auth=<docker\|local>` | How the auth server runs | `docker` |
+| `--admin=<api\|image\|source\|none>` | Where the admin console is hosted | `api` |
+
+Two things `--yes` deliberately will not decide for you:
+
+- **Managed or local.** With a portal session and neither `--local` nor `--app <id>`, `init` stops
+  rather than guessing where the project's auth lives.
+- **Anything destructive.** Scaffolding into a directory that is not empty (starter files overwrite
+  anything with the same name) and rotating a managed application's existing service token (which
+  breaks whatever is deployed on the old one) both take `--force`, not `--yes`.
+
+`--email` has no safe default, so under `--yes` it is required unless `seamless login` has left a
+portal session to take it from. Templates that would prompt for OAuth provider credentials are
+scaffolded with none configured; add them afterwards with `seamless config oauth-providers add`.
+
+---
+
 ## What gets created
 
 Depending on your selections, the CLI generates a project like this:
