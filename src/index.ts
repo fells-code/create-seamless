@@ -16,6 +16,7 @@ import { runConfig } from "./commands/config.js";
 import { runUsers } from "./commands/users.js";
 import { runOrg } from "./commands/org.js";
 import { runApps } from "./commands/apps.js";
+import { runTemplates } from "./commands/templates.js";
 import { isCancelled } from "./core/cancel.js";
 import kleur from "kleur";
 
@@ -75,6 +76,11 @@ async function main() {
       appId: appFlag.value,
       local,
     });
+    return;
+  }
+
+  if (command === "templates") {
+    await runTemplates(args.slice(1));
     return;
   }
 

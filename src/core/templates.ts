@@ -27,6 +27,17 @@ export interface Registry {
   templates: RegistryEntry[];
 }
 
+// The command-line spellings for a template, longest-lived first. The id always
+// works because it is what `seamless templates list` and the registry show; the
+// alias is a shorter synonym some templates also declare.
+export function templateFlags(entry: RegistryEntry): string[] {
+  return entry.alias ? [`--${entry.alias}`, `--${entry.id}`] : [`--${entry.id}`];
+}
+
+export function matchesTemplateFlag(entry: RegistryEntry, flag: string): boolean {
+  return entry.alias === flag || entry.id === flag;
+}
+
 export interface TemplateManifest {
   id: string;
   targetDir: string;

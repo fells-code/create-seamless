@@ -28,11 +28,13 @@ Without a name:
 With a name:
   • Creates new directory
 
-With an example flag (e.g. --oauth):
-  • Scaffolds that use-case starter and skips the web prompt
+With a template flag (e.g. --oauth, --react-oauth, --fastify):
+  • Scaffolds that starter and skips that layer's prompt
+  • A template answers to both its id and its short alias, so --basic and
+    --react-vite select the same starter
   • --oauth also prompts for OIDC providers (Google, GitHub, Microsoft,
     GitLab) and wires the ones you configure into the auth server
-  • Run an unknown flag to see the available examples
+  • Run seamless templates list to see every id, alias, and flag
 
 --profile <name>
   • Use that profile instead of the active one
@@ -52,6 +54,32 @@ With an example flag (e.g. --oauth):
   → Create new project in ./my-app`,
       `seamless init --oauth my-app
   → Create ./my-app from the OAuth example starter`,
+    ],
+  },
+  {
+    name: "templates",
+    usage: ["seamless templates list [--json]"],
+    sections: [
+      {
+        heading: "templates list [--json]",
+        body: `List the starters seamless init can scaffold, read from the same registry
+init uses (so SEAMLESS_TEMPLATES_DIR and SEAMLESS_TEMPLATES_REF apply).
+Needs no login.
+
+  • Columns: id, kind (web or api), framework, the init flags that select
+    it, and status
+  • Every template answers to --<id>; some also declare a shorter --<alias>
+  • Templates marked coming-soon cannot be selected yet, so they list no flag
+
+--json
+  • Emit the registry entries as an array, for scripting`,
+      },
+    ],
+    examples: [
+      `seamless templates list
+  → Table of every available starter`,
+      `seamless templates list --json
+  → Machine-readable registry entries`,
     ],
   },
   {

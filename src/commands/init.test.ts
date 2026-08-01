@@ -83,11 +83,16 @@ vi.mock("../core/output.js", () => ({
   printManagedSuccessOutput: vi.fn(),
   printSuccessOutput: vi.fn(),
 }));
-vi.mock("../core/templates.js", () => ({
+// The flag helpers are pure registry lookups, so they come from the real module;
+// only the effectful exports are stubbed. templates.ts imports VERSION from
+// ../index.js, which runs main() at import time, hence the mock below it.
+vi.mock("../core/templates.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../core/templates.js")>()),
   openTemplateSource: vi.fn(),
   applyTemplateEnv: vi.fn(),
   assertCliSupports: vi.fn(),
 }));
+vi.mock("../index.js", () => ({ VERSION: "0.0.0-test" }));
 vi.mock("../core/authClient.js", () => {
   class ReauthRequiredError extends Error {}
   return { createPortalClient: vi.fn(), ReauthRequiredError };
@@ -597,15 +602,56 @@ describe("template alias resolution", () => {
     );
   });
 
-  it("reports (none) available when no template exposes an alias", async () => {
+  it("preselects a template from its id when it has no alias", async () => {
+    await runCLI(undefined, ["web-basic"]);
+    expect(runProjectSetupPrompts).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ webTemplateId: "web-basic" }),
+      undefined,
+    );
+  });
+
+  it("treats a template's id and alias as the same flag", async () => {
+    await runCLI(undefined, ["oauth", "web-oauth"]);
+    expect(runProjectSetupPrompts).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ webTemplateId: "web-oauth" }),
+      undefined,
+    );
+  });
+
+  it("lists both spellings of every selectable template when a flag is unknown", async () => {
+    await expect(runCLI(undefined, ["nope"])).rejects.toThrow(
+      /--oauth, --web-oauth, --web-basic, --express, --api-express/,
+    );
+  });
+
+  it("reports (none) available when nothing in the registry is selectable", async () => {
     const src = makeSource();
-    // Strip every alias so the error's available-flags list is empty.
-    for (const t of src.registry.templates) delete (t as any).alias;
+    for (const t of src.registry.templates) (t as any).status = "coming-soon";
     vi.mocked(openTemplateSource).mockResolvedValue(src as never);
 
     await expect(runCLI(undefined, ["nope"])).rejects.toThrow(
       /Available template flags: \(none\)/,
     );
+  });
+
+  // An unknown flag used to surface only after the scaffold had already asked
+  // whether to write over a directory that was not empty.
+  it("rejects an unknown flag before prompting about a non-empty directory", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["src"] as never);
+
+    await expect(runCLI(undefined, ["nope"])).rejects.toThrow(
+      /Unknown option "--nope"/,
+    );
+    expect(chooseExistingDirectoryAction).not.toHaveBeenCalled();
+  });
+
+  it("rejects an unknown flag before creating the project directory", async () => {
+    await expect(runCLI("demo", ["nope"])).rejects.toThrow(
+      /Unknown option "--nope"/,
+    );
+    expect(fs.mkdirSync).not.toHaveBeenCalled();
   });
 
   it("rejects conflicting web alias flags", async () => {
