@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { runCLI } from "./commands/init.js";
+import { runCLI, type InitOptions } from "./commands/init.js";
 import { extractFlag, hasHelpFlag } from "./core/args.js";
 import { runCheck } from "./commands/check.js";
 import { printCommandHelp, printHelp } from "./commands/help.js";
@@ -61,21 +61,7 @@ async function main() {
   }
 
   if (command === "init") {
-    const profileFlag = extractFlag(args.slice(1), "profile");
-    const appFlag = extractFlag(profileFlag.rest, "app");
-    const rest = appFlag.rest;
-
-    const local = rest.includes("--local");
-    const aliases = rest
-      .filter((a) => a.startsWith("--") && a !== "--local")
-      .map((a) => a.replace(/^--+/, ""));
-    const projectName = rest.find((a) => !a.startsWith("--"));
-
-    await runCLI(projectName, aliases, {
-      profileFlag: profileFlag.value,
-      appId: appFlag.value,
-      local,
-    });
+    await runCLI(...parseInitArgs(args.slice(1)));
     return;
   }
 
@@ -140,6 +126,50 @@ async function main() {
   }
 
   unknownCommand(command);
+}
+
+// Flags init handles itself rather than passing through as a template flag.
+// Anything else starting with `--` is a template id or alias, which is what
+// keeps adding a template to the registry from needing code here.
+const INIT_SWITCHES = new Set(["--local", "--yes", "-y", "--force"]);
+
+// init's arguments, as the runCLI(projectName, aliases, opts) triple. Only
+// splits them up: which values are valid is settled in init.ts, against the
+// registry, before anything is written.
+export function parseInitArgs(
+  args: string[],
+): [string | undefined, string[], InitOptions] {
+  const valued = ["profile", "app", "web", "api", "email", "auth", "admin"];
+  const values: Record<string, string | undefined> = {};
+
+  let rest = args;
+  for (const name of valued) {
+    const extracted = extractFlag(rest, name);
+    values[name] = extracted.value;
+    rest = extracted.rest;
+  }
+
+  const aliases = rest
+    .filter((a) => a.startsWith("--") && !INIT_SWITCHES.has(a))
+    .map((a) => a.replace(/^--+/, ""));
+  const projectName = rest.find((a) => !a.startsWith("-"));
+
+  return [
+    projectName,
+    aliases,
+    {
+      profileFlag: values.profile,
+      appId: values.app,
+      web: values.web,
+      api: values.api,
+      email: values.email,
+      auth: values.auth,
+      admin: values.admin,
+      local: rest.includes("--local"),
+      yes: rest.includes("--yes") || rest.includes("-y"),
+      force: rest.includes("--force"),
+    },
+  ];
 }
 
 // An unrecognized command used to be treated as a project name and scaffolded,
