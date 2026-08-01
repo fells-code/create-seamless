@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 
 import { runCLI } from "./commands/init.js";
-import { extractFlag } from "./core/args.js";
+import { extractFlag, hasHelpFlag } from "./core/args.js";
 import { runCheck } from "./commands/check.js";
-import { printHelp } from "./commands/help.js";
+import { printCommandHelp, printHelp } from "./commands/help.js";
+import { COMMANDS } from "./commands/helpTopics.js";
 import pkg from "../package.json" with { type: "json" };
 import { runVerify } from "./commands/verify.js";
 import { runProfile } from "./commands/profile.js";
@@ -19,21 +20,6 @@ import { isCancelled } from "./core/cancel.js";
 import kleur from "kleur";
 
 export const VERSION = pkg.version;
-
-const COMMANDS = [
-  "init",
-  "check",
-  "verify",
-  "profile",
-  "login",
-  "apps",
-  "whoami",
-  "logout",
-  "sessions",
-  "config",
-  "users",
-  "org",
-];
 
 const args = process.argv.slice(2);
 
@@ -52,6 +38,24 @@ async function main() {
 
   if (command === "-v" || command === "--version") {
     console.log(VERSION);
+    return;
+  }
+
+  // `seamless help [command]` is the spelled-out form of `--help`.
+  if (command === "help") {
+    const topic = args[1];
+    if (!topic) {
+      printHelp();
+      return;
+    }
+    if (printCommandHelp(topic)) return;
+    unknownCommand(topic);
+    return;
+  }
+
+  // Every command answers -h / --help itself, ahead of its own arg parsing.
+  if (COMMANDS.includes(command) && hasHelpFlag(args.slice(1))) {
+    printCommandHelp(command);
     return;
   }
 
@@ -129,18 +133,24 @@ async function main() {
     return;
   }
 
-  // An unrecognized command used to be treated as a project name and scaffolded,
-  // which made every typo create a directory with no indication the command was
-  // not understood. Scaffolding is `init` and nothing else.
-  console.error(kleur.red(`Unknown command "${command}".`));
-  if (!command.startsWith("-")) {
+  unknownCommand(command);
+}
+
+// An unrecognized command used to be treated as a project name and scaffolded,
+// which made every typo create a directory with no indication the command was
+// not understood. Scaffolding is `init` and nothing else.
+function unknownCommand(name: string) {
+  console.error(kleur.red(`Unknown command "${name}".`));
+  if (!name.startsWith("-")) {
     console.error(
       kleur.dim("To scaffold a project, run: ") +
-        kleur.cyan(`seamless init ${command}`),
+        kleur.cyan(`seamless init ${name}`),
     );
   }
   console.error(kleur.dim(`Commands: ${COMMANDS.join(", ")}`));
-  console.error(kleur.dim("Run seamless --help for details."));
+  console.error(
+    kleur.dim("Run seamless --help, or seamless <command> --help, for details."),
+  );
   process.exit(1);
 }
 
