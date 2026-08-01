@@ -38,6 +38,7 @@ import {
   type ScaffoldTarget,
 } from "../prompts/initMode.js";
 import { CancelledError, orCancel } from "../core/cancel.js";
+import { requireInteractive, warnOnUnusableWidth } from "../core/tty.js";
 import type { CollectedOAuthProvider } from "../core/oauthProviders.js";
 import {
   createPortalClient,
@@ -98,6 +99,10 @@ export async function runCLI(
         "init no longer takes --profile; managed connect uses your portal session. Run: seamless login",
       ),
     );
+  }
+
+  if (!opts.yes) {
+    warnOnUnusableWidth((message) => console.log(kleur.yellow(message)));
   }
 
   const openSource = lazyTemplateSource();
@@ -245,6 +250,10 @@ async function scaffold(
         "Could not reach the Seamless control plane, and --yes will not silently scaffold a local stack instead. Re-run with --local to scaffold self-hosted.",
       );
     }
+    requireInteractive(
+      "Could not reach the Seamless control plane. Scaffold a local stack instead?",
+      "Pass --local to scaffold a self-hosted stack.",
+    );
     await confirmLocalFallback();
   } else if (fallbackReason === "no-session") {
     console.log(
@@ -265,7 +274,13 @@ async function resolveExistingDirectoryAction(
   canConnect: boolean,
   opts: InitOptions,
 ): Promise<ExistingDirectoryAction> {
-  if (!opts.yes) return chooseExistingDirectoryAction(canConnect);
+  if (!opts.yes) {
+    requireInteractive(
+      "This directory is not empty. What would you like to do?",
+      "Pass --yes --force to scaffold here anyway, or --app <id> to connect the existing project to a managed application.",
+    );
+    return chooseExistingDirectoryAction(canConnect);
+  }
 
   if (!opts.force) {
     throw new Error(
@@ -285,7 +300,13 @@ async function resolveScaffoldTarget(
   appCount: number,
   opts: InitOptions,
 ): Promise<ScaffoldTarget> {
-  if (!opts.yes) return chooseScaffoldTarget(appCount);
+  if (!opts.yes) {
+    requireInteractive(
+      "How should this project get its auth?",
+      "Pass --app <id> to connect a managed application, or --local to scaffold a self-hosted stack.",
+    );
+    return chooseScaffoldTarget(appCount);
+  }
 
   throw new Error(
     "You are logged in, so --yes will not guess between a managed application and a local stack. Pass --app <id> to connect one of your managed applications, or --local to scaffold a self-hosted stack.",
@@ -476,6 +497,10 @@ async function scaffoldLocal(
         ),
       );
     } else {
+      requireInteractive(
+        "Which OAuth providers would you like to configure?",
+        "Pass --yes to scaffold with none configured, then add them with `seamless config oauth-providers add`.",
+      );
       oauthProviders = await runOAuthSetupPrompts();
     }
   }
@@ -668,6 +693,10 @@ async function issueServiceToken(
         ),
       );
     } else {
+      requireInteractive(
+        `"${app.name}" already has a service token. Issue a new one?`,
+        "Pass --force to rotate it, which invalidates the existing token.",
+      );
       const proceed = orCancel(
         await confirm({
           message: `"${app.name}" already has a service token. Issuing a new one invalidates the existing token. Continue?`,

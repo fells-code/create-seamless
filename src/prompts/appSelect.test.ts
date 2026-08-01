@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { select, isCancel, cancel } from "@clack/prompts";
 import { CancelledError } from "../core/cancel.js";
@@ -20,6 +20,19 @@ function app(over: Partial<PortalApp> = {}): PortalApp {
     ...over,
   };
 }
+
+// Captured before any test flips it, so a suite run leaves the process as it
+// found it.
+const ORIGINAL_TTY = process.stdin.isTTY;
+
+beforeEach(() => {
+  // The prompt path refuses to run without a terminal, and vitest has none.
+  process.stdin.isTTY = true;
+});
+
+afterEach(() => {
+  process.stdin.isTTY = ORIGINAL_TTY;
+});
 
 describe("selectApplication", () => {
   it("throws when there are no applications", async () => {

@@ -179,6 +179,18 @@ Two things `--yes` deliberately will not decide for you:
 portal session to take it from. Templates that would prompt for OAuth provider credentials are
 scaffolded with none configured; add them afterwards with `seamless config oauth-providers add`.
 
+Without a terminal on stdin, `init` will not render a prompt nobody can answer. It stops on the
+first unanswered question and names the flag that answers it:
+
+```text
+$ seamless init --local < /dev/null
+Error: "Web example" needs an interactive terminal, and this run does not have one.
+Pass --web=<id> to choose one (see `seamless templates list`), or --yes to take the
+recommended template.
+```
+
+A fully flagged run works the same on a pipe as it does on a terminal.
+
 ---
 
 ## What gets created
