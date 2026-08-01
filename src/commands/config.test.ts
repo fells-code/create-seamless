@@ -674,3 +674,57 @@ describe("runConfig oauth-providers", () => {
     expect(errOutput()).toContain("Could not read file: missing.json");
   });
 });
+
+describe("config --force", () => {
+  beforeEach(() => {
+    vi.mocked(fs.readFileSync).mockReturnValue(
+      JSON.stringify({ app_name: "New" }),
+    );
+  });
+
+  it.each(["--force", "--yes", "-y"])(
+    "applies without confirming when given %s",
+    async (flag) => {
+      const { client } = fakeClient(() =>
+        response(200, { app_name: "Old", updatedKeys: ["app_name"] }),
+      );
+      vi.mocked(createAuthClient).mockResolvedValue(client);
+
+      await runConfig(["apply", "local.json", flag]);
+
+      expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+      expect(output()).toContain("Applied.");
+    },
+  );
+
+  // --dry-run means "show me, change nothing", which --force does not override.
+  it("still applies nothing with --dry-run --force", async () => {
+    const { client } = fakeClient(() => response(200, { app_name: "Old" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["apply", "local.json", "--dry-run", "--force"]);
+
+    expect(output()).toContain("Dry run: no changes applied.");
+    expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+  });
+
+  it("refuses to ask without a terminal, naming --force", async () => {
+    process.stdin.isTTY = false;
+    const { client } = fakeClient(() => response(200, { app_name: "Old" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["apply", "local.json"])).rejects.toThrow(
+      /needs an interactive terminal[\s\S]*--force/,
+    );
+  });
+
+  it("removes an OAuth provider without confirming when forced", async () => {
+    const { client } = fakeClient(() => response(200, { message: "ok" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["oauth-providers", "remove", "google", "--force"]);
+
+    expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+    expect(output()).toContain("Removed OAuth provider: google");
+  });
+});

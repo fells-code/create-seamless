@@ -1,5 +1,4 @@
 import fs from "fs";
-import { confirm, isCancel } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import { createAuthClient, ReauthRequiredError, type AuthClient } from "../core/authClient.js";
@@ -20,6 +19,10 @@ import {
   type OAuthProvider,
   type SystemConfig,
 } from "../core/systemConfig.js";
+import {
+  confirmDestructive,
+  hasForceFlag,
+} from "../core/confirmAction.js";
 
 export async function runConfig(args: string[]): Promise<void> {
   const sub = args[0];
@@ -180,13 +183,14 @@ async function configApply(client: AuthClient, rest: string[]): Promise<void> {
     return;
   }
 
-  const proceed = await confirm({
+  const proceed = await confirmDestructive({
     message: `Apply ${changes.length} change${
       changes.length === 1 ? "" : "s"
     } to ${client.profile.instanceUrl}?`,
-    initialValue: false,
+    force: hasForceFlag(rest),
+    remedy: "Pass --force to apply without confirming.",
   });
-  if (isCancel(proceed) || !proceed) {
+  if (!proceed) {
     console.log("Cancelled.");
     return;
   }
@@ -304,24 +308,24 @@ async function oauthProvidersRemove(
   client: AuthClient,
   rest: string[],
 ): Promise<void> {
-  const skipConfirm = rest.includes("--yes") || rest.includes("-y");
   const id = rest.find((arg) => !arg.startsWith("-"));
   if (!id) {
     console.error(
-      kleur.red("Usage: seamless config oauth-providers remove <id> [--yes]"),
+      kleur.red("Usage: seamless config oauth-providers remove <id> [--force]"),
     );
     process.exit(1);
   }
 
-  if (!skipConfirm) {
-    const proceed = await confirm({
-      message: `Remove OAuth provider "${id}" from ${client.profile.instanceUrl}?`,
-      initialValue: false,
-    });
-    if (isCancel(proceed) || !proceed) {
-      console.log("Cancelled.");
-      return;
-    }
+  const proceed = await confirmDestructive({
+    message: `Remove OAuth provider "${id}" from ${client.profile.instanceUrl}?`,
+    // This subcommand shipped with --yes before --force was the convention, so
+    // hasForceFlag keeps accepting it.
+    force: hasForceFlag(rest),
+    remedy: "Pass --force to remove it without confirming.",
+  });
+  if (!proceed) {
+    console.log("Cancelled.");
+    return;
   }
 
   await deleteOAuthProvider(client, id);

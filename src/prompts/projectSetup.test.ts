@@ -69,15 +69,9 @@ function fullRegistry(): RegistryEntry[] {
   ];
 }
 
-// Captured before any test flips it, so a suite run leaves the process as it
-// found it.
-const ORIGINAL_TTY = process.stdin.isTTY;
-
 let logs: string[];
 
 beforeEach(() => {
-  // The prompt paths refuse to run without a terminal, and vitest has none.
-  process.stdin.isTTY = true;
   // Every full run answers the owner-email prompt; tests that care override it.
   vi.mocked(text).mockResolvedValue("dev@example.com" as never);
   logs = [];
@@ -87,7 +81,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  process.stdin.isTTY = ORIGINAL_TTY;
   vi.restoreAllMocks();
 });
 

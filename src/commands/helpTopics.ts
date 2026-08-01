@@ -267,7 +267,10 @@ instead. Fails cleanly if not logged in.`,
   },
   {
     name: "sessions",
-    usage: ["seamless sessions [list]", "seamless sessions revoke <id | --all>"],
+    usage: [
+      "seamless sessions [list]",
+      "seamless sessions revoke <id | --all> [--force]",
+    ],
     sections: [
       {
         heading: "sessions [list]",
@@ -275,9 +278,13 @@ instead. Fails cleanly if not logged in.`,
 marked. Shows the session id, device or user agent, IP, and last-used time.`,
       },
       {
-        heading: "sessions revoke <id | --all>",
+        heading: "sessions revoke <id | --all> [--force]",
         body: `Revoke one session by id, or every session with --all. Revoking the current
-session (or --all) prompts for confirmation and then clears local tokens.`,
+session (or --all) prompts for confirmation and then clears local tokens.
+
+--force
+  • Skip that confirmation (--yes and -y are accepted aliases), which is also
+    what lets this run without a terminal attached`,
       },
     ],
   },
@@ -303,15 +310,21 @@ config roles [--json]
 config diff <file>
   • Show how a local JSON config file differs from the instance
 
-config apply <file> [--dry-run]
+config apply <file> [--dry-run] [--force]
   • Apply a local JSON config file after a confirmation prompt
+  • --force skips the confirmation; --dry-run still changes nothing
 
 config oauth-providers <list|add|update|remove>
   • Manage OAuth providers one at a time. Client secrets stay server-side,
     referenced by clientSecretEnv; the secret value is never sent.
     (for example: config oauth-providers add --file google.json,
     config oauth-providers update google '{"enabled":false}',
-    config oauth-providers remove google)`,
+    config oauth-providers remove google --force)
+
+--force
+  • Skips the confirmation on apply and oauth-providers remove (--yes and -y
+    are accepted aliases), which is also what lets them run without a
+    terminal attached`,
       },
     ],
   },
@@ -327,12 +340,17 @@ config oauth-providers <list|add|update|remove>
 
 users list [--limit <n>] [--offset <n>] [--json]
   • List users
-users delete <id>
+users delete <id> [--force]
   • Delete a user (asks for confirmation)
 users credentials <id> [--json]
   • Show a user's registered credentials
-users prepare-device-replacement <id> [--keep-sessions] [--keep-passkeys] [--keep-totp]
-  • Admin-assisted account recovery (needs an elevated session)`,
+users prepare-device-replacement <id> [--force] [--keep-sessions] [--keep-passkeys] [--keep-totp]
+  • Admin-assisted account recovery (needs an elevated session)
+
+--force
+  • Skips the confirmation on delete and prepare-device-replacement (--yes and
+    -y are accepted aliases), which is also what lets them run without a
+    terminal attached`,
       },
     ],
   },
@@ -355,7 +373,11 @@ org update <id> [--name <name>] [--slug <slug>]
 org members list <orgId> [--json]
 org members add <orgId> (--user <id> | --email <email>) [--roles a,b] [--scopes a,b]
 org members update <orgId> <userId> [--roles a,b] [--scopes a,b]
-org members remove <orgId> <userId>`,
+org members remove <orgId> <userId> [--force]
+
+--force
+  • Skips the confirmation on members remove (--yes and -y are accepted
+    aliases), which is also what lets it run without a terminal attached`,
       },
     ],
   },

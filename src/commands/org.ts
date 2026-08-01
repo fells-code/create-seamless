@@ -1,4 +1,3 @@
-import { confirm, isCancel } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import { createAuthClient, type AuthClient } from "../core/authClient.js";
@@ -14,6 +13,10 @@ import {
   type Json,
 } from "../core/admin.js";
 import { parseList, reportAdminError } from "./adminShared.js";
+import {
+  confirmDestructive,
+  hasForceFlag,
+} from "../core/confirmAction.js";
 
 export async function runOrg(args: string[]): Promise<void> {
   if (args[0] === "members") {
@@ -246,11 +249,12 @@ async function membersRemove(client: AuthClient, rest: string[]): Promise<void> 
     process.exit(1);
   }
 
-  const proceed = await confirm({
+  const proceed = await confirmDestructive({
     message: `Remove user ${userId} from organization ${orgId}?`,
-    initialValue: false,
+    force: hasForceFlag(rest),
+    remedy: "Pass --force to remove the member without confirming.",
   });
-  if (isCancel(proceed) || !proceed) {
+  if (!proceed) {
     console.log("Cancelled.");
     return;
   }
