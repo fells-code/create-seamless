@@ -1,6 +1,7 @@
 import { confirm, select, text } from "@clack/prompts";
 
 import { orCancel } from "../core/cancel.js";
+import { requireInteractive } from "../core/tty.js";
 
 import type { RegistryEntry, TemplateKind } from "../core/templates.js";
 
@@ -90,6 +91,11 @@ async function resolveTemplateId(
     return chosen;
   }
 
+  requireInteractive(
+    message,
+    `Pass --${kind}=<id> to choose one (see \`seamless templates list\`), or --yes to take the recommended template.`,
+  );
+
   return orCancel(
     await select({ message, options: toOptions(templates, kind) }),
   ) as string;
@@ -161,6 +167,9 @@ export async function runProjectSetupPrompts(
     preselect.authMode,
     assumeYes ? DEFAULT_AUTH_MODE : undefined,
     "Auth server",
+    "How would you like to run SeamlessAuth?",
+    "--auth",
+    AUTH_MODES,
     async () =>
       orCancel(
         await select({
@@ -183,6 +192,9 @@ export async function runProjectSetupPrompts(
     preselect.adminMode,
     assumeYes ? DEFAULT_ADMIN_MODE : undefined,
     "Admin console",
+    "How would you like to host the admin console?",
+    "--admin",
+    ADMIN_MODES,
     async () =>
       orCancel(
         await select({
@@ -211,6 +223,10 @@ export async function runProjectSetupPrompts(
   );
 
   if (authMode === "local" && !assumeYes) {
+    requireInteractive(
+      "Auth server still requires Docker for full stack. Enable Docker?",
+      "Pass --yes; Docker is enabled either way.",
+    );
     const confirmDocker = orCancel(
       await confirm({
         message:
@@ -248,6 +264,9 @@ async function resolveChoice<T extends string>(
   supplied: T | undefined,
   fallback: T | undefined,
   echoLabel: string,
+  question: string,
+  flag: string,
+  allowed: readonly T[],
   ask: () => Promise<T>,
 ): Promise<T> {
   const chosen = supplied ?? fallback;
@@ -255,6 +274,12 @@ async function resolveChoice<T extends string>(
     console.log(`${echoLabel}: ${chosen}`);
     return chosen;
   }
+
+  requireInteractive(
+    question,
+    `Pass ${flag}=<${allowed.join("|")}>, or --yes to take the recommended option.`,
+  );
+
   return ask();
 }
 
@@ -273,6 +298,11 @@ async function resolveOwnerEmail(
       "--yes needs an owner email, which becomes the admin when you register. Pass --email <address>, or run `seamless login` so it can be taken from your portal session.",
     );
   }
+
+  requireInteractive(
+    "Your email (becomes the admin when you register)",
+    "Pass --email <address>, or run `seamless login` so it can be taken from your portal session.",
+  );
 
   return orCancel(
     await text({

@@ -1,6 +1,7 @@
 import { select } from "@clack/prompts";
 
 import { orCancel } from "../core/cancel.js";
+import { requireInteractive } from "../core/tty.js";
 import { resolveAppInstanceUrl, type PortalApp } from "../core/portal.js";
 
 export class NoApplicationsError extends Error {
@@ -44,6 +45,11 @@ export async function selectApplication<T extends PortalApp>(
     );
     return apps[0];
   }
+
+  requireInteractive(
+    "Which managed application should this project connect to?",
+    "Pass --app <id> to name one (see `seamless apps list`).",
+  );
 
   const choice = orCancel(
     await select({
