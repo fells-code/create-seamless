@@ -419,3 +419,26 @@ describe("runOrg members remove", () => {
     expect(logs()).toContain("Removed user u1 from o1.");
   });
 });
+
+describe("org members remove --force", () => {
+  it.each(["--force", "--yes", "-y"])(
+    "removes without confirming when given %s",
+    async (flag) => {
+      vi.mocked(removeMember).mockResolvedValue(undefined as never);
+
+      await runOrg(["members", "remove", "o1", "u1", flag]);
+
+      expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+      expect(logs()).toContain("Removed user u1 from o1.");
+    },
+  );
+
+  it("refuses to ask without a terminal, naming --force", async () => {
+    process.stdin.isTTY = false;
+
+    await expect(runOrg(["members", "remove", "o1", "u1"])).rejects.toThrow(
+      /needs an interactive terminal[\s\S]*--force/,
+    );
+    expect(vi.mocked(removeMember)).not.toHaveBeenCalled();
+  });
+});

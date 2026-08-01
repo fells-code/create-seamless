@@ -361,3 +361,21 @@ describe("profile login", () => {
     expect(vi.mocked(text)).toHaveBeenCalledTimes(1);
   });
 });
+
+describe("profile add without a terminal", () => {
+  it("refuses the name prompt, pointing at the positional form", async () => {
+    process.stdin.isTTY = false;
+
+    await expect(runProfile(["add"])).rejects.toThrow(
+      /"Profile name" needs an interactive terminal[\s\S]*seamless profile add <name>/,
+    );
+  });
+
+  it("refuses the instance URL prompt, naming --instance-url", async () => {
+    process.stdin.isTTY = false;
+
+    await expect(runProfile(["add", "prod"])).rejects.toThrow(
+      /"Instance URL" needs an interactive terminal[\s\S]*--instance-url/,
+    );
+  });
+});

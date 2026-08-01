@@ -84,11 +84,10 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
     managed application and a local stack requires `--app` or `--local`. Flag parsing lives in
     `parseInitArgs` ([src/index.ts](src/index.ts)); everything it produces is validated in `runCLI`
     before a directory is created.
-  - Every prompt in the init flow is fronted by `requireInteractive`
-    ([src/core/tty.ts](src/core/tty.ts)), so a run without a TTY on stdin fails naming the flag that
-    answers the question instead of rendering a prompt nobody can answer. When adding a prompt to
-    this flow, guard it the same way. The other commands that prompt (`login`, `profile`,
-    `config apply`, `users delete`, `sessions revoke`) are not guarded yet, see #153.
+  - Every prompt is fronted by `requireInteractive` ([src/core/tty.ts](src/core/tty.ts)), so a run
+    without a TTY on stdin fails naming the flag that answers the question instead of rendering a
+    prompt nobody can answer. This holds across every command, not just `init`. When adding a
+    prompt anywhere, guard it the same way.
   - **templates** ([src/commands/templates.ts](src/commands/templates.ts)) lists the registry
     (`seamless templates list [--json]`) so those ids and flags are discoverable without a
     checkout. It reads the same source `init` does and needs no login.
@@ -97,6 +96,13 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
     [src/core/oauthProviders.ts](src/core/oauthProviders.ts)). The chosen providers are wired into
     the auth server env (`OAUTH_PROVIDERS`, per-provider `*_CLIENT_SECRET`, the `oauth` login
     method) by `buildAuthEnv` in [src/generators/docker/docker.ts](src/generators/docker/docker.ts).
+- **destructive confirmations** go through `confirmDestructive`
+  ([src/core/confirmAction.ts](src/core/confirmAction.ts)), which answers itself when `--force` is
+  set and otherwise asks. `--force` is the standing spelling for "do it without asking";
+  `hasForceFlag` also accepts `--yes` and `-y`, because `config oauth-providers remove --yes`
+  shipped before the convention existed. `--yes` means something narrower on `init` (answer the
+  ordinary questions, never the destructive ones), so do not add `--yes` alone to a destructive
+  step. Cancelling a confirmation reads as declining, not as an error.
 - **check** health-checks a running stack (local or managed).
 - **verify** ([src/commands/verify.ts](src/commands/verify.ts)) runs the conformance harness (below).
 - **instance management** — `profile` (targets, plus `profile login`),

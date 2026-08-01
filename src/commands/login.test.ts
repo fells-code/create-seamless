@@ -538,3 +538,13 @@ describe("runLogin: failure handling", () => {
     expect(exitSpy).not.toHaveBeenCalled();
   });
 });
+
+describe("runLogin without a terminal", () => {
+  it("refuses the identifier prompt, naming --identifier", async () => {
+    process.stdin.isTTY = false;
+
+    await expect(runLogin([])).rejects.toThrow(
+      /"Email or phone" needs an interactive terminal[\s\S]*--identifier/,
+    );
+  });
+});

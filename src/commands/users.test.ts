@@ -322,3 +322,35 @@ describe("runUsers prepare-device-replacement", () => {
     expect(logs()).toContain("Revoked sessions: 0, removed credentials: 0, disabled TOTP: 0");
   });
 });
+
+describe("users --force", () => {
+  it.each(["--force", "--yes", "-y"])(
+    "deletes without confirming when given %s",
+    async (flag) => {
+      vi.mocked(deleteUser).mockResolvedValue(undefined);
+
+      await runUsers(["delete", "u1", flag]);
+
+      expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+      expect(vi.mocked(deleteUser)).toHaveBeenCalledWith(expect.anything(), "u1");
+    },
+  );
+
+  it("prepares a device replacement without confirming when forced", async () => {
+    vi.mocked(prepareDeviceReplacement).mockResolvedValue({} as never);
+
+    await runUsers(["prepare-device-replacement", "u1", "--force"]);
+
+    expect(vi.mocked(confirm)).not.toHaveBeenCalled();
+    expect(vi.mocked(prepareDeviceReplacement)).toHaveBeenCalled();
+  });
+
+  it("refuses to ask without a terminal, naming --force", async () => {
+    process.stdin.isTTY = false;
+
+    await expect(runUsers(["delete", "u1"])).rejects.toThrow(
+      /needs an interactive terminal.*--force/s,
+    );
+    expect(vi.mocked(deleteUser)).not.toHaveBeenCalled();
+  });
+});
