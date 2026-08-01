@@ -69,9 +69,15 @@ function fullRegistry(): RegistryEntry[] {
   ];
 }
 
+// Captured before any test flips it, so a suite run leaves the process as it
+// found it.
+const ORIGINAL_TTY = process.stdin.isTTY;
+
 let logs: string[];
 
 beforeEach(() => {
+  // The prompt paths refuse to run without a terminal, and vitest has none.
+  process.stdin.isTTY = true;
   // Every full run answers the owner-email prompt; tests that care override it.
   vi.mocked(text).mockResolvedValue("dev@example.com" as never);
   logs = [];
@@ -81,6 +87,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  process.stdin.isTTY = ORIGINAL_TTY;
   vi.restoreAllMocks();
 });
 
@@ -383,5 +390,82 @@ describe("runProjectSetupPrompts with --yes", () => {
 
     expect(result).toEqual({ webTemplateId: "web-a", apiTemplateId: "api-a" });
     expect(select).not.toHaveBeenCalled();
+  });
+});
+
+describe("runProjectSetupPrompts without a terminal", () => {
+  beforeEach(() => {
+    process.stdin.isTTY = false;
+  });
+
+  // Each question names the flag that answers it, so the error tells you how to
+  // run the same command unattended rather than just that it cannot prompt.
+  it.each([
+    [{}, /Web example.*--web=<id>/s],
+    [{ webTemplateId: "web-a" }, /Backend framework.*--api=<id>/s],
+    [
+      { webTemplateId: "web-a", apiTemplateId: "api-a" },
+      /becomes the admin.*--email <address>/s,
+    ],
+    [
+      {
+        webTemplateId: "web-a",
+        apiTemplateId: "api-a",
+        ownerEmail: "dev@example.com",
+      },
+      /run SeamlessAuth\?.*--auth=<docker\|local>/s,
+    ],
+    [
+      {
+        webTemplateId: "web-a",
+        apiTemplateId: "api-a",
+        ownerEmail: "dev@example.com",
+        authMode: "docker" as const,
+      },
+      /host the admin console\?.*--admin=<api\|image\|source\|none>/s,
+    ],
+  ])("stops on the first unanswered question (%#)", async (preselect, expected) => {
+    await expect(
+      runProjectSetupPrompts(fullRegistry(), preselect),
+    ).rejects.toThrow(expected);
+    expect(select).not.toHaveBeenCalled();
+    expect(text).not.toHaveBeenCalled();
+  });
+
+  it("runs to completion when every question is answered", async () => {
+    const result = await runProjectSetupPrompts(fullRegistry(), {
+      webTemplateId: "web-a",
+      apiTemplateId: "api-a",
+      ownerEmail: "dev@example.com",
+      authMode: "docker",
+      adminMode: "api",
+    });
+
+    expect(result.webTemplateId).toBe("web-a");
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  it("stops on the Docker confirmation for a local auth mode", async () => {
+    await expect(
+      runProjectSetupPrompts(fullRegistry(), {
+        webTemplateId: "web-a",
+        apiTemplateId: "api-a",
+        ownerEmail: "dev@example.com",
+        authMode: "local",
+        adminMode: "api",
+      }),
+    ).rejects.toThrow(/Enable Docker\?.*needs an interactive terminal/s);
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("does not stop when --yes has answered everything", async () => {
+    const result = await runProjectSetupPrompts(
+      fullRegistry(),
+      { ownerEmail: "dev@example.com" },
+      undefined,
+      true,
+    );
+
+    expect(result.webTemplateId).toBe("web-a");
   });
 });
