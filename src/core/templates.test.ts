@@ -13,7 +13,9 @@ import { SEAMLESS_TEMPLATES_REF, SEAMLESS_TEMPLATES_REPO } from "./images.js";
 import {
   applyTemplateEnv,
   assertCliSupports,
+  matchesTemplateFlag,
   openTemplateSource,
+  templateFlags,
   type RegistryEntry,
   type ScaffoldContext,
   type TemplateManifest,
@@ -480,5 +482,44 @@ describe("applyTemplateEnv", () => {
         ctx,
       ),
     ).toThrow(/Unknown template placeholder \{\{bogus\}\}/);
+  });
+});
+
+describe("template flags", () => {
+  const withAlias: RegistryEntry = {
+    id: "react-vite",
+    kind: "web",
+    framework: "react",
+    label: "React (Vite)",
+    alias: "basic",
+    status: "stable",
+    path: "templates/web/react-vite",
+  };
+  const noAlias: RegistryEntry = {
+    id: "express",
+    kind: "api",
+    framework: "express",
+    label: "Express",
+    status: "stable",
+    path: "templates/api/express",
+  };
+
+  it("offers the alias before the id when a template declares one", () => {
+    expect(templateFlags(withAlias)).toEqual(["--basic", "--react-vite"]);
+  });
+
+  it("offers the id alone when a template declares no alias", () => {
+    expect(templateFlags(noAlias)).toEqual(["--express"]);
+  });
+
+  it("matches a template by either its alias or its id", () => {
+    expect(matchesTemplateFlag(withAlias, "basic")).toBe(true);
+    expect(matchesTemplateFlag(withAlias, "react-vite")).toBe(true);
+    expect(matchesTemplateFlag(withAlias, "vite")).toBe(false);
+  });
+
+  it("matches an alias-less template by its id", () => {
+    expect(matchesTemplateFlag(noAlias, "express")).toBe(true);
+    expect(matchesTemplateFlag(noAlias, "fastify")).toBe(false);
   });
 });

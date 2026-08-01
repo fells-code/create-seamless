@@ -18,7 +18,9 @@ import { generateSeamlessConfig } from "../generators/config/config.js";
 import {
   applyTemplateEnv,
   assertCliSupports,
+  matchesTemplateFlag,
   openTemplateSource,
+  templateFlags,
   type RegistryEntry,
   type ScaffoldContext,
   type TemplateManifest,
@@ -81,6 +83,19 @@ export async function runCLI(
     );
   }
 
+  const openSource = lazyTemplateSource();
+
+  // Template flags are resolved against the registry before a directory is
+  // created and before the overwrite confirmation runs, so an unknown or
+  // conflicting flag can never reach a destructive prompt on its way to an
+  // error. Skipped entirely when there are no flags, which keeps the
+  // integrate-an-existing-project path from fetching a registry it never reads.
+  let preselect: TemplatePreselect = {};
+  if (aliases.length > 0) {
+    const { registry } = await openSource();
+    preselect = resolveTemplateAliases(aliases, registry.templates);
+  }
+
   let root = cwd;
   // Only ever set to a directory mkdir just created, never one that already
   // existed, so discarding it can never take a developer's own files with it.
@@ -108,7 +123,7 @@ export async function runCLI(
   if (created) process.on("SIGINT", onInterrupt);
 
   try {
-    await scaffold(root, projectName, aliases, opts);
+    await scaffold(root, projectName, preselect, openSource, opts);
   } catch (err) {
     // Anything short of a completed scaffold leaves nothing behind, so a retry
     // is not blocked by "Directory already exists" from a half-built attempt.
@@ -117,6 +132,16 @@ export async function runCLI(
   } finally {
     if (created) process.off("SIGINT", onInterrupt);
   }
+}
+
+type OpenSource = () => Promise<TemplateSource>;
+
+// Opens the template source at most once per run. Validating flags up front and
+// scaffolding both need the registry, and the remote source refetches it on
+// every open.
+function lazyTemplateSource(): OpenSource {
+  let pending: Promise<TemplateSource> | null = null;
+  return () => (pending ??= openTemplateSource());
 }
 
 function discard(dir: string | null): void {
@@ -132,7 +157,8 @@ function discard(dir: string | null): void {
 async function scaffold(
   root: string,
   projectName: string | undefined,
-  aliases: string[],
+  preselect: TemplatePreselect,
+  openSource: OpenSource,
   opts: InitOptions,
 ) {
   // --local forces the self-hosted stack without asking the control plane
@@ -178,7 +204,15 @@ async function scaffold(
       ? "managed"
       : await chooseScaffoldTarget(apps.length);
     if (target === "managed") {
-      await scaffoldManaged(root, projectName, aliases, client!, apps, opts);
+      await scaffoldManaged(
+        root,
+        projectName,
+        preselect,
+        openSource,
+        client!,
+        apps,
+        opts,
+      );
       return;
     }
   } else if (client) {
@@ -193,7 +227,7 @@ async function scaffold(
     );
   }
 
-  await scaffoldLocal(root, projectName, aliases);
+  await scaffoldLocal(root, projectName, preselect, openSource);
 }
 
 // The bundled database as a connection string with placeholder credentials, or
@@ -249,13 +283,13 @@ async function resolveManagedClient(): Promise<ManagedResolution> {
 async function scaffoldManaged(
   root: string,
   projectName: string | undefined,
-  aliases: string[],
+  preselect: TemplatePreselect,
+  openSource: OpenSource,
   client: AuthClient,
   apps: ConnectableApp[],
   opts: InitOptions,
 ) {
-  const source = await openTemplateSource();
-  const preselect = resolveTemplateAliases(aliases, source.registry.templates);
+  const source = await openSource();
   const answers = await runManagedTemplatePrompts(
     source.registry.templates,
     preselect,
@@ -346,10 +380,10 @@ async function scaffoldManaged(
 async function scaffoldLocal(
   root: string,
   projectName: string | undefined,
-  aliases: string[],
+  preselect: TemplatePreselect,
+  openSource: OpenSource,
 ) {
-  const source = await openTemplateSource();
-  const preselect = resolveTemplateAliases(aliases, source.registry.templates);
+  const source = await openSource();
   const answers = await runProjectSetupPrompts(
     source.registry.templates,
     preselect,
@@ -631,10 +665,11 @@ export interface TemplatePreselect {
   apiTemplateId?: string;
 }
 
-// Resolves `--<alias>` flags (e.g. --oauth) to specific templates from the registry,
-// so a matching layer's prompt can be skipped. Aliases live in the registry, so no
-// per-flag code is needed here. Unknown or conflicting flags are hard errors.
-function resolveTemplateAliases(
+// Resolves `--<alias>` and `--<id>` flags (e.g. --oauth, --react-oauth) to specific
+// templates from the registry, so a matching layer's prompt can be skipped. Both
+// spellings live in the registry, so no per-flag code is needed here. Unknown or
+// conflicting flags are hard errors.
+export function resolveTemplateAliases(
   aliases: string[],
   templates: RegistryEntry[],
 ): TemplatePreselect {
@@ -642,15 +677,15 @@ function resolveTemplateAliases(
 
   for (const alias of aliases) {
     const entry = templates.find(
-      (t) => t.alias === alias && t.status !== "coming-soon",
+      (t) => matchesTemplateFlag(t, alias) && t.status !== "coming-soon",
     );
     if (!entry) {
       const available = templates
-        .filter((t) => t.alias && t.status !== "coming-soon")
-        .map((t) => `--${t.alias}`)
+        .filter((t) => t.status !== "coming-soon")
+        .flatMap((t) => templateFlags(t))
         .join(", ");
       throw new Error(
-        `Unknown option "--${alias}". Available template flags: ${available || "(none)"}.`,
+        `Unknown option "--${alias}". Available template flags: ${available || "(none)"}. Run \`seamless templates list\` for details.`,
       );
     }
 

@@ -20,6 +20,7 @@ vi.mock("./commands/config.js", () => ({ runConfig: vi.fn() }));
 vi.mock("./commands/users.js", () => ({ runUsers: vi.fn() }));
 vi.mock("./commands/org.js", () => ({ runOrg: vi.fn() }));
 vi.mock("./commands/apps.js", () => ({ runApps: vi.fn() }));
+vi.mock("./commands/templates.js", () => ({ runTemplates: vi.fn() }));
 
 const flush = () => new Promise((r) => setImmediate(r));
 
@@ -160,6 +161,7 @@ describe("index dispatcher", () => {
     ["users", "./commands/users.js", "runUsers"],
     ["org", "./commands/org.js", "runOrg"],
     ["apps", "./commands/apps.js", "runApps"],
+    ["templates", "./commands/templates.js", "runTemplates"],
   ])("dispatches %s with the remaining args", async (cmd, modPath, fnName) => {
     await dispatch([cmd, "sub", "--flag"]);
     const mod = (await import(/* @vite-ignore */ modPath)) as Record<string, ReturnType<typeof vi.fn>>;

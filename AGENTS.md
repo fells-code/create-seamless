@@ -55,7 +55,7 @@ guidance may extend them but must not contradict them.
 - Install dependencies: `npm install`
 - Build (type-check and emit): `npm run build` (`tsc`, output in `dist/`)
 - Run from source: `npm run dev -- <command>` (`tsx`); or after building, `node dist/index.js <command>`
-- Commands: `init [name]`, `check`, `verify [flags]`, `apps`,
+- Commands: `init [name]`, `templates`, `check`, `verify [flags]`, `apps`,
   and the instance-management commands `profile`, `login`, `whoami`, `logout`,
   `sessions`, `config`, `users`, `org` (all dispatched from `src/index.ts`)
 
@@ -72,8 +72,14 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
   template's `template.json` env contract. The auth, docker, and config pieces are still generated
   locally in `src/generators/*`. Override the template source for development with
   `SEAMLESS_TEMPLATES_DIR` (a local checkout) or `SEAMLESS_TEMPLATES_REF` (a different ref).
-  - A `--<alias>` flag (e.g. `seamless init --oauth`) preselects the template whose registry
-    `alias` matches, skipping the web prompt. Aliases live in the registry, so no per-flag code.
+  - A `--<id>` or `--<alias>` flag (e.g. `seamless init --react-oauth`, `seamless init --oauth`)
+    preselects the matching template and skips that layer's prompt. Both spellings live in the
+    registry, so no per-flag code. `resolveTemplateAliases` runs in `runCLI` before the project
+    directory is created and before the non-empty-directory confirmation, so an unknown flag can
+    never route through a destructive prompt on its way to an error.
+  - **templates** ([src/commands/templates.ts](src/commands/templates.ts)) lists the registry
+    (`seamless templates list [--json]`) so those ids and flags are discoverable without a
+    checkout. It reads the same source `init` does and needs no login.
   - A template can declare `setup.oauth` in its `template.json` to trigger the OAuth provider
     prompts ([src/prompts/oauthSetup.ts](src/prompts/oauthSetup.ts), catalog in
     [src/core/oauthProviders.ts](src/core/oauthProviders.ts)). The chosen providers are wired into

@@ -121,6 +121,33 @@ Escape hatches:
 
 ---
 
+## Choosing a starter
+
+`seamless templates list` shows every starter `init` can scaffold, with the flags that select it:
+
+```bash
+seamless templates list
+```
+
+```text
+ID           KIND  FRAMEWORK  FLAGS                   STATUS
+react-vite   web   react      --basic, --react-vite   stable
+react-oauth  web   react      --oauth, --react-oauth  stable
+express      api   express    --express               stable
+```
+
+Every template answers to `--<id>`; some also declare a shorter `--<alias>`, and the two are
+interchangeable. Passing a flag skips that layer's prompt:
+
+```bash
+seamless init my-app --react-oauth --express
+```
+
+`--json` emits the registry entries for scripting. The command needs no login and reads the same
+registry `init` does, so `SEAMLESS_TEMPLATES_DIR` and `SEAMLESS_TEMPLATES_REF` apply.
+
+---
+
 ## What gets created
 
 Depending on your selections, the CLI generates a project like this:
