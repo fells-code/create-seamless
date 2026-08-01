@@ -85,6 +85,11 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
   `logout`/`whoami`, `sessions`, `config` (system config + OAuth providers),
   `users`, and `org` all talk to a running instance and are authenticated by the
   stored session.
+- **help** — `seamless --help`, `seamless <command> -h/--help`, and `seamless help <command>` all
+  render from the single registry in [src/commands/helpTopics.ts](src/commands/helpTopics.ts)
+  ([src/commands/help.ts](src/commands/help.ts) does the formatting, and `COMMANDS` there is also
+  the dispatcher's known-command list). Document a new command or flag in that registry, not in the
+  help template. `src/index.ts` answers the help flag before a command parses its own args.
 - **portal** — `login` signs in to the Seamless portal, a separate account from
   any instance profile. Its session lives beside the profile map in
   `config.json` and is the only one `init` uses to connect a managed

@@ -6,7 +6,10 @@ import pkg from "../package.json" with { type: "json" };
 // never touches real command logic. args.js stays real (extractFlag is pure).
 vi.mock("./commands/init.js", () => ({ runCLI: vi.fn() }));
 vi.mock("./commands/check.js", () => ({ runCheck: vi.fn() }));
-vi.mock("./commands/help.js", () => ({ printHelp: vi.fn() }));
+vi.mock("./commands/help.js", () => ({
+  printHelp: vi.fn(),
+  printCommandHelp: vi.fn((name: string) => name !== "frobnicate"),
+}));
 vi.mock("./commands/verify.js", () => ({ runVerify: vi.fn() }));
 vi.mock("./commands/profile.js", () => ({ runProfile: vi.fn() }));
 vi.mock("./commands/login.js", () => ({ runLogin: vi.fn() }));
@@ -65,6 +68,64 @@ describe("index dispatcher", () => {
   it.each(["-v", "--version"])("prints the version for %s", async (flag) => {
     await dispatch([flag]);
     expect(logSpy).toHaveBeenCalledWith(pkg.version);
+  });
+
+  it.each(["-h", "--help"])(
+    "prints command help for %s and skips the command",
+    async (flag) => {
+      await dispatch(["verify", flag]);
+
+      const { printCommandHelp, printHelp } = await import("./commands/help.js");
+      expect(printCommandHelp).toHaveBeenCalledWith("verify");
+      expect(printHelp).not.toHaveBeenCalled();
+
+      const { runVerify } = await import("./commands/verify.js");
+      expect(runVerify).not.toHaveBeenCalled();
+    },
+  );
+
+  // `-h` is not a project name: init parses unrecognized args positionally, so
+  // the help check has to win before that parsing runs.
+  it("prints command help for init rather than scaffolding ./-h", async () => {
+    await dispatch(["init", "-h"]);
+
+    const { printCommandHelp } = await import("./commands/help.js");
+    expect(printCommandHelp).toHaveBeenCalledWith("init");
+
+    const { runCLI } = await import("./commands/init.js");
+    expect(runCLI).not.toHaveBeenCalled();
+  });
+
+  it("passes a help flag through when it follows --", async () => {
+    await dispatch(["config", "set", "key", "--", "-h"]);
+
+    const { printCommandHelp } = await import("./commands/help.js");
+    expect(printCommandHelp).not.toHaveBeenCalled();
+
+    const { runConfig } = await import("./commands/config.js");
+    expect(runConfig).toHaveBeenCalledWith(["set", "key", "--", "-h"]);
+  });
+
+  it("dispatches help <command> to that command's help", async () => {
+    await dispatch(["help", "org"]);
+
+    const { printCommandHelp } = await import("./commands/help.js");
+    expect(printCommandHelp).toHaveBeenCalledWith("org");
+  });
+
+  it("prints the full help for a bare help command", async () => {
+    await dispatch(["help"]);
+
+    const { printHelp } = await import("./commands/help.js");
+    expect(printHelp).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an unknown help topic", async () => {
+    await dispatch(["help", "frobnicate"]);
+
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    const errors = errSpy.mock.calls.map((c) => c[0] as string).join("\n");
+    expect(errors).toContain('Unknown command "frobnicate"');
   });
 
   it("dispatches init with parsed project name, aliases, profile and app flags", async () => {
