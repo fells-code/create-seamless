@@ -55,7 +55,10 @@ vi.mock("@clack/prompts", () => ({
   isCancel: vi.fn(() => false),
 }));
 
-vi.mock("../prompts/projectSetup.js", () => ({
+// The mode lists are plain constants init validates flags against, so they come
+// from the real module; only the prompt runners are stubbed.
+vi.mock("../prompts/projectSetup.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../prompts/projectSetup.js")>()),
   runManagedTemplatePrompts: vi.fn(),
   runProjectSetupPrompts: vi.fn(),
 }));
@@ -587,6 +590,7 @@ describe("template alias resolution", () => {
       expect.anything(),
       expect.objectContaining({ webTemplateId: "web-oauth" }),
       undefined,
+      undefined,
     );
   });
 
@@ -608,6 +612,7 @@ describe("template alias resolution", () => {
       expect.anything(),
       expect.objectContaining({ webTemplateId: "web-basic" }),
       undefined,
+      undefined,
     );
   });
 
@@ -616,6 +621,7 @@ describe("template alias resolution", () => {
     expect(runProjectSetupPrompts).toHaveBeenCalledWith(
       expect.anything(),
       expect.objectContaining({ webTemplateId: "web-oauth" }),
+      undefined,
       undefined,
     );
   });
@@ -1248,5 +1254,213 @@ describe("integrateExistingProject", () => {
 
     expect(rotateServiceToken).not.toHaveBeenCalled();
     expect(writeEnv).not.toHaveBeenCalled();
+  });
+});
+
+describe("non-interactive init (--yes)", () => {
+  function localAnswers(over: Record<string, unknown> = {}) {
+    return {
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode: "api",
+      useDocker: true,
+      ownerEmail: "dev@example.com",
+      ...over,
+    } as never;
+  }
+
+  beforeEach(() => {
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue(localAnswers());
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+  });
+
+  it("tells the prompts to answer themselves", async () => {
+    await runCLI(undefined, [], { local: true, yes: true });
+
+    expect(runProjectSetupPrompts).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.anything(),
+      undefined,
+      true,
+    );
+  });
+
+  it("passes the answer flags through as preselected answers", async () => {
+    await runCLI(undefined, [], {
+      local: true,
+      yes: true,
+      email: "owner@example.com",
+      auth: "local",
+      admin: "none",
+      web: "web-oauth",
+      api: "api-express",
+    });
+
+    expect(runProjectSetupPrompts).toHaveBeenCalledWith(
+      expect.anything(),
+      {
+        ownerEmail: "owner@example.com",
+        authMode: "local",
+        adminMode: "none",
+        webTemplateId: "web-oauth",
+        apiTemplateId: "api-express",
+      },
+      undefined,
+      true,
+    );
+  });
+
+  it("rejects an email that is not an address", async () => {
+    await expect(
+      runCLI(undefined, [], { local: true, yes: true, email: "nope" }),
+    ).rejects.toThrow(/--email must be an email address/);
+  });
+
+  it.each([
+    ["auth", "podman", /Unknown value "podman" for --auth/],
+    ["admin", "sidecar", /Unknown value "sidecar" for --admin/],
+  ])("rejects an unknown --%s value", async (flag, value, expected) => {
+    await expect(
+      runCLI(undefined, [], { local: true, yes: true, [flag]: value }),
+    ).rejects.toThrow(expected);
+  });
+
+  it("rejects --web naming an api template", async () => {
+    await expect(
+      runCLI(undefined, [], { local: true, web: "api-express" }),
+    ).rejects.toThrow(/--web expects a web template/);
+  });
+
+  it("rejects --api disagreeing with a bare template flag", async () => {
+    await expect(
+      runCLI(undefined, ["express"], { local: true, api: "api-soon" }),
+    ).rejects.toThrow(/Unknown option "--api-soon"/);
+  });
+
+  it("rejects --web disagreeing with a bare template flag", async () => {
+    await expect(
+      runCLI(undefined, ["oauth"], { local: true, web: "web-basic" }),
+    ).rejects.toThrow(/Conflicting web template flags/);
+  });
+
+  // The alias and the id name the same template, so agreeing is not a conflict.
+  it("accepts --web repeating a bare template flag", async () => {
+    await expect(
+      runCLI(undefined, ["oauth"], { local: true, yes: true, web: "web-oauth" }),
+    ).resolves.toBeUndefined();
+  });
+
+  // Starter files overwrite anything with the same name, so a blanket "assume
+  // yes" is deliberately not enough to reach it.
+  it("refuses to scaffold into a non-empty directory without --force", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["src"] as never);
+
+    await expect(
+      runCLI(undefined, [], { local: true, yes: true }),
+    ).rejects.toThrow(/Re-run with --force/);
+    expect(chooseExistingDirectoryAction).not.toHaveBeenCalled();
+    expect(runProjectSetupPrompts).not.toHaveBeenCalled();
+  });
+
+  it("scaffolds into a non-empty directory with --force", async () => {
+    vi.mocked(fs.readdirSync).mockReturnValue(["src"] as never);
+
+    await runCLI(undefined, [], { local: true, yes: true, force: true });
+
+    expect(chooseExistingDirectoryAction).not.toHaveBeenCalled();
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+    expect(out()).toContain("--force");
+  });
+
+  it("refuses to choose between a managed application and a local stack", async () => {
+    vi.mocked(createPortalClient).mockResolvedValue({} as never);
+    vi.mocked(listApplications).mockResolvedValue([app()] as never);
+
+    await expect(runCLI(undefined, [], { yes: true })).rejects.toThrow(
+      /Pass --app <id> .* or --local/,
+    );
+    expect(chooseScaffoldTarget).not.toHaveBeenCalled();
+  });
+
+  it("refuses to silently fall back to local when the control plane is unreachable", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(new Error("boom"));
+
+    await expect(runCLI(undefined, [], { yes: true })).rejects.toThrow(
+      /--yes will not silently scaffold a local stack/,
+    );
+    expect(confirmLocalFallback).not.toHaveBeenCalled();
+    expect(runProjectSetupPrompts).not.toHaveBeenCalled();
+  });
+
+  it("still scaffolds local when there is no session at all", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+
+    await runCLI(undefined, [], { yes: true, email: "dev@example.com" });
+
+    expect(runProjectSetupPrompts).toHaveBeenCalled();
+  });
+
+  it("skips OAuth provider setup rather than prompting for secrets", async () => {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockResolvedValue(
+      makeSource({
+        "web-basic": {
+          id: "web-basic",
+          targetDir: "web",
+          setup: { oauth: true },
+        },
+      }) as never,
+    );
+
+    await runCLI(undefined, [], { yes: true, email: "dev@example.com" });
+
+    expect(runOAuthSetupPrompts).not.toHaveBeenCalled();
+    expect(out()).toContain("Skipping OAuth provider setup");
+  });
+
+  it("refuses to rotate an existing service token without --force", async () => {
+    vi.mocked(createPortalClient).mockResolvedValue({} as never);
+    vi.mocked(listApplications).mockResolvedValue([
+      app({ hasServiceToken: true }),
+    ] as never);
+    vi.mocked(selectApplication).mockResolvedValue(
+      app({ hasServiceToken: true }) as never,
+    );
+    vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+    } as never);
+
+    await expect(
+      runCLI(undefined, [], { yes: true, appId: "app-1" }),
+    ).rejects.toThrow(/Re-run with --force to rotate it anyway/);
+    expect(rotateServiceToken).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("rotates an existing service token with --force", async () => {
+    vi.mocked(createPortalClient).mockResolvedValue({} as never);
+    vi.mocked(listApplications).mockResolvedValue([
+      app({ hasServiceToken: true }),
+    ] as never);
+    vi.mocked(selectApplication).mockResolvedValue(
+      app({ hasServiceToken: true }) as never,
+    );
+    vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+    } as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("token" as never);
+
+    await runCLI(undefined, [], { yes: true, force: true, appId: "app-1" });
+
+    expect(rotateServiceToken).toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
   });
 });

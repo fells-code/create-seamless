@@ -132,11 +132,56 @@ describe("index dispatcher", () => {
   it("dispatches init with parsed project name, aliases, profile and app flags", async () => {
     await dispatch(["init", "my-app", "--local", "--oauth", "--profile", "prod", "--app", "app1"]);
     const { runCLI } = await import("./commands/init.js");
-    expect(runCLI).toHaveBeenCalledWith("my-app", ["oauth"], {
-      profileFlag: "prod",
-      appId: "app1",
-      local: true,
-    });
+    expect(runCLI).toHaveBeenCalledWith(
+      "my-app",
+      ["oauth"],
+      expect.objectContaining({
+        profileFlag: "prod",
+        appId: "app1",
+        local: true,
+      }),
+    );
+  });
+
+  it("dispatches init with the answer flags", async () => {
+    await dispatch([
+      "init",
+      "my-app",
+      "--yes",
+      "--force",
+      "--web=react-oauth",
+      "--api",
+      "fastify",
+      "--email=dev@example.com",
+      "--auth=docker",
+      "--admin=none",
+    ]);
+    const { runCLI } = await import("./commands/init.js");
+    expect(runCLI).toHaveBeenCalledWith(
+      "my-app",
+      [],
+      expect.objectContaining({
+        yes: true,
+        force: true,
+        web: "react-oauth",
+        api: "fastify",
+        email: "dev@example.com",
+        auth: "docker",
+        admin: "none",
+      }),
+    );
+  });
+
+  // -y is a switch, not a project name, and the answer flags must not be
+  // mistaken for template ids.
+  it("keeps init switches out of the template aliases and the project name", async () => {
+    await dispatch(["init", "-y", "--local", "--force", "--basic"]);
+    const { runCLI } = await import("./commands/init.js");
+    expect(runCLI).toHaveBeenCalledWith(
+      undefined,
+      ["basic"],
+      expect.objectContaining({ yes: true, local: true, force: true }),
+    );
   });
 
   it("dispatches check", async () => {

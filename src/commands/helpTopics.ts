@@ -16,7 +16,10 @@ export interface CommandHelp {
 export const COMMAND_HELP: CommandHelp[] = [
   {
     name: "init",
-    usage: ["seamless init [project-name] [--<example>]"],
+    usage: [
+      "seamless init [project-name] [--<template>]",
+      "seamless init [project-name] --yes [--web=<id>] [--api=<id>] [--email=<address>] [--auth=<mode>] [--admin=<mode>]",
+    ],
     sections: [
       {
         heading: "init [project-name]",
@@ -44,7 +47,35 @@ With a template flag (e.g. --oauth, --react-oauth, --fastify):
     session from seamless login)
 
 --local
-  • Point the generated project at a locally running auth stack`,
+  • Point the generated project at a locally running auth stack
+
+NON-INTERACTIVE
+
+--yes, -y
+  • Answer every remaining question with the recommended option instead of
+    prompting, for CI, a Dockerfile, or a scripted run
+  • Pair it with --local or --app <id>: which stack the project gets is not
+    something --yes will guess
+  • It never stands in for a destructive confirmation (see --force)
+
+--web=<id|alias>, --api=<id|alias>
+  • Choose the web and api starters by name
+  • Default to the first selectable template of that kind in the registry
+
+--email=<address>
+  • The owner address, which becomes the admin when you register
+  • Required under --yes unless a portal session supplies one
+
+--auth=<docker|local>
+  • How the auth server runs (default: docker)
+
+--admin=<api|image|source|none>
+  • Where the admin console is hosted (default: api)
+
+--force
+  • Allow the two destructive steps --yes will not take on its own:
+    scaffolding into a directory that is not empty, and rotating a managed
+    application's existing service token`,
       },
     ],
     examples: [
@@ -54,6 +85,8 @@ With a template flag (e.g. --oauth, --react-oauth, --fastify):
   → Create new project in ./my-app`,
       `seamless init --oauth my-app
   → Create ./my-app from the OAuth example starter`,
+      `seamless init my-app --local --yes --email=you@example.com
+  → Scaffold the recommended local stack with no prompts`,
     ],
   },
   {

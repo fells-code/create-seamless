@@ -7,6 +7,9 @@ import kleur from "kleur";
 import {
   runProjectSetupPrompts,
   runManagedTemplatePrompts,
+  ADMIN_MODES,
+  AUTH_MODES,
+  type Preselect,
 } from "../prompts/projectSetup.js";
 import { generateAuthServer } from "../generators/auth/auth.js";
 import { generateDockerCompose } from "../generators/docker/docker.js";
@@ -31,6 +34,8 @@ import {
   chooseExistingDirectoryAction,
   chooseScaffoldTarget,
   confirmLocalFallback,
+  type ExistingDirectoryAction,
+  type ScaffoldTarget,
 } from "../prompts/initMode.js";
 import { CancelledError, orCancel } from "../core/cancel.js";
 import type { CollectedOAuthProvider } from "../core/oauthProviders.js";
@@ -63,6 +68,18 @@ export interface InitOptions {
   profileFlag?: string;
   appId?: string;
   local?: boolean;
+  // --web / --api, the long form of the template flags. Resolved against the
+  // registry alongside them, and rejected when they name the wrong layer.
+  web?: string;
+  api?: string;
+  email?: string;
+  auth?: string;
+  admin?: string;
+  // --yes: answer every remaining question with the recommended option rather
+  // than prompting. It never stands in for a destructive confirmation; those
+  // take --force.
+  yes?: boolean;
+  force?: boolean;
 }
 
 export async function runCLI(
@@ -85,15 +102,18 @@ export async function runCLI(
 
   const openSource = lazyTemplateSource();
 
-  // Template flags are resolved against the registry before a directory is
-  // created and before the overwrite confirmation runs, so an unknown or
-  // conflicting flag can never reach a destructive prompt on its way to an
-  // error. Skipped entirely when there are no flags, which keeps the
-  // integrate-an-existing-project path from fetching a registry it never reads.
-  let preselect: TemplatePreselect = {};
-  if (aliases.length > 0) {
+  // Every flag is validated against the registry and the known values before a
+  // directory is created and before the overwrite confirmation runs, so a bad
+  // flag can never reach a destructive prompt on its way to an error. The
+  // registry is only fetched when a template flag needs resolving, which keeps
+  // the integrate-an-existing-project path from paying for one it never reads.
+  const answers = resolveAnswerFlags(opts);
+  if (aliases.length > 0 || opts.web || opts.api) {
     const { registry } = await openSource();
-    preselect = resolveTemplateAliases(aliases, registry.templates);
+    Object.assign(
+      answers,
+      resolveTemplateSelection(aliases, opts, registry.templates),
+    );
   }
 
   let root = cwd;
@@ -123,7 +143,7 @@ export async function runCLI(
   if (created) process.on("SIGINT", onInterrupt);
 
   try {
-    await scaffold(root, projectName, preselect, openSource, opts);
+    await scaffold(root, projectName, answers, openSource, opts);
   } catch (err) {
     // Anything short of a completed scaffold leaves nothing behind, so a retry
     // is not blocked by "Directory already exists" from a half-built attempt.
@@ -157,7 +177,7 @@ function discard(dir: string | null): void {
 async function scaffold(
   root: string,
   projectName: string | undefined,
-  preselect: TemplatePreselect,
+  preselect: Preselect,
   openSource: OpenSource,
   opts: InitOptions,
 ) {
@@ -192,7 +212,7 @@ async function scaffold(
     // --app is explicit managed intent, so it skips the question and integrates.
     const action = opts.appId
       ? "integrate"
-      : await chooseExistingDirectoryAction(canConnect);
+      : await resolveExistingDirectoryAction(canConnect, opts);
     if (action === "integrate") {
       await integrateExistingProject(root, client!, apps, opts);
       return;
@@ -202,7 +222,7 @@ async function scaffold(
   if (canConnect) {
     const target = opts.appId
       ? "managed"
-      : await chooseScaffoldTarget(apps.length);
+      : await resolveScaffoldTarget(apps.length, opts);
     if (target === "managed") {
       await scaffoldManaged(
         root,
@@ -218,6 +238,13 @@ async function scaffold(
   } else if (client) {
     console.log(kleur.yellow(noConnectableMessage(allApps.length > 0)));
   } else if (fallbackReason === "unreachable") {
+    // Falling back to local changes where the project's auth lives, so --yes
+    // does not get to make that call on its own; --local says it outright.
+    if (opts.yes) {
+      throw new Error(
+        "Could not reach the Seamless control plane, and --yes will not silently scaffold a local stack instead. Re-run with --local to scaffold self-hosted.",
+      );
+    }
     await confirmLocalFallback();
   } else if (fallbackReason === "no-session") {
     console.log(
@@ -227,7 +254,42 @@ async function scaffold(
     );
   }
 
-  await scaffoldLocal(root, projectName, preselect, openSource);
+  await scaffoldLocal(root, projectName, preselect, openSource, opts);
+}
+
+// Writing starter files over a directory someone already has work in is the one
+// destructive step in a scaffold, so --yes is deliberately not enough to reach
+// it. --force is, and it says nothing about the integrate-or-scaffold question,
+// which --app answers instead.
+async function resolveExistingDirectoryAction(
+  canConnect: boolean,
+  opts: InitOptions,
+): Promise<ExistingDirectoryAction> {
+  if (!opts.yes) return chooseExistingDirectoryAction(canConnect);
+
+  if (!opts.force) {
+    throw new Error(
+      "This directory is not empty, and starter files overwrite anything with the same name. Re-run with --force to scaffold here anyway, or with --app <id> to connect the existing project to a managed application.",
+    );
+  }
+
+  console.log(
+    kleur.yellow("Scaffolding into a directory that is not empty (--force)."),
+  );
+  return "scaffold";
+}
+
+// Managed or local decides where the project's auth lives for good, so --yes
+// alone will not pick: --app <id> means managed and --local means self-hosted.
+async function resolveScaffoldTarget(
+  appCount: number,
+  opts: InitOptions,
+): Promise<ScaffoldTarget> {
+  if (!opts.yes) return chooseScaffoldTarget(appCount);
+
+  throw new Error(
+    "You are logged in, so --yes will not guess between a managed application and a local stack. Pass --app <id> to connect one of your managed applications, or --local to scaffold a self-hosted stack.",
+  );
 }
 
 // The bundled database as a connection string with placeholder credentials, or
@@ -293,6 +355,7 @@ async function scaffoldManaged(
   const answers = await runManagedTemplatePrompts(
     source.registry.templates,
     preselect,
+    opts.yes,
   );
 
   const selected = await resolveSelectedTemplates(
@@ -319,7 +382,7 @@ async function scaffoldManaged(
   // reporting it against a half-wired project.
   const databaseUrl = await resolveDatabaseUrl(client, app);
 
-  const serviceToken = await issueServiceToken(client, app);
+  const serviceToken = await issueServiceToken(client, app, opts);
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
 
@@ -380,14 +443,16 @@ async function scaffoldManaged(
 async function scaffoldLocal(
   root: string,
   projectName: string | undefined,
-  preselect: TemplatePreselect,
+  preselect: Preselect,
   openSource: OpenSource,
+  opts: InitOptions,
 ) {
   const source = await openSource();
   const answers = await runProjectSetupPrompts(
     source.registry.templates,
     preselect,
     getPortalSession()?.email,
+    opts.yes,
   );
 
   const selected = await resolveSelectedTemplates(
@@ -399,10 +464,20 @@ async function scaffoldLocal(
 
   // Templates can opt into OAuth setup (manifest setup.oauth). Collect providers now,
   // before scaffolding, so the auth server can be wired up with them below.
+  // Provider credentials are per-provider secrets with no flag form, so --yes
+  // scaffolds the starter with none configured rather than asking.
   const webSelection = selected.find((s) => s.entry.kind === "web");
   let oauthProviders: CollectedOAuthProvider[] = [];
   if (webSelection?.manifest.setup?.oauth) {
-    oauthProviders = await runOAuthSetupPrompts();
+    if (opts.yes) {
+      console.log(
+        kleur.yellow(
+          "Skipping OAuth provider setup (--yes). Add providers later with `seamless config oauth-providers add`.",
+        ),
+      );
+    } else {
+      oauthProviders = await runOAuthSetupPrompts();
+    }
   }
 
   for (const { entry, dir } of selected) {
@@ -492,7 +567,7 @@ async function integrateExistingProject(
   // reporting it against a half-wired project.
   const databaseUrl = await resolveDatabaseUrl(client, app);
 
-  const serviceToken = await issueServiceToken(client, app);
+  const serviceToken = await issueServiceToken(client, app, opts);
 
   const authServerUrl = normalizeInstanceUrl(app.domain);
   const apiDir = path.join(root, "api");
@@ -575,16 +650,33 @@ function printManagedValues(authServerUrl: string, serviceToken: string) {
 async function issueServiceToken(
   client: AuthClient,
   app: PortalApp,
+  opts: InitOptions,
 ): Promise<string> {
   if (app.hasServiceToken) {
-    const proceed = orCancel(
-      await confirm({
-        message: `"${app.name}" already has a service token. Issuing a new one invalidates the existing token. Continue?`,
-        initialValue: false,
-      }),
-    );
-    if (!proceed) {
-      throw new CancelledError("Cancelled. No token was issued.");
+    // Rotation breaks whatever is running on the old token, so it is a
+    // destructive confirmation like the overwrite one: --yes does not answer it,
+    // --force does.
+    if (opts.yes) {
+      if (!opts.force) {
+        throw new Error(
+          `"${app.name}" already has a service token, and issuing a new one invalidates it (breaking anything already deployed with it). Re-run with --force to rotate it anyway.`,
+        );
+      }
+      console.log(
+        kleur.yellow(
+          `Rotating the existing service token for "${app.name}" (--force).`,
+        ),
+      );
+    } else {
+      const proceed = orCancel(
+        await confirm({
+          message: `"${app.name}" already has a service token. Issuing a new one invalidates the existing token. Continue?`,
+          initialValue: false,
+        }),
+      );
+      if (!proceed) {
+        throw new CancelledError("Cancelled. No token was issued.");
+      }
     }
   }
   return rotateServiceToken(client, app.id);
@@ -663,6 +755,83 @@ function printOAuthNextSteps(providers: CollectedOAuthProvider[]) {
 export interface TemplatePreselect {
   webTemplateId?: string;
   apiTemplateId?: string;
+}
+
+// The non-template answers a flag can supply. Validated here so an unusable
+// value is reported before anything is created, and so the prompts only ever
+// see a value they would have accepted themselves.
+function resolveAnswerFlags(opts: InitOptions): Preselect {
+  const answers: Preselect = {};
+
+  if (opts.email !== undefined) {
+    if (!opts.email.includes("@")) {
+      throw new Error(`--email must be an email address, got "${opts.email}".`);
+    }
+    answers.ownerEmail = opts.email;
+  }
+
+  if (opts.auth !== undefined) {
+    answers.authMode = oneOf(opts.auth, AUTH_MODES, "--auth");
+  }
+
+  if (opts.admin !== undefined) {
+    answers.adminMode = oneOf(opts.admin, ADMIN_MODES, "--admin");
+  }
+
+  return answers;
+}
+
+function oneOf<T extends string>(value: string, allowed: T[], flag: string): T {
+  if (!(allowed as string[]).includes(value)) {
+    throw new Error(
+      `Unknown value "${value}" for ${flag}. Expected one of: ${allowed.join(", ")}.`,
+    );
+  }
+  return value as T;
+}
+
+// Combines the template flags: the bare `--<id>` / `--<alias>` form, which infers
+// the layer from the registry, and the explicit `--web=` / `--api=` form, which
+// names it. Both accept either spelling, and disagreeing about a layer is an
+// error rather than a silent last-one-wins.
+function resolveTemplateSelection(
+  aliases: string[],
+  opts: InitOptions,
+  templates: RegistryEntry[],
+): TemplatePreselect {
+  const preselect = resolveTemplateAliases(aliases, templates);
+
+  for (const [flag, kind] of [
+    ["web", "web"],
+    ["api", "api"],
+  ] as const) {
+    const value = opts[flag];
+    if (!value) continue;
+
+    const named = value.replace(/^--+/, "");
+    const { webTemplateId, apiTemplateId } = resolveTemplateAliases(
+      [named],
+      templates,
+    );
+    const id = kind === "web" ? webTemplateId : apiTemplateId;
+    if (!id) {
+      throw new Error(
+        `--${flag} expects a ${kind} template, but "${value}" is not one. Run \`seamless templates list\` to see which templates are ${kind}.`,
+      );
+    }
+
+    const existing = kind === "web" ? preselect.webTemplateId : preselect.apiTemplateId;
+    if (existing && existing !== id) {
+      throw new Error(
+        `Conflicting ${kind} template flags: --${flag}=${value} cannot combine with --${existing}.`,
+      );
+    }
+
+    if (kind === "web") preselect.webTemplateId = id;
+    else preselect.apiTemplateId = id;
+  }
+
+  return preselect;
 }
 
 // Resolves `--<alias>` and `--<id>` flags (e.g. --oauth, --react-oauth) to specific
