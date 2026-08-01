@@ -1,5 +1,20 @@
 import { describe, expect, it } from "vitest";
-import { extractFlag } from "./args.js";
+import { extractFlag, hasHelpFlag } from "./args.js";
+
+describe("hasHelpFlag", () => {
+  it.each(["-h", "--help"])("detects %s", (flag) => {
+    expect(hasHelpFlag(["sub", flag])).toBe(true);
+  });
+
+  it("returns false when no help flag is present", () => {
+    expect(hasHelpFlag(["set", "key", "value"])).toBe(false);
+    expect(hasHelpFlag([])).toBe(false);
+  });
+
+  it("treats a help flag after -- as an operand, not a request for help", () => {
+    expect(hasHelpFlag(["set", "key", "--", "-h"])).toBe(false);
+  });
+});
 
 describe("extractFlag", () => {
   it("extracts a --flag value pair and removes both from rest", () => {

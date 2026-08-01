@@ -1,3 +1,13 @@
+// A literal `--` ends flag parsing, so a later -h belongs to the command's
+// operands (a config value, say) rather than being a request for help.
+export function hasHelpFlag(args: string[]): boolean {
+  for (const arg of args) {
+    if (arg === "--") return false;
+    if (arg === "-h" || arg === "--help") return true;
+  }
+  return false;
+}
+
 export interface ExtractedFlag {
   value?: string;
   rest: string[];

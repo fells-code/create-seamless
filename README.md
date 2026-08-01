@@ -33,6 +33,21 @@ You’ll be guided through a short setup process where you can choose:
 
 ---
 
+## Getting help
+
+`seamless --help` lists every command, and every command documents itself:
+
+```bash
+seamless init --help
+```
+
+`-h` is the short form, and `seamless help <command>` is the spelled-out one, so
+`seamless verify -h`, `seamless verify --help`, and `seamless help verify` all print the flags,
+subcommands, and examples for `verify` only. If a command takes a value that is literally `-h`,
+put it after `--` (`seamless config set key -- -h`).
+
+---
+
 ## Connecting to a managed instance
 
 If you are signed in to the Seamless portal (`seamless login`) and your account has at least one
