@@ -84,6 +84,11 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
     managed application and a local stack requires `--app` or `--local`. Flag parsing lives in
     `parseInitArgs` ([src/index.ts](src/index.ts)); everything it produces is validated in `runCLI`
     before a directory is created.
+  - Every prompt in the init flow is fronted by `requireInteractive`
+    ([src/core/tty.ts](src/core/tty.ts)), so a run without a TTY on stdin fails naming the flag that
+    answers the question instead of rendering a prompt nobody can answer. When adding a prompt to
+    this flow, guard it the same way. The other commands that prompt (`login`, `profile`,
+    `config apply`, `users delete`, `sessions revoke`) are not guarded yet, see #153.
   - **templates** ([src/commands/templates.ts](src/commands/templates.ts)) lists the registry
     (`seamless templates list [--json]`) so those ids and flags are discoverable without a
     checkout. It reads the same source `init` does and needs no login.
