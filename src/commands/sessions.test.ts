@@ -327,3 +327,31 @@ describe("runSessions revoke <id>", () => {
     expect(output()).toContain("Run seamless login to sign in again.");
   });
 });
+
+describe("sessions --force", () => {
+  it.each(["--force", "--yes", "-y"])(
+    "revokes every session without confirming when given %s",
+    async (flag) => {
+      const client = fakeClient(() => response(200, { message: "ok" }));
+      vi.mocked(createAuthClient).mockResolvedValue(client);
+
+      await runSessions(["revoke", "--all", flag]);
+
+      expect(confirm).not.toHaveBeenCalled();
+      expect(clearLocalSession).toHaveBeenCalledWith(client.profile);
+      expect(output()).toContain("Revoked all sessions.");
+    },
+  );
+
+  it("refuses to ask without a terminal, naming --force", async () => {
+    process.stdin.isTTY = false;
+    const client = fakeClient(() => response(200, { message: "ok" }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runSessions(["revoke", "--all"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+    expect(errOutput()).toMatch(/needs an interactive terminal[\s\S]*--force/);
+    expect(clearLocalSession).not.toHaveBeenCalled();
+  });
+});

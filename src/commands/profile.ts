@@ -14,6 +14,7 @@ import {
 } from "../core/config.js";
 import { deleteTokens, KeychainUnavailableError } from "../core/keychain.js";
 import { loginToInstance } from "./instanceLogin.js";
+import { requireInteractive } from "../core/tty.js";
 
 export async function runProfile(args: string[]): Promise<void> {
   const sub = args[0];
@@ -82,6 +83,10 @@ async function profileAdd(rest: string[]): Promise<void> {
   intro("Add a Seamless profile");
 
   if (!name) {
+    requireInteractive(
+      "Profile name",
+      "Pass the name positionally: seamless profile add <name> --instance-url <url>.",
+    );
     const answer = await text({
       message: "Profile name",
       placeholder: DEFAULT_PROFILE_NAME,
@@ -102,6 +107,10 @@ async function profileAdd(rest: string[]): Promise<void> {
   }
 
   if (!instanceUrl) {
+    requireInteractive(
+      "Instance URL",
+      "Pass --instance-url <url>.",
+    );
     const answer = await text({
       message: "Instance URL",
       placeholder: "https://auth.example.com",

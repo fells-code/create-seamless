@@ -1,4 +1,3 @@
-import { confirm, isCancel } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import { createAuthClient, type AuthClient } from "../core/authClient.js";
@@ -10,6 +9,10 @@ import {
   type Json,
 } from "../core/admin.js";
 import { reportAdminError } from "./adminShared.js";
+import {
+  confirmDestructive,
+  hasForceFlag,
+} from "../core/confirmAction.js";
 
 export async function runUsers(args: string[]): Promise<void> {
   const sub = args[0];
@@ -81,11 +84,12 @@ async function usersDelete(client: AuthClient, rest: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const proceed = await confirm({
+  const proceed = await confirmDestructive({
     message: `Permanently delete user ${id}? This cannot be undone.`,
-    initialValue: false,
+    force: hasForceFlag(rest),
+    remedy: "Pass --force to delete without confirming.",
   });
-  if (isCancel(proceed) || !proceed) {
+  if (!proceed) {
     console.log("Cancelled.");
     return;
   }
@@ -158,11 +162,12 @@ async function usersPrepareDeviceReplacement(
     opts.disableTotp ? "disable TOTP" : null,
   ].filter(Boolean);
 
-  const proceed = await confirm({
+  const proceed = await confirmDestructive({
     message: `Prepare device replacement for ${id}? This will ${actions.join(", ")}.`,
-    initialValue: false,
+    force: hasForceFlag(rest),
+    remedy: "Pass --force to prepare the replacement without confirming.",
   });
-  if (isCancel(proceed) || !proceed) {
+  if (!proceed) {
     console.log("Cancelled.");
     return;
   }

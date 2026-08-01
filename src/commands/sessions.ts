@@ -1,4 +1,3 @@
-import { confirm, isCancel } from "@clack/prompts";
 import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import { createAuthClient, ReauthRequiredError, type AuthClient } from "../core/authClient.js";
@@ -9,6 +8,10 @@ import {
   revokeSessionById,
   type SessionInfo,
 } from "../core/sessions.js";
+import {
+  confirmDestructive,
+  hasForceFlag,
+} from "../core/confirmAction.js";
 
 export async function runSessions(args: string[]): Promise<void> {
   const sub = args[0] === "list" || args[0] === "revoke" ? args[0] : undefined;
@@ -49,12 +52,13 @@ async function revoke(client: AuthClient, positional: string[]): Promise<void> {
   const id = positional.find((arg) => !arg.startsWith("--"));
 
   if (all) {
-    const proceed = await confirm({
+    const proceed = await confirmDestructive({
       message:
         "Revoke every session, including this one? You will be signed out here.",
-      initialValue: false,
+      force: hasForceFlag(positional),
+      remedy: "Pass --force to revoke every session without confirming.",
     });
-    if (isCancel(proceed) || !proceed) {
+    if (!proceed) {
       console.log("Cancelled.");
       return;
     }
@@ -83,11 +87,13 @@ async function revoke(client: AuthClient, positional: string[]): Promise<void> {
   const isCurrent = sessions.find((session) => session.id === id)?.current ?? false;
 
   if (isCurrent) {
-    const proceed = await confirm({
-      message: "This is your current session. Revoking it signs you out here. Continue?",
-      initialValue: false,
+    const proceed = await confirmDestructive({
+      message:
+        "This is your current session. Revoking it signs you out here. Continue?",
+      force: hasForceFlag(positional),
+      remedy: "Pass --force to revoke it without confirming.",
     });
-    if (isCancel(proceed) || !proceed) {
+    if (!proceed) {
       console.log("Cancelled.");
       return;
     }

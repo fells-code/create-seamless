@@ -195,16 +195,10 @@ function app(over: Record<string, any> = {}) {
   };
 }
 
-// Captured before any test flips it, so a suite run leaves the process as it
-// found it.
-const ORIGINAL_TTY = process.stdin.isTTY;
-
 let logs: string[];
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // The prompt paths refuse to run without a terminal, and vitest has none.
-  process.stdin.isTTY = true;
   logs = [];
   vi.spyOn(console, "log").mockImplementation((msg?: unknown) => {
     logs.push(String(msg ?? ""));
@@ -222,7 +216,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  process.stdin.isTTY = ORIGINAL_TTY;
   vi.restoreAllMocks();
 });
 

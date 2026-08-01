@@ -2,6 +2,7 @@ import { text, isCancel } from "@clack/prompts";
 import kleur from "kleur";
 
 import { completeLogin, type LoginResult } from "./loginFlow.js";
+import { requireInteractive } from "./tty.js";
 
 export interface InteractiveLoginOptions {
   instanceUrl: string;
@@ -26,6 +27,10 @@ export async function promptLogin(
   let identifier = opts.identifier?.trim();
 
   if (!identifier) {
+    requireInteractive(
+      "Email or phone",
+      "Pass the identifier positionally, or with --identifier <email>.",
+    );
     const answer = await text({
       message: "Email or phone",
       placeholder: opts.knownEmail ?? "you@example.com",
@@ -45,6 +50,12 @@ export async function promptLogin(
     localDelivery: opts.localDelivery ?? false,
     getCode: async ({ resent, channel }) => {
       const email = channel === "email";
+      // No flag can answer this one: the code only exists after the request is
+      // sent. Failing here is still better than waiting forever on a pipe.
+      requireInteractive(
+        "Enter the code we sent you",
+        "A one-time code cannot be supplied ahead of time, so this step needs a terminal.",
+      );
       const answer = await text({
         message: resent ? "Enter the new code" : "Enter the code we sent you",
         placeholder: email ? "ABCDEF" : "123456",

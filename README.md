@@ -456,6 +456,28 @@ seamless whoami
 Because `/refresh` rotates the refresh token on every call, this path is best for a single
 invocation; the rotated token is held only in memory for that process.
 
+No command will render a prompt when stdin is not a terminal. Each one stops instead, naming the
+flag that answers the question, so a CI step fails immediately rather than hanging until its job
+times out.
+
+The commands that ask before destroying something take `--force` (with `--yes` and `-y` accepted as
+aliases), which is both how you skip the confirmation and how you run them unattended:
+
+```bash
+seamless users delete <id> --force
+seamless sessions revoke --all --force
+seamless org members remove <orgId> <userId> --force
+seamless config apply config.json --force
+seamless config oauth-providers remove google --force
+```
+
+`--force` never overrides `--dry-run`: `config apply --dry-run --force` still changes nothing.
+
+The prompts that gather input rather than confirm an action are answered by the flags those
+commands already take, for example `seamless login --identifier you@example.com` and
+`seamless profile add prod --instance-url https://auth.example.com`. The one-time code at login is
+the exception: it only exists after the code is sent, so that step genuinely needs a terminal.
+
 ---
 
 ## What is configured for you
