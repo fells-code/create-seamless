@@ -1,4 +1,7 @@
-export const POSTGRES_IMAGE = "postgres:17";
+// Baked into each scaffold's own docker-compose.yml at generation time, so a
+// bump here reaches new projects only. An existing project keeps the major it was
+// scaffolded with, and never has its data directory pulled out from under it.
+export const POSTGRES_IMAGE = "postgres:18";
 
 export const SEAMLESS_AUTH_API_VERSION = "v0.7.1";
 
