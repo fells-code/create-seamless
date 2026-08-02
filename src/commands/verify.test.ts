@@ -96,12 +96,20 @@ describe("runVerify — published (default) mode", () => {
   it("cleans vendor, builds the base stack, and runs API + web layers", async () => {
     await runVerify([]);
 
-    // Stale tarballs are removed from both vendor dirs; non-tgz files are left.
-    expect(fs.rmSync).toHaveBeenCalledTimes(2);
+    // Stale tarballs are removed from every vendor dir; non-tgz files are left.
+    expect(fs.rmSync).toHaveBeenCalledTimes(3);
 
     const tails = dockerTails();
     expect(tails).toContainEqual(["--profile", "react", "down", "-v"]); // initial clean
-    expect(tails).toContainEqual(["up", "-d", "--build", "postgres", "auth-api", "adapter"]);
+    expect(tails).toContainEqual([
+      "up",
+      "-d",
+      "--build",
+      "postgres",
+      "auth-api",
+      "adapter",
+      "adapter-fastify",
+    ]);
     expect(tails).toContainEqual(["--profile", "react", "up", "-d", "--build", "react"]);
     expect(tails).toContainEqual(["--profile", "react", "rm", "-sf", "react"]);
 
@@ -109,7 +117,17 @@ describe("runVerify — published (default) mode", () => {
     expect(callsFor("pnpm")).toHaveLength(0);
 
     const npmTests = callsFor("npm").filter((a) => a[0] === "test");
-    expect(npmTests).toContainEqual(["test", "--", "--project", "api", "--project", "adapter"]);
+    // Both adopter frameworks run the same adapter suite.
+    expect(npmTests).toContainEqual([
+      "test",
+      "--",
+      "--project",
+      "api",
+      "--project",
+      "adapter",
+      "--project",
+      "adapter-fastify",
+    ]);
     // The web template declares verify.flows ["oauth"] ⇒ Playwright grep "@oauth".
     expect(npmTests).toContainEqual(["test", "--", "--project", "react", "--grep", "@oauth"]);
 
@@ -167,10 +185,27 @@ describe("runVerify — flag parsing", () => {
     await runVerify(["--no-react"]);
 
     const tails = dockerTails();
-    expect(tails).toContainEqual(["up", "-d", "--build", "postgres", "auth-api", "adapter"]);
+    expect(tails).toContainEqual([
+      "up",
+      "-d",
+      "--build",
+      "postgres",
+      "auth-api",
+      "adapter",
+      "adapter-fastify",
+    ]);
     expect(callsFor("npx")).toHaveLength(0);
     const npmTests = callsFor("npm").filter((a) => a[0] === "test");
-    expect(npmTests).toContainEqual(["test", "--", "--project", "api", "--project", "adapter"]);
+    expect(npmTests).toContainEqual([
+      "test",
+      "--",
+      "--project",
+      "api",
+      "--project",
+      "adapter",
+      "--project",
+      "adapter-fastify",
+    ]);
     // No react project test runs.
     expect(npmTests.some((t) => t.includes("react"))).toBe(false);
   });
@@ -195,6 +230,8 @@ describe("runVerify — flag parsing", () => {
       "api",
       "--project",
       "adapter",
+      "--project",
+      "adapter-fastify",
       "--grep",
       "@login",
     ]);
@@ -216,7 +253,25 @@ describe("runVerify — local mode", () => {
     const pnpm = callsFor("pnpm");
     expect(pnpm).toContainEqual(["--filter", "@seamless-auth/core", "build"]);
     expect(pnpm).toContainEqual(["--filter", "@seamless-auth/express", "build"]);
+    expect(pnpm).toContainEqual(["--filter", "@seamless-auth/fastify", "build"]);
     expect(pnpm.some((a) => a.includes("pack"))).toBe(true);
+
+    // Each adapter image installs core alongside its own framework package, so
+    // core is packed into both vendor dirs and neither adapter into the other's.
+    const packDest = (pkg: string) =>
+      pnpm
+        .filter((a) => a[1] === pkg && a.includes("pack"))
+        .map((a) => a[a.length - 1]);
+    expect(packDest("@seamless-auth/core")).toEqual([
+      expect.stringContaining("adapter-app"),
+      expect.stringContaining("adapter-fastify-app"),
+    ]);
+    expect(packDest("@seamless-auth/express")).toEqual([
+      expect.stringContaining("adapter-app"),
+    ]);
+    expect(packDest("@seamless-auth/fastify")).toEqual([
+      expect.stringContaining("adapter-fastify-app"),
+    ]);
 
     // The react SDK is built and packed with npm.
     const npm = callsFor("npm");

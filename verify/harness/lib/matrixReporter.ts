@@ -1,11 +1,15 @@
 import type { FullResult, Reporter, TestCase, TestResult } from '@playwright/test/reporter';
 
 // Prints a flow x layer conformance grid at the end of the run. Layer comes from
-// the spec's directory (api/adapter/react); flow from the spec file name, with a
-// few aliases folded together so the same flow lines up across layers.
+// the Playwright project; flow from the spec file name, with a few aliases folded
+// together so the same flow lines up across layers.
 
-const LAYERS = ['api', 'adapter', 'react'] as const;
+const LAYERS = ['api', 'adapter', 'adapter-fastify', 'react'] as const;
 type Layer = (typeof LAYERS)[number];
+
+function isLayer(name: string): name is Layer {
+  return (LAYERS as readonly string[]).includes(name);
+}
 
 const FLOW_ALIASES: Record<string, string> = {
   emailOtpLogin: 'emailOtp',
@@ -29,7 +33,11 @@ export default class MatrixReporter implements Reporter {
   onTestEnd(test: TestCase, result: TestResult): void {
     const match = test.location.file.match(/\/(api|adapter|react)\/([^/]+)\.spec\.[tj]s$/);
     if (!match) return;
-    const layer = match[1] as Layer;
+    // The project name, not the directory: the two adapter projects run the same
+    // specs from ./adapter, so the path cannot tell them apart. Falls back to the
+    // directory for a run driven by something that does not name its projects.
+    const projectName = test.parent.project()?.name ?? '';
+    const layer = isLayer(projectName) ? projectName : (match[1] as Layer);
     const base = match[2];
     const flow = FLOW_ALIASES[base] ?? base;
     // Keyed by test id so the final attempt (after retries) is the one that counts.
@@ -51,11 +59,16 @@ export default class MatrixReporter implements Reporter {
     };
 
     const flowWidth = Math.max('flow'.length, ...flows.map((f) => f.length));
+    // Each column is as wide as its own header, so a long layer name (like
+    // adapter-fastify) widens its column instead of running into the next one.
+    const layerWidth = (layer: Layer) => layer.length + 3;
     const pad = (text: string, width: number) =>
       text + ' '.repeat(Math.max(0, width - text.length));
     const row = (label: string, get: (layer: Layer) => string) =>
-      `  ${pad(label, flowWidth)}   ${LAYERS.map((l) => pad(get(l), 9)).join('')}`;
-    const rule = `  ${'-'.repeat(flowWidth + 3 + LAYERS.length * 9)}`;
+      `  ${pad(label, flowWidth)}   ${LAYERS.map((l) => pad(get(l), layerWidth(l))).join('')}`;
+    const totalWidth =
+      flowWidth + 3 + LAYERS.reduce((sum, l) => sum + layerWidth(l), 0);
+    const rule = `  ${'-'.repeat(totalWidth)}`;
 
     const lines = [
       '',

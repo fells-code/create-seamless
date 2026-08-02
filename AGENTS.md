@@ -126,13 +126,21 @@ The entry point is [src/index.ts](src/index.ts), which dispatches to a command m
 prints a flow x layer pass/fail grid (plus JUnit and HTML reports).
 
 - [verify/docker-compose.verify.yml](verify/docker-compose.verify.yml): postgres, the auth API, and
-  the adapter, plus the React starter behind the `react` compose profile. The mock OIDC provider runs
-  in-process in `global-setup` (it is not a container).
-- [verify/adapter-app](verify/adapter-app): a minimal `@seamless-auth/express` adopter backend with a
-  capture transport, so the harness can read OTP / magic-link codes the adapter would otherwise strip.
-- [verify/harness](verify/harness): the Playwright projects (`api`, `adapter`, `react`), `lib/`
-  helpers, `mock-oidc.ts`, `global-setup.ts`, and `lib/matrixReporter.ts` (the printed grid). It has
-  its own `node_modules` and browsers.
+  both adapters, plus the React starter behind the `react` compose profile. The mock OIDC provider
+  runs in-process in `global-setup` (it is not a container).
+- [verify/adapter-app](verify/adapter-app) (port 3000) and
+  [verify/adapter-fastify-app](verify/adapter-fastify-app) (port 3001): minimal adopter backends on
+  `@seamless-auth/express` and `@seamless-auth/fastify`, each with a capture transport so the harness
+  can read OTP / magic-link codes the adapter would otherwise strip. They are deliberately twins: the
+  same routes on the same env contract, so a spec cannot tell which one answered and any difference
+  in behaviour is a real one. Keep them in step when either changes.
+- [verify/harness](verify/harness): the Playwright projects (`api`, `adapter`, `adapter-fastify`,
+  `react`), `lib/` helpers, `mock-oidc.ts`, `global-setup.ts`, and `lib/matrixReporter.ts` (the
+  printed grid). It has its own `node_modules` and browsers.
+  - The two adapter projects run the *same* specs from `./adapter`; only the `adapterUrl` project
+    option differs (`lib/fixtures.ts`). Adding an adopter framework is a project entry plus a compose
+    service, never a copy of the suite. Because they share a directory, `matrixReporter` takes the
+    layer from the Playwright project name, not the spec's path.
 
 Modes and sibling repos:
 
@@ -196,7 +204,8 @@ Templates are not in this repo — they live in the `seamless-templates` monorep
 - **Adapter OTP limiter**: the adapter funnels all OTP through one client IP, so the API's per-IP OTP
   limiter (10 per 15 minutes, hardcoded) bounds adapter / react OTP traffic. Keep specs off it where
   possible (for example, magic-link login instead of a second email-OTP round trip).
-- **Version pins**: [verify/adapter-app](verify/adapter-app) pins `@seamless-auth/express` and the
+- **Version pins**: [verify/adapter-app](verify/adapter-app) pins `@seamless-auth/express`,
+  [verify/adapter-fastify-app](verify/adapter-fastify-app) pins `@seamless-auth/fastify`, and the
   `react-vite` template pins `@seamless-auth/react`. Bump these when new versions publish.
 - **Templates ref**: the CLI scaffolds from `seamless-templates` at `SEAMLESS_TEMPLATES_REF`
   ([src/core/images.ts](src/core/images.ts)); bump it when a new templates release publishes.

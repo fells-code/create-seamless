@@ -117,6 +117,32 @@ services:
       timeout: 3s
       retries: 20
 
+  # The same adopter backend on Fastify, so the cookie path is conformance-tested
+  # for both adapters rather than only the one the harness happens to be written
+  # against. Identical env contract and capture transport; only the framework and
+  # the published port differ, which is what makes a failure here attributable.
+  adapter-fastify:
+    build:
+      context: ./adapter-fastify-app
+    ports:
+      - '3001:3001'
+    environment:
+      PORT: '3001'
+      AUTH_SERVER_URL: http://auth-api:5312
+      APP_ORIGIN: http://localhost:3001
+      WEB_ORIGIN: http://localhost:5173
+      API_SERVICE_TOKEN: ${API_SERVICE_TOKEN}
+      COOKIE_SIGNING_KEY: ${API_SERVICE_TOKEN}
+      JWKS_KID: ${JWKS_KID}
+    depends_on:
+      auth-api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'curl', '-fsS', 'http://localhost:3001/']
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
   # React starter app (built SPA on nginx), pointed at the adapter so the React
   # SDK's `${apiHost}/auth/*` calls hit the adapter's mount. Browser-visible URL,
   # so API_URL is the host-mapped adapter (localhost:3000), not the compose host.

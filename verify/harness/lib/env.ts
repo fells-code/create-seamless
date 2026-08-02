@@ -4,6 +4,10 @@ import { randomInt, randomUUID } from 'crypto';
 
 export const API_URL = process.env.SEAMLESS_API_URL ?? 'http://localhost:5312';
 export const ADAPTER_URL = process.env.SEAMLESS_ADAPTER_URL ?? 'http://localhost:3000';
+// The Fastify twin of the adapter, on its own port. The adapter specs run against
+// both, so a regression in one framework is visible on its own row of the matrix.
+export const FASTIFY_ADAPTER_URL =
+  process.env.SEAMLESS_FASTIFY_ADAPTER_URL ?? 'http://localhost:3001';
 export const REACT_URL = process.env.SEAMLESS_REACT_URL ?? 'http://localhost:5173';
 export const MOCK_OIDC_PORT = Number(process.env.SEAMLESS_MOCK_OIDC_PORT ?? 9000);
 

@@ -137,6 +137,7 @@ function flowsToGrep(flows?: string[]): string | undefined {
 }
 
 const VENDOR_DIR = path.join(VERIFY_DIR, "adapter-app", "vendor");
+const FASTIFY_VENDOR_DIR = path.join(VERIFY_DIR, "adapter-fastify-app", "vendor");
 const REACT_VENDOR_DIR = path.join(VERIFY_DIR, "react-vendor");
 
 // The React client SDK (@seamless-auth/react). Defaults to a sibling checkout;
@@ -169,7 +170,7 @@ function resolveServerDir(): string {
 }
 
 function cleanVendor(): void {
-  for (const dir of [VENDOR_DIR, REACT_VENDOR_DIR]) {
+  for (const dir of [VENDOR_DIR, FASTIFY_VENDOR_DIR, REACT_VENDOR_DIR]) {
     for (const f of fs.readdirSync(dir)) {
       if (f.endsWith(".tgz")) fs.rmSync(path.join(dir, f));
     }
@@ -185,18 +186,32 @@ async function packLocalReactSdk(env: NodeJS.ProcessEnv): Promise<void> {
   await runCommand("npm", ["pack", "--pack-destination", REACT_VENDOR_DIR], sdkDir, env);
 }
 
+// Each adapter image installs core plus its own framework package, so the
+// tarballs are packed into that image's vendor dir and nothing else.
+const ADAPTER_SDKS: Array<{ pkg: string; vendorDir: string }> = [
+  { pkg: "@seamless-auth/express", vendorDir: VENDOR_DIR },
+  { pkg: "@seamless-auth/fastify", vendorDir: FASTIFY_VENDOR_DIR },
+];
+
 async function packLocalSdks(env: NodeJS.ProcessEnv): Promise<void> {
   const serverDir = resolveServerDir();
-  console.log(kleur.cyan("→ Building & packing local @seamless-auth/* (core, express)…"));
+  console.log(
+    kleur.cyan("→ Building & packing local @seamless-auth/* (core, express, fastify)…"),
+  );
   await runCommand("pnpm", ["--filter", "@seamless-auth/core", "build"], serverDir, env);
-  await runCommand("pnpm", ["--filter", "@seamless-auth/express", "build"], serverDir, env);
-  for (const pkg of ["@seamless-auth/core", "@seamless-auth/express"]) {
-    await runCommand(
-      "pnpm",
-      ["--filter", pkg, "pack", "--pack-destination", VENDOR_DIR],
-      serverDir,
-      env,
-    );
+  for (const { pkg } of ADAPTER_SDKS) {
+    await runCommand("pnpm", ["--filter", pkg, "build"], serverDir, env);
+  }
+  for (const { pkg, vendorDir } of ADAPTER_SDKS) {
+    // core goes into both, since each image installs it alongside its adapter.
+    for (const target of ["@seamless-auth/core", pkg]) {
+      await runCommand(
+        "pnpm",
+        ["--filter", target, "pack", "--pack-destination", vendorDir],
+        serverDir,
+        env,
+      );
+    }
   }
 }
 
@@ -269,6 +284,7 @@ function collectPackageVersions(
       const serverDir = resolveServerDir();
       push("@seamless-auth/core", readPkgVersion(path.join(serverDir, "packages", "core", "package.json")));
       push("@seamless-auth/express", readPkgVersion(path.join(serverDir, "packages", "express", "package.json")));
+      push("@seamless-auth/fastify", readPkgVersion(path.join(serverDir, "packages", "fastify", "package.json")));
     } catch {
       // Server checkout unavailable; leave the SDK lines out rather than fail.
     }
@@ -284,6 +300,13 @@ function collectPackageVersions(
     push(
       "@seamless-auth/express",
       readDepVersion(path.join(VERIFY_DIR, "adapter-app", "package.json"), "@seamless-auth/express"),
+    );
+    push(
+      "@seamless-auth/fastify",
+      readDepVersion(
+        path.join(VERIFY_DIR, "adapter-fastify-app", "package.json"),
+        "@seamless-auth/fastify",
+      ),
     );
     const reactPins = new Set<string>();
     for (const tmpl of webTemplates) {
@@ -411,11 +434,12 @@ export async function runVerify(args: string[] = []): Promise<void> {
     SEAMLESS_OWNER_EMAIL: ownerEmail,
     SEAMLESS_API_URL: "http://localhost:5312",
     SEAMLESS_ADAPTER_URL: "http://localhost:3000",
+    SEAMLESS_FASTIFY_ADAPTER_URL: "http://localhost:3001",
   };
 
   // The base stack (no browser layer). The react service is added per template below.
   const baseServices = ["postgres", "auth-api"];
-  if (!opts.apiOnly) baseServices.push("adapter");
+  if (!opts.apiOnly) baseServices.push("adapter", "adapter-fastify");
 
   let failed = false;
   let setupError: Error | undefined;
@@ -446,10 +470,13 @@ export async function runVerify(args: string[] = []): Promise<void> {
     // API and adapter layers are template-independent, so they run once.
     const apiEnv: NodeJS.ProcessEnv = {
       ...baseEnv,
-      ...(opts.apiOnly ? {} : { SEAMLESS_VERIFY_ADAPTER: "1" }),
+      ...(opts.apiOnly
+        ? {}
+        : { SEAMLESS_VERIFY_ADAPTER: "1", SEAMLESS_VERIFY_ADAPTER_FASTIFY: "1" }),
     };
     const apiProjects = ["api"];
-    if (!opts.apiOnly) apiProjects.push("adapter");
+    // The adapter suite runs once per adopter framework, against the same specs.
+    if (!opts.apiOnly) apiProjects.push("adapter", "adapter-fastify");
     const apiLabel = opts.apiOnly ? "API" : "API / adapter";
     console.log(kleur.cyan("→ Running the API / adapter conformance…\n"));
     if (!(await runLayer(results, apiLabel, () => runProjects(apiEnv, apiProjects, opts.grep)))) {
