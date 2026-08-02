@@ -1,5 +1,260 @@
 # seamless-cli
 
+## 0.11.0
+
+### Minor Changes
+
+- 3ef3b68: Add `seamless apps`, so a portal account can see what it owns without opening the dashboard.
+  `apps list` prints name, plan, status, and instance URL; `apps get <id>` adds the console URL,
+  region, owners, trial expiry, and whether a service token has been issued (masked, never the live
+  value). Both take `--json` and both require a portal session.
+
+  Applications are now read through the portal's `instanceUrl`, which is derived from the service
+  plan, rather than the stored `domain` column that goes stale when a trial is upgraded. Applications
+  that have not finished provisioning are listed instead of being silently dropped. `init` is
+  unchanged: it still reads `domain` and still considers only applications that have one.
+
+  `apps list` shows the infra id as the reference (falling back to the id before provisioning), and `apps get` accepts an id, a name, or an infra id.
+
+- 9d089c7: Move the scaffold onto the current Seamless ecosystem: auth API `v0.7.1`, admin dashboard `v0.4.0`,
+  and seamless-templates `v0.8.1` (which carries `@seamless-auth/react` `^0.8.0` in both React
+  starters, `@seamless-auth/express` `^0.12.0` in the Express starter, and `@seamless-auth/fastify`
+  `^0.3.1` in the Fastify starter).
+
+  A scaffolded project can now finish registration without a passkey. Registration used to end on a
+  screen with a single control, leaving anyone who did not want a passkey, or whose device could not
+  make one, with no way forward. The starters offer a skip when the instance has another login method
+  enabled, and say so plainly when it does not. That reads from `GET /system-config/public`, a new
+  unauthenticated route on the auth server that returns the configured login methods, so the sign-in
+  screens can offer what an instance actually has enabled instead of a hardcoded guess. The API, the
+  adapters, and the web templates all had to move together for it to work, which is why this bumps
+  them as a set.
+
+  Registration against a scaffolded Fastify API used to fail with a 500 and
+  `TypeError: option maxAge is invalid: 300`. The auth server sent the registration response's `ttl`
+  as the string `"300"`, and the Fastify adapter handed it to a cookie library that requires an
+  integer. The Express starter never showed this, because its adapter multiplies the value into
+  milliseconds and so coerced the string on the way past. It is fixed from both ends:
+  `@seamless-auth/core` `0.12.1` parses the lifetime before it reaches an adapter and rejects anything
+  that is not a positive whole number of seconds, and auth API `v0.7.1` sends the value as a number.
+
+  `seamless init` now offers Fastify as a backend, listed as "Fastify (beta)" beside Express. It
+  serves the same surface as the Express starter on the same environment contract, including the
+  admin console at `/console` behind `SERVE_ADMIN_CONSOLE`. Two boot-time fixes land with it: an empty
+  `PORT=` in `.env` now falls back to 3000 rather than binding a random free port, and `pino-pretty`
+  moves to a runtime dependency so an install without dev dependencies boots. Both Express and Fastify
+  starters ship `.env.example` secret placeholders long enough to clear the adapter's 32 character
+  minimum, so the documented `cp .env.example .env && npm run dev` path boots. A project from
+  `seamless init` was already unaffected, because the CLI fills `COOKIE_SIGNING_KEY` itself.
+
+  Both React starters gain a protected `/session` route that shows the issued claims, roles,
+  organization context, step-up freshness, and registered passkeys, so the first authenticated screen
+  reads as an app rather than a `JSON.stringify` dump. Missing configuration now stops a scaffolded
+  project with a message naming the variable instead of surfacing later as a 500, and the Express
+  starter reports every configuration problem at once.
+
+  The auth API drops the admin bootstrap invite flow in favor of the `OWNER_EMAIL` grant the CLI
+  already writes, so the generated `.env` no longer carries `SEAMLESS_BOOTSTRAP_ENABLED`,
+  `SEAMLESS_BOOTSTRAP_SECRET`, or `SEAMLESS_AUTH_DEBUG_SECRETS`. `AVAILABLE_ROLES` now offers
+  `admin:read` and `admin:write` alongside bare `admin`, and assigning a role the instance does not
+  list is rejected rather than silently doing nothing. Postgres TLS is configurable through `DB_SSL`,
+  `DB_SSL_CA`, and `DB_SSL_REJECT_UNAUTHORIZED`, and `DB_URI` is accepted as a `DATABASE_URL` alias.
+
+  The conformance harness adapter moves to `@seamless-auth/express` `^0.12.0`, which is also what
+  proxies the new public system-config route. The breaking change in `0.11.0` splits `error` into
+  `errorCode` and `errorBody` on the handler result types, which only affects code importing handlers
+  from `@seamless-auth/core` directly; the adapter uses `createSeamlessAuthServer`, so it needed no
+  source change.
+
+- 4917717: Make `seamless init` template flags discoverable, predictable, and safe to get wrong.
+
+  Add `seamless templates list [--json]`, which prints every starter `init` can scaffold with its id,
+  kind, framework, selecting flags, and status. It reads the same registry `init` does (so
+  `SEAMLESS_TEMPLATES_DIR` and `SEAMLESS_TEMPLATES_REF` apply) and needs no login, so the available
+  templates no longer have to be looked up in the source.
+
+  Every template now answers to `--<id>` as well as its shorter `--<alias>`, so `seamless init
+--react-vite` works alongside `--basic`, and the api starters (`--express`, `--fastify`) have a flag
+  for the first time. The "unknown option" error lists both spellings and points at
+  `seamless templates list`.
+
+  Template flags are also resolved before `init` creates a directory or asks whether to write into one
+  that is not empty. An unrecognized or conflicting flag now fails immediately instead of surfacing
+  only after the overwrite confirmation.
+
+- 6e107cb: `init` now offers the managed path instead of assuming it. A portal session used to make managed the
+  default silently, with `--local` as the only escape and no way to learn you needed it until after the
+  template prompts. When your account has a provisioned application, `init` asks whether to connect it
+  or scaffold a local stack, with managed leading.
+
+  Whether managed is even possible is resolved before the first prompt. An account with nothing to
+  connect no longer answers two prompts and then fails: it says why and continues to a local scaffold.
+  That message now distinguishes "no applications yet" from "still provisioning", which the old
+  `NoApplicationsError` got wrong for anyone mid-provision.
+
+  A directory that already has files is no longer forced down the integrate path. `init` asks whether
+  to connect it to a managed application or scaffold in place. Scaffolding into a non-empty directory
+  was previously impossible, so a stray `README` or `.git` was enough to block a local project, and
+  every route that now reaches it confirms first: starter files overwrite anything with the same name,
+  and the confirmation defaults to no.
+
+  An unreachable control plane asks before scaffolding a local stack rather than degrading silently.
+
+  `--local` and `--app <id>` skip the new prompts, and `--app` without a session still fails rather
+  than falling back.
+
+- 490391d: Add a non-interactive `seamless init`. `--yes` (`-y`) answers every question with the option the
+  prompt marks as recommended, so a scaffold runs from CI, a Dockerfile, or a script with no terminal
+  attached:
+
+  ```bash
+  seamless init my-app --local --yes --email=you@example.com
+  ```
+
+  Each question also gets its own flag, honored with or without `--yes`: `--web=<id|alias>` and
+  `--api=<id|alias>` choose the starters, `--email=<address>` sets the owner who becomes the admin,
+  `--auth=<docker|local>` picks how the auth server runs, and `--admin=<api|image|source|none>` picks
+  where the admin console is hosted. Unspecified values fall back to the recommended option, except
+  the owner email, which has no safe default and is taken from `--email` or the portal session.
+
+  `--yes` deliberately stops rather than guessing in three places. Choosing between a managed
+  application and a local stack needs `--app <id>` or `--local`. Scaffolding into a directory that is
+  not empty needs `--force`, since starter files overwrite anything with the same name. Rotating a
+  managed application's existing service token needs `--force` too, because it breaks whatever is
+  already deployed on the old one.
+
+- cc13a6b: Connecting a project to a managed application now wires up its bundled database. `init` reads the
+  application's database and writes `DATABASE_URL` into `api/.env` as
+  `postgres://USER:PASSWORD@host:port/db?sslmode=require`.
+
+  The user and password stay as literal placeholders. The control plane only returns them for
+  `?reveal=true`, which this CLI never asks for, so a live database credential never reaches the
+  developer's disk or terminal: they copy those from the dashboard. Anything printed as a connection
+  string has its userinfo masked regardless.
+
+  An application whose database is still provisioning produces a warning rather than a failure, and the
+  database is read before the service token is rotated so a missing one is never reported against a
+  project whose old token has already been invalidated. Running `init` inside an existing project adds
+  `DATABASE_URL` only when there is not one already, so a working connection string is never replaced
+  by a placeholder.
+
+  This needs the templates release that teaches the express starter to read `DATABASE_URL` and
+  negotiate TLS. Until `SEAMLESS_TEMPLATES_REF` is bumped to it, the value is computed but the pinned
+  starter does not declare the placeholder, so nothing is written.
+
+- 15b487a: `init` now asks for your email and writes it to the scaffolded auth server as `OWNER_EMAIL`. The auth
+  server grants the admin role at account creation to a signup matching that address, so the local flow
+  is `init`, `docker compose up`, register. When you are signed in to the portal, the prompt defaults to
+  that account's email.
+
+  `seamless bootstrap-admin` is removed. It existed to mint the first admin invite, which the owner
+  grant now covers, and the scaffolded stack no longer enables the bootstrap route or carries a
+  bootstrap secret. `seamless verify` keeps its own bootstrap secret for the conformance stack and is
+  unaffected.
+
+  The grant applies at signup only, so changing `OWNER_EMAIL` after an account exists promotes nobody.
+  The success output and the README both say so.
+
+- 4ecf296: Add per-command help. Every command now answers `-h` / `--help` with usage, flags, subcommands, and
+  examples scoped to that command (`seamless init -h`, `seamless verify --help`), and
+  `seamless help <command>` prints the same thing. The help text lives in one registry
+  (`src/commands/helpTopics.ts`) that both the full `seamless --help` output and the per-command
+  output render from, so a flag is documented once and appears in both.
+
+  The help check runs before a command parses its own arguments, so `seamless init -h` prints help
+  instead of treating `-h` as a project name. A `--` separator ends the check, so a command can still
+  take a literal `-h` value (`seamless config set key -- -h`).
+
+- 6deafb1: `seamless login` now signs in to the Seamless portal instead of the active profile's instance, and
+  no longer needs a profile to exist first. The portal session is stored beside the profile map in
+  `config.json` and is the only session `init` uses to connect a managed application, so a session
+  for a local or self-hosted instance no longer sends its token to the control plane.
+
+  Instance login moves to `seamless profile login [name]`, which signs in without changing the active
+  profile. `seamless login --profile <name>` keeps working for one more minor version and prints a
+  pointer to the new command. `whoami` and `logout` default to the portal session and take
+  `--profile <name>` to target an instance.
+
+  Set `SEAMLESS_PORTAL_AUTH_URL` to point the portal login at a different auth host.
+
+- 51d9a9e: No command renders a prompt when stdin is not a terminal. `seamless init` got this in 0.11.0; it now
+  covers every command that prompts (`login`, `profile add`, `users delete`,
+  `users prepare-device-replacement`, `sessions revoke`, `org members remove`, `config apply`, and
+  `config oauth-providers remove`). Each one stops naming the flag that answers the question, so a CI
+  step or a scripted run fails immediately instead of hanging until its job times out.
+
+  The confirmations that guard a destructive action now take `--force`, matching what `init` already
+  means by it:
+
+  ```bash
+  seamless users delete <id> --force
+  seamless sessions revoke --all --force
+  seamless org members remove <orgId> <userId> --force
+  seamless config apply config.json --force
+  ```
+
+  `--yes` and `-y` are accepted aliases everywhere, so `seamless config oauth-providers remove --yes`
+  keeps working. `--force` does not override `--dry-run`: `config apply --dry-run --force` still
+  changes nothing, and cancelling a confirmation still reads as declining rather than as an error.
+
+- f08c21a: Scaffolding now requires `init`. An unrecognized command reports itself and exits instead of being
+  treated as a project name, so `seamless verfy` no longer silently creates a directory called
+  `verfy` and drops into the interactive scaffold. The error names `seamless init <name>` for anyone
+  who was using the old shortcut.
+
+  Ctrl-C is handled everywhere. Clack answers an interrupted prompt with a symbol, which several
+  prompts cast straight to a string; that surfaced as a `TypeError` mid-scaffold, or as "Selected
+  template Symbol(...) is not in the registry". Every prompt in init, the OAuth setup, the managed
+  application picker, and `bootstrap-admin` now cancels cleanly and exits 130.
+
+  `init` no longer leaves a project directory behind. Any failure or cancellation after the directory
+  is created removes it, including a Ctrl-C during a download or a git clone, so a retry is not
+  blocked by "Directory already exists". Only a directory the command itself created is ever removed,
+  never an existing one and never the working directory.
+
+  Declining the service token rotation prompt, or cancelling the application picker, now cancels the
+  whole command rather than returning quietly part-way through.
+
+### Patch Changes
+
+- bf857b1: Update the seamless auth api image to v0.5.0.
+- e2f53b3: `seamless init` no longer hangs when it has no terminal to prompt on. Run on a pipe, it used to
+  render a prompt nobody could answer and wait forever, so a CI step failed only when its job timed
+  out. It now stops on the first unanswered question and names the flag that answers it:
+
+  ```text
+  $ seamless init --local < /dev/null
+  Error: "Web example" needs an interactive terminal, and this run does not have one.
+  Pass --web=<id> to choose one (see `seamless templates list`), or --yes to take the
+  recommended template.
+  ```
+
+  A run whose answers all come from flags is unaffected and works the same on a pipe as on a
+  terminal. A terminal too narrow to render a prompt (a pty allocated without a size reports one
+  column, which used to print one character per line) now warns instead of just looking broken.
+
+- f725752: Generated compose files now publish every port on `127.0.0.1` instead of all interfaces. A scaffolded
+  stack was reachable from any machine on the same network, which mattered most for the auth server:
+  it is configured with `ALLOW_UNCREDENTIALED_DELIVERY_SECRETS=true` so `seamless login --local` can
+  read OTP codes from the response, and that opt-in is honored before any service-token check. Anyone
+  on the LAN could request a code for any user of the stack and read it. Postgres was exposed on the
+  same terms, with the fixed credentials the compose file ships.
+
+  Local development is unchanged: the browser, the CLI, and inter-container traffic all still work.
+
+- ffe4331: Update the conformance harness for the removal of the admin bootstrap invite flow in
+  seamless-auth-api. The verify stack now sets `OWNER_EMAIL` instead of
+  `SEAMLESS_BOOTSTRAP_ENABLED`/`SEAMLESS_BOOTSTRAP_SECRET`, and the first-admin spec registers the
+  owner address and asserts the admin role is granted at signup.
+- 2d898e2: Fix conformance project routing when the checkout path contains a directory named with an `api/`
+  segment. Playwright applies a `testMatch` regex to the absolute file path, so the `api` project's
+  pattern also claimed every adapter and react spec, running browser tests in a project with no
+  `baseURL`. Each project now scopes itself with `testDir` instead.
+- c2e4e1b: Scaffold from seamless-templates v0.5.0, which teaches the express starter to read `DATABASE_URL` and
+  negotiate TLS when the connection string carries `sslmode=require`. This is what turns on the managed
+  bundled database wiring: the CLI already computed the connection string, but the pinned v0.4.0
+  starter did not declare the placeholder, so nothing was written.
+
 ## 0.10.2
 
 ### Patch Changes
