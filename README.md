@@ -134,6 +134,7 @@ ID           KIND  FRAMEWORK  FLAGS                   STATUS
 react-vite   web   react      --basic, --react-vite   stable
 react-oauth  web   react      --oauth, --react-oauth  stable
 express      api   express    --express               stable
+fastify      api   fastify    --fastify               beta
 ```
 
 Every template answers to `--<id>`; some also declare a shorter `--<alias>`, and the two are
