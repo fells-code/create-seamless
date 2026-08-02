@@ -11,7 +11,7 @@ import {
 
 describe("image and version constants", () => {
   it("pins the postgres image", () => {
-    expect(POSTGRES_IMAGE).toBe("postgres:17");
+    expect(POSTGRES_IMAGE).toBe("postgres:18");
   });
 
   it("builds the auth API image tag from its version", () => {

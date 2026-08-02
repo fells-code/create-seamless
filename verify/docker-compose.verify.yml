@@ -15,7 +15,10 @@ name: seamless-verify
 
 services:
   postgres:
-    image: postgres:16
+    # Matches POSTGRES_IMAGE in src/core/images.ts, so the harness runs the same
+    # major a fresh scaffold gets. Every run starts with `down -v`, so the volume
+    # is always new and a major bump needs no migration here.
+    image: postgres:18
     environment:
       POSTGRES_USER: seamless
       POSTGRES_PASSWORD: seamless
