@@ -134,6 +134,7 @@ ID           KIND  FRAMEWORK  FLAGS                   STATUS
 react-vite   web   react      --basic, --react-vite   stable
 react-oauth  web   react      --oauth, --react-oauth  stable
 express      api   express    --express               stable
+fastify      api   fastify    --fastify               beta
 ```
 
 Every template answers to `--<id>`; some also declare a shorter `--<alias>`, and the two are
@@ -201,7 +202,7 @@ Depending on your selections, the CLI generates a project like this:
 my-app/
 ├─ auth/        # Seamless Auth server (optional)
 ├─ web/         # React web application (optional)
-├─ api/         # Express API server (optional)
+├─ api/         # Express or Fastify API server (optional)
 ├─ docker-compose.yml (optional)
 └─ README.md
 ```
