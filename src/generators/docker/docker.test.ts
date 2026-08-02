@@ -226,6 +226,28 @@ describe("generateDockerCompose", () => {
     expect(compose.endsWith("\n")).toBe(true);
   });
 
+  // PostgreSQL 18+ images keep data in a major-versioned subdirectory, so a mount
+  // at .../data is ignored and the container restart-loops on
+  // "in 18+, these Docker images are configured to store database data in a
+  // format which is compatible with pg_ctlcluster". The scaffold shipped exactly
+  // that for one release cycle.
+  it("mounts the database volume where PostgreSQL 18 actually stores data", async () => {
+    writeAuthEnvFixture(tmpDir, "SEAMLESS_JWKS_ACTIVE_KID");
+
+    await generateDockerCompose(tmpDir, {
+      authMode: "local",
+      adminMode: "image",
+    });
+
+    const compose = fs.readFileSync(
+      path.join(tmpDir, "docker-compose.yml"),
+      "utf-8",
+    );
+
+    expect(compose).toContain("- pgdata:/var/lib/postgresql\n");
+    expect(compose).not.toContain("/var/lib/postgresql/data");
+  });
+
   // Publishing on 0.0.0.0 put the auth server on the LAN, and it is configured to
   // hand back OTP codes in the response for local login.
   it("publishes every port on loopback only", async () => {

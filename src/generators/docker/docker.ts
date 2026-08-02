@@ -72,7 +72,11 @@ services:
       POSTGRES_PASSWORD: mypassword
       POSTGRES_DB: postgres
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      # PostgreSQL 18+ images store data in a major-versioned subdirectory
+      # (/var/lib/postgresql/18/docker), so the mount goes one level up. Mounting
+      # .../data instead leaves the volume unused and the container refuses to
+      # start. See docker-library/postgres#1259.
+      - pgdata:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U myuser -d postgres"]
       interval: 5s
