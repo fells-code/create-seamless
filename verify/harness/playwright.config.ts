@@ -1,11 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
-import { REACT_URL } from './lib/env';
+import { FASTIFY_ADAPTER_URL, REACT_URL } from './lib/env';
+import type { AdapterOptions } from './lib/fixtures';
 
 // One runner, multiple projects. `api` and `adapter` hit HTTP directly (no
 // browser); `react` drives chromium against the starter SPA. global-setup
 // health-gates the stack before any project runs.
-export default defineConfig({
+export default defineConfig<AdapterOptions>({
   testDir: '.',
   globalSetup: './global-setup.ts',
   timeout: 30_000,
@@ -25,7 +26,15 @@ export default defineConfig({
   // pulling browser specs into a project with no baseURL.
   projects: [
     { name: 'api', testDir: './api' },
+    // Both adapter projects run the same specs from the same directory; only the
+    // adopter backend they point at differs. Adding a framework is a project
+    // entry plus a compose service, not a copy of the suite.
     { name: 'adapter', testDir: './adapter' },
+    {
+      name: 'adapter-fastify',
+      testDir: './adapter',
+      use: { adapterUrl: FASTIFY_ADAPTER_URL },
+    },
     {
       name: 'react',
       testDir: './react',
