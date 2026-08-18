@@ -16,4 +16,4 @@ export const SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE = `ghcr.io/fells-code/seamless-
 // SEAMLESS_TEMPLATES_REF, or point at a local checkout with SEAMLESS_TEMPLATES_DIR.
 export const SEAMLESS_TEMPLATES_REPO = "fells-code/seamless-templates";
 
-export const SEAMLESS_TEMPLATES_REF = "v0.8.1";
+export const SEAMLESS_TEMPLATES_REF = "v0.9.0";
