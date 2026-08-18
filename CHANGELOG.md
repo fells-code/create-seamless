@@ -1,5 +1,74 @@
 # seamless-cli
 
+## 0.12.0
+
+### Minor Changes
+
+- 35d9f3e: Scaffold new projects on PostgreSQL 18, and run the conformance harness on it too.
+
+  `seamless init` generated a stack pinned to `postgres:17` while the verify harness ran `postgres:16`.
+  Both are now `postgres:18`, so what the harness certifies is the major a fresh scaffold actually
+  gets.
+
+  This does not touch an existing project. The image is written into each scaffold's own
+  `docker-compose.yml` at generation time, so a project keeps whatever major it was scaffolded with and
+  its data directory is never pulled out from under it. Only newly scaffolded projects get 18, on a
+  fresh volume. Upgrading an existing project is a deliberate act: change the image in its
+  `docker-compose.yml`, and dump and restore the volume, since PostgreSQL will not start against a data
+  directory written by a different major.
+
+- a39c5c6: Scaffold from `seamless-templates` `v0.9.0`.
+
+  Both React starters move to `@seamless-auth/react` `^0.9.0`, which makes the bundled auth screens
+  themeable: every colour reads from a `--seamless-*` CSS custom property with the previous literal as
+  its fallback, so a scaffolded project can match the auth UI to its brand by setting those variables
+  on `:root` or on any ancestor of `<AuthRoutes />`. The public API is unchanged, and a project that
+  sets no variables renders exactly as before.
+
+  Both API starters now pin `postgres:18-alpine`, with the volume mounted at `/var/lib/postgresql`.
+  Until this bump a scaffold named two different majors in the same directory — `postgres:18` in the
+  CLI-generated compose file and `postgres:16-alpine` in the API starter copied in beside it.
+
+  Every starter also ships a working test, lint, and format setup out of the box: Vitest with tests
+  that pass on a fresh `npm install`, Prettier alongside ESLint, and the same script names across all
+  four (`typecheck`, `lint`, `lint:fix`, `format`, `format:check`, `test`, `test:watch`,
+  `test:coverage`, and a `check` that runs the whole gate).
+
+- d5da781: `seamless verify` now exercises the Fastify starter. The scaffold has offered a Fastify API since the
+  templates bump, but the conformance harness only ever drove the Express adapter, so a green run said
+  nothing about whether a Fastify-scaffolded project actually worked.
+
+  The stack gains a second adopter backend (`verify/adapter-fastify-app`, on port 3001) built on
+  `@seamless-auth/fastify`, a twin of the Express one: same routes, same env contract, same capture
+  transport. The existing adapter specs run against both without being duplicated, since the two
+  Playwright projects share a test directory and differ only in which backend they point at. The
+  conformance grid gains an `adapter-fastify` column, so a failure in one framework is attributable to
+  that framework.
+
+  `--api-only` and `--no-react` are unchanged, and `--local` builds and packs `@seamless-auth/fastify`
+  from source alongside core and express.
+
+### Patch Changes
+
+- 5cb6911: Fix the scaffolded database failing to start on PostgreSQL 18.
+
+  The PostgreSQL 18 bump moved the image tag but not the volume mount. PostgreSQL 18+ images store data
+  in a major-versioned subdirectory (`/var/lib/postgresql/18/docker`), so a mount at
+  `/var/lib/postgresql/data` is ignored and the container refuses to start, restart-looping on:
+
+  ```
+  Error: in 18+, these Docker images are configured to store database data in a
+         format which is compatible with "pg_ctlcluster" ...
+         Counter to that, there appears to be PostgreSQL data in:
+           /var/lib/postgresql/data (unused mount/volume)
+  ```
+
+  The generated `docker-compose.yml` now mounts `pgdata:/var/lib/postgresql`. See
+  docker-library/postgres#1259.
+
+  This only ever affected projects scaffolded from the unreleased PostgreSQL 18 change, so no published
+  version of the CLI produced a broken scaffold.
+
 ## 0.11.0
 
 ### Minor Changes
