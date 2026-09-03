@@ -90,8 +90,6 @@ export async function registerWithPasskey(page: Page, email: string): Promise<vo
     page.getByRole('heading', { name: /Secure Your Account with a Passkey/ }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Register Passkey' }).click();
-  await page.getByPlaceholder(/MacBook/).fill('Verify Device');
-  await page.getByRole('button', { name: 'Continue' }).click();
 }
 
 /** Sign in an existing user whose passkey is registered (the ceremony auto-runs). */
