@@ -1,0 +1,43 @@
+# Build cache for CI, layered over docker-compose.verify.yml via
+# SEAMLESS_VERIFY_COMPOSE_OVERRIDE. Kept out of the base file because `type=gha` needs the
+# Actions cache credentials and is an error anywhere else, so a developer running
+# `seamless verify` locally must not pick it up.
+#
+# Every image here is rebuilt from scratch on every CI run today, and the Dockerfiles are
+# already ordered for this: each installs dependencies from a lockfile before copying
+# source, so the expensive layer survives a source change and only a lockfile change
+# invalidates it.
+#
+# Scopes are per service. One shared scope would have each build overwrite the last, and
+# they would take turns missing.
+services:
+  auth-api:
+    build:
+      cache_from:
+        - type=gha,scope=verify-auth-api
+      cache_to:
+        - type=gha,mode=max,scope=verify-auth-api
+
+  adapter:
+    build:
+      cache_from:
+        - type=gha,scope=verify-adapter
+      cache_to:
+        - type=gha,mode=max,scope=verify-adapter
+
+  adapter-fastify:
+    build:
+      cache_from:
+        - type=gha,scope=verify-adapter-fastify
+      cache_to:
+        - type=gha,mode=max,scope=verify-adapter-fastify
+
+  # The react service is built once per web template against different source, so its
+  # scope carries the template id. Sharing one scope across templates would mean each
+  # template evicting the previous one's cache on every run.
+  react:
+    build:
+      cache_from:
+        - type=gha,scope=verify-react-${SEAMLESS_VERIFY_TEMPLATE_ID:-default}
+      cache_to:
+        - type=gha,mode=max,scope=verify-react-${SEAMLESS_VERIFY_TEMPLATE_ID:-default}
