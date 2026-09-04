@@ -30,7 +30,11 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # 30 left no headroom: a healthy run is about 5 minutes end to end, but a degraded
+    # registry took it to 30m00s exactly, which GitHub reports as `cancelled` with every
+    # step green. The caching below is the actual fix; this is so the next bad day is a
+    # slow check rather than a red one.
+    timeout-minutes: 45
     env:
       HUSKY: '0'
     steps:
@@ -74,11 +78,45 @@ jobs:
           # Reusable workflow: it checks out sibling repos into subpaths, so there
           # is no single repo .nvmrc to read here. Pin the Node major directly.
           node-version: 24
+          # Warms ~/.npm for all three npm installs below. This job is install-bound
+          # rather than compute-bound, and an uncached registry is what pushes it past
+          # its own timeout: when npm was degraded, `npm ci && npm run build` for the CLI
+          # went from 6s to 214s on its own.
+          cache: npm
+          cache-dependency-path: |
+            seamless-cli/package-lock.json
+            seamless-cli/verify/harness/package-lock.json
+            seamless-auth-react/package-lock.json
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
         with:
           version: 10
+
+      # pnpm keeps its own store rather than using ~/.npm, so the setup-node cache above
+      # does nothing for the server install. Skipped with the install it serves.
+      - name: Locate the pnpm store
+        if: ${{ inputs.local }}
+        id: pnpm-store
+        run: echo "dir=$(pnpm store path --silent)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the pnpm store
+        if: ${{ inputs.local }}
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-store.outputs.dir }}
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('seamless-auth-server/pnpm-lock.yaml') }}
+          restore-keys: ${{ runner.os }}-pnpm-
+
+      # Chromium is ~150MB and is re-downloaded on every run otherwise. A restore-keys hit
+      # on a stale key is still useful: `playwright install` then fetches only what the
+      # pinned version actually needs.
+      - name: Cache the Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-playwright-${{ hashFiles('seamless-cli/verify/harness/package-lock.json') }}
+          restore-keys: ${{ runner.os }}-playwright-
 
       - name: Build the CLI
         working-directory: seamless-cli
@@ -98,7 +136,7 @@ jobs:
       - name: Install harness + browser
         working-directory: seamless-cli/verify/harness
         run: |
-          npm install
+          npm ci
           npx playwright install --with-deps chromium
 
       - name: Run seamless verify
