@@ -30,13 +30,24 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # 30 left no headroom: a healthy run is about 5 minutes end to end, but a degraded
-    # registry took it to 30m00s exactly, which GitHub reports as `cancelled` with every
-    # step green. The caching below is the actual fix; this is so the next bad day is a
-    # slow check rather than a red one.
+    # 30 left no headroom: a degraded npm registry once took this to 30m00s exactly, which
+    # GitHub reports as `cancelled` with every step green. The build cache is what makes a
+    # normal run fast (about 4 minutes warm); this is so the next bad network day is a slow
+    # check rather than a red one.
     timeout-minutes: 45
     env:
       HUSKY: '0'
+      # The images built here are thrown away when the job ends, so the provenance
+      # attestation buildx adds by default buys nothing. A tidy-up rather than a
+      # speed-up: it looked like it cost 301s once, but that was a network stall landing
+      # on whichever step happened to be doing I/O, and it resolves in under a second on a
+      # healthy run.
+      BUILDX_NO_DEFAULT_ATTESTATIONS: '1'
+      # compose only honours build cache_from / cache_to when it delegates to bake.
+      COMPOSE_BAKE: 'true'
+      # Layers the CI-only build cache over the base compose file. Read by
+      # `seamless verify`; unset locally, where `type=gha` would be an error.
+      SEAMLESS_VERIFY_COMPOSE_OVERRIDE: ${{ github.workspace }}/seamless-cli/verify/docker-compose.cache.yml
     steps:
       - name: Checkout seamless-cli
         uses: actions/checkout@v4
@@ -92,6 +103,17 @@ jobs:
         uses: pnpm/action-setup@v4
         with:
           version: 10
+
+      # The default docker driver cannot export a build cache. The container driver can,
+      # and `docker-container` still loads the built images into the daemon for compose to
+      # run, which is what the rest of the job needs.
+      - name: Set up Docker buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Exposes ACTIONS_CACHE_URL and ACTIONS_RUNTIME_TOKEN to the build, which the
+      # `type=gha` cache backend needs and which are otherwise only visible to actions.
+      - name: Expose the Actions cache to buildx
+        uses: crazy-max/ghaction-github-runtime@v3
 
       # pnpm keeps its own store rather than using ~/.npm, so the setup-node cache above
       # does nothing for the server install. Skipped with the install it serves.

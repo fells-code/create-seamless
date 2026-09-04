@@ -215,8 +215,16 @@ async function packLocalSdks(env: NodeJS.ProcessEnv): Promise<void> {
   }
 }
 
+// An extra compose file layered over the base one, for settings that only make sense in
+// one environment. CI uses it to attach a build cache; a local run sets nothing and gets
+// the file it always got.
+const COMPOSE_OVERRIDE = process.env.SEAMLESS_VERIFY_COMPOSE_OVERRIDE?.trim();
+
 function compose(env: NodeJS.ProcessEnv, ...args: string[]): Promise<void> {
-  return runCommand("docker", ["compose", "-f", COMPOSE_FILE, ...args], VERIFY_DIR, env);
+  const files = ["-f", COMPOSE_FILE];
+  if (COMPOSE_OVERRIDE) files.push("-f", COMPOSE_OVERRIDE);
+
+  return runCommand("docker", ["compose", ...files, ...args], VERIFY_DIR, env);
 }
 
 // Runs a set of Playwright projects, optionally narrowed by a grep. Returns true on
@@ -491,6 +499,10 @@ export async function runVerify(args: string[] = []): Promise<void> {
         SEAMLESS_REACT_DIR: tmpl.dir,
         SEAMLESS_REACT_URL: "http://localhost:5173",
         SEAMLESS_VERIFY_REACT: "1",
+        // Only read by the CI cache override, which keys the react build cache per
+        // template. Each one is different source, so sharing a scope would have them
+        // evict each other every run.
+        SEAMLESS_VERIFY_TEMPLATE_ID: tmpl.id,
       };
       const grep = opts.grep ?? flowsToGrep(tmpl.flows);
       const label = `Web · ${tmpl.id}${grep ? ` (${grep})` : " (all flows)"}`;
