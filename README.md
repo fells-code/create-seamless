@@ -3,6 +3,7 @@
 [![License: AGPL-3.0-only](https://img.shields.io/badge/License-AGPL3-yellow.svg)](LICENSE)
 [![npm version](https://img.shields.io/npm/v/seamless-cli.svg?style=flat)](https://www.npmjs.com/package/seamless-cli)
 ![coverage](resources/coverage-badge.svg)
+[![conformance](https://github.com/fells-code/seamless-cli/actions/workflows/conformance.yml/badge.svg)](https://github.com/fells-code/seamless-cli/actions/workflows/conformance.yml)
 
 Seamless CLI is a command-line tool for bootstrapping applications with Seamless Auth, an open source, passwordless authentication system.
 
