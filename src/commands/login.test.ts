@@ -292,7 +292,11 @@ describe("runLogin: success", () => {
     const out = logs();
     expect(out.some((l) => l.includes("2 attempts left"))).toBe(true);
     expect(out.some((l) => l.includes("1 attempt left"))).toBe(true);
-    expect(out.some((l) => l.includes("A code was sent to dev@example.com."))).toBe(true);
+    expect(
+      out.some((l) =>
+        l.includes("If an account exists for dev@example.com, a code is on its way."),
+      ),
+    ).toBe(true);
   });
 
   it("validates the code prompt input as letters for an email login", async () => {

@@ -214,9 +214,11 @@ describe("completeLogin", () => {
     expect(authHeader(verify)).toBe("Bearer e2");
   });
 
-  it("rejects an unverified account with a clear message", async () => {
+  it("reports a locked account with how long to wait", async () => {
     mockRouter({
-      "/login": [() => json({ error: "Login failed. Need to verify." }, 401)],
+      "/login": [
+        () => json({ error: "account_locked", retryAfterSeconds: 900 }, 423),
+      ],
     });
 
     await expect(
@@ -225,7 +227,21 @@ describe("completeLogin", () => {
         identifier: "dev@example.com",
         getCode: async () => "123456",
       }),
-    ).rejects.toThrow(/not verified/i);
+    ).rejects.toThrow(/Too many failed attempts.*15 minute/s);
+  });
+
+  it("reports a locked account without a retry hint when none is given", async () => {
+    mockRouter({
+      "/login": [() => json({ error: "account_locked" }, 423)],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async () => "123456",
+      }),
+    ).rejects.toThrow(/Too many failed attempts for dev@example.com\.$/);
   });
 
   it("rejects when email OTP is not an available login method", async () => {
@@ -241,7 +257,9 @@ describe("completeLogin", () => {
         identifier: "dev@example.com",
         getCode: async () => "123456",
       }),
-    ).rejects.toThrow(/cannot use email otp/i);
+    // Phrased as what is on offer rather than what "this account" can do: the method
+    // list comes back for an unknown identifier too.
+    ).rejects.toThrow(/email otp login is not available for/i);
   });
 
   it("returns null when the user cancels the code prompt", async () => {
@@ -330,9 +348,50 @@ describe("completeLogin", () => {
     ).rejects.toThrow(/not a valid email or phone number/);
   });
 
-  it("rejects an unknown account with a 401 that isn't a verify message", async () => {
+  // An unknown identifier is answered exactly like a real one: 200, a decoy pre-auth
+  // token, a method list, and an OTP send that reports success without sending. The CLI
+  // cannot tell the difference and must not pretend to, so the only place this can fail
+  // is the code step.
+  it("runs an unknown identifier through the ordinary flow and fails at the code", async () => {
+    const attempts: number[] = [];
+
     mockRouter({
-      "/login": [() => json({ error: "No such account" }, 401)],
+      "/login": [
+        () =>
+          json({
+            message: "Success",
+            sub: "4f7158fa-ca90-4c22-a1d1-eba3f0c1a2b3",
+            token: "decoy",
+            identifierType: "email",
+            loginMethods: ["email_otp"],
+            ttl: 900,
+          }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "success", token: "decoy" })],
+      "/otp/verify-login-email-otp": [
+        () => json({ error: "Not allowed" }, 401),
+        () => json({ error: "Not allowed" }, 401),
+        () => json({ error: "Not allowed" }, 401),
+      ],
+    });
+
+    await expect(
+      completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "nobody@example.com",
+        getCode: async ({ attempt }) => {
+          attempts.push(attempt);
+          return "ABCDEF";
+        },
+      }),
+    ).rejects.toThrow(/If that address or number has no account yet, register it first/);
+
+    expect(attempts).toEqual([1, 2, 3]);
+  });
+
+  it("rejects a forbidden login without claiming the account is missing", async () => {
+    mockRouter({
+      "/login": [() => json({ error: "Not allowed" }, 403)],
     });
 
     await expect(
@@ -341,7 +400,7 @@ describe("completeLogin", () => {
         identifier: "dev@example.com",
         getCode: async () => "123456",
       }),
-    ).rejects.toThrow(/No account was found/);
+    ).rejects.toThrow(/Login is not permitted for dev@example.com/);
   });
 
   it("maps other login failures to a generic status error", async () => {

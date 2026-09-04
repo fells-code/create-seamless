@@ -78,7 +78,12 @@ export async function promptLogin(
     notify: (event) => {
       switch (event.type) {
         case "code_sent":
-          console.log(kleur.dim(`A code was sent to ${resolved}.`));
+          // The instance answers the same way whether or not the identifier has an
+          // account, so claiming a code was sent would be stating something this cannot
+          // know.
+          console.log(
+            kleur.dim(`If an account exists for ${resolved}, a code is on its way.`),
+          );
           break;
         case "code_resent":
           console.log(

@@ -107,22 +107,31 @@ async function startLogin(
     );
   }
 
+  // `/login` no longer answers 401. An identifier with no usable account, which used to
+  // mean unknown, unverified, or with no permitted method, now gets a 200 and a decoy
+  // pre-auth token so the response cannot be used to test whether an account exists. The
+  // branches that read 401 as "no such user" and "not verified yet" were removed with it:
+  // there is no longer an answer for them to read. Such a login fails at the code step
+  // instead, which is what `completeLogin` reports.
   if (!res.ok) {
-    const message = apiMessage(res.data) ?? "";
-    if (res.status === 401 && /verify/i.test(message)) {
-      throw new LoginError(
-        `The account for ${identifier} is not verified yet. Finish registration, then log in.`,
-      );
-    }
     if (res.status === 400) {
       throw new LoginError(
         `"${identifier}" is not a valid email or phone number.`,
       );
     }
-    if (res.status === 401 || res.status === 403) {
-      throw new LoginError(
-        `No account was found for ${identifier}, or login is not permitted.`,
-      );
+    if (res.status === 423) {
+      // The one remaining answer that does imply an account, and the one worth naming:
+      // it needs prior failed attempts against this identifier, and the developer can
+      // act on it by waiting.
+      const retryAfter = res.data?.retryAfterSeconds;
+      const wait =
+        typeof retryAfter === "number" && retryAfter > 0
+          ? ` Try again in about ${Math.ceil(retryAfter / 60)} minute(s).`
+          : "";
+      throw new LoginError(`Too many failed attempts for ${identifier}.${wait}`);
+    }
+    if (res.status === 403) {
+      throw new LoginError(`Login is not permitted for ${identifier}.`);
     }
     throw new LoginError(`Login request failed (${res.status}).`);
   }
@@ -233,8 +242,10 @@ export async function completeLogin(
   const channel = started.channel;
   const required = channel === "email" ? "email_otp" : "phone_otp";
   if (started.loginMethods.length > 0 && !started.loginMethods.includes(required)) {
+    // Deliberately not "this account cannot": the method list comes back for an unknown
+    // identifier too, so saying so would report an account that may not exist.
     throw new LoginError(
-      `This account cannot use ${required.replace("_", " ")} login. Available methods: ${started.loginMethods.join(", ")}.`,
+      `${required.replace("_", " ")} login is not available for ${opts.identifier}. Offered: ${started.loginMethods.join(", ")}.`,
     );
   }
 
@@ -294,5 +305,9 @@ export async function completeLogin(
     notify({ type: "incorrect", attemptsLeft: maxAttempts - attempt });
   }
 
-  throw new LoginError("Could not verify a code. Run seamless login to try again.");
+  // The instance does not say whether the identifier has an account, so neither can this.
+  // A wrong code and an identifier nobody has registered both land here.
+  throw new LoginError(
+    `Could not verify a code for ${opts.identifier}. If that address or number has no account yet, register it first. Otherwise run seamless login to try again.`,
+  );
 }
