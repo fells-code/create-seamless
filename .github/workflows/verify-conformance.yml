@@ -30,16 +30,18 @@ on:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    # 30 left no headroom: a healthy run is about 5 minutes end to end, but a degraded
-    # registry took it to 30m00s exactly, which GitHub reports as `cancelled` with every
-    # step green. The caching below is the actual fix; this is so the next bad day is a
-    # slow check rather than a red one.
+    # 30 left no headroom: a degraded npm registry once took this to 30m00s exactly, which
+    # GitHub reports as `cancelled` with every step green. The build cache is what makes a
+    # normal run fast (about 4 minutes warm); this is so the next bad network day is a slow
+    # check rather than a red one.
     timeout-minutes: 45
     env:
       HUSKY: '0'
       # The images built here are thrown away when the job ends, so the provenance
-      # attestation buildx adds by default buys nothing. It is not free either: on the run
-      # that prompted this, `resolving provenance for metadata file` took 301s on its own.
+      # attestation buildx adds by default buys nothing. A tidy-up rather than a
+      # speed-up: it looked like it cost 301s once, but that was a network stall landing
+      # on whichever step happened to be doing I/O, and it resolves in under a second on a
+      # healthy run.
       BUILDX_NO_DEFAULT_ATTESTATIONS: '1'
       # compose only honours build cache_from / cache_to when it delegates to bake.
       COMPOSE_BAKE: 'true'
