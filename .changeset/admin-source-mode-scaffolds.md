@@ -20,3 +20,8 @@ developer's own repository wants, and needs no git binary. Override the ref with
 The fetch runs before the compose file is written, so a failed download stops the scaffold
 instead of leaving a project that cannot come up, and the success output now points at
 `admin/`.
+
+Extraction is constrained to the project directory: an archive entry whose resolved path
+would escape it fails the scaffold rather than being written or silently skipped. Not
+reachable while the archive is our own repository over https, but this is a new extraction
+site and it should not add to what #135 already tracks for the templates source.

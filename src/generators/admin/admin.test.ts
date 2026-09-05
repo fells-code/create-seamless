@@ -128,6 +128,31 @@ describe("generateAdminSource", () => {
     await expect(generateAdminSource(root)).rejects.toThrow(/archive was empty/);
   });
 
+  // Entry names come from the archive. Not reachable while it is our own repository
+  // over https, but this is what keeps a compromise of that source from becoming a
+  // write anywhere the developer can write.
+  it("refuses an entry that would write outside the project", async () => {
+    const zip = new AdmZip();
+    zip.addFile("dashboard-1.0.0/Dockerfile", Buffer.from("FROM node:22\n"));
+    zip.addFile("dashboard-1.0.0/placeholder.txt", Buffer.from("pwned"));
+    // addFile normalizes the name it is given, so the traversal is set afterwards.
+    // A real archive can carry one: AdmZip returns `../` in entryName verbatim.
+    zip.getEntries()[1].entryName = "dashboard-1.0.0/../../escaped.txt";
+    servingArchive(zip.toBuffer());
+
+    // A box around the project, so the entry's escape target is somewhere this test
+    // owns and can clean up rather than the shared temp directory.
+    const box = fs.mkdtempSync(path.join(os.tmpdir(), "seamless-slip-"));
+    const project = path.join(box, "project");
+    fs.mkdirSync(project);
+
+    await expect(generateAdminSource(project)).rejects.toThrow(
+      /would write outside the project/,
+    );
+    expect(fs.existsSync(path.join(box, "escaped.txt"))).toBe(false);
+    fs.rmSync(box, { recursive: true, force: true });
+  });
+
   // `build: ./admin` in the generated compose file needs a Dockerfile there. Failing
   // during init names the problem; failing at `docker compose up` does not.
   it("fails when the unpacked dashboard has no Dockerfile", async () => {
