@@ -11,6 +11,15 @@ export const SEAMLESS_AUTH_ADMIN_DASHBOARD_VERSION = "v0.4.0";
 
 export const SEAMLESS_AUTH_ADMIN_DASHBOARD_IMAGE = `ghcr.io/fells-code/seamless-auth-admin-dashboard:${SEAMLESS_AUTH_ADMIN_DASHBOARD_VERSION}`;
 
+// `--admin=source` unpacks the dashboard from this repo at the same tag the image
+// above is built from, so both admin modes scaffold the same dashboard. Override
+// the ref with SEAMLESS_ADMIN_DASHBOARD_REF, or point at a local checkout with
+// SEAMLESS_ADMIN_DASHBOARD_DIR.
+export const SEAMLESS_AUTH_ADMIN_DASHBOARD_REPO =
+  "fells-code/seamless-auth-admin-dashboard";
+
+export const SEAMLESS_AUTH_ADMIN_DASHBOARD_REF = SEAMLESS_AUTH_ADMIN_DASHBOARD_VERSION;
+
 // The starter templates monorepo the CLI scaffolds from. Pinned to a tag so a given
 // CLI version always produces the same project. Override the ref with
 // SEAMLESS_TEMPLATES_REF, or point at a local checkout with SEAMLESS_TEMPLATES_DIR.

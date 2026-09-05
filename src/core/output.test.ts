@@ -57,6 +57,38 @@ describe("printSuccessOutput", () => {
     expect(out).toContain("Setup complete.");
   });
 
+  it("says where the dashboard source landed in source mode", () => {
+    printSuccessOutput({
+      projectName: "my-app",
+      root: "/tmp/my-app",
+      webFramework: "react",
+      apiFramework: "express",
+      authMode: "docker",
+      useDocker: true,
+      adminMode: "source",
+      ownerEmail: "dev@example.com",
+    });
+
+    const out = allLogs();
+    expect(out).toContain("Admin console source is in admin/");
+    expect(out).toContain("builds it from that directory, not an image");
+  });
+
+  it("does not mention admin/ when the dashboard runs from the published image", () => {
+    printSuccessOutput({
+      projectName: "my-app",
+      root: "/tmp/my-app",
+      webFramework: "react",
+      apiFramework: "express",
+      authMode: "docker",
+      useDocker: true,
+      adminMode: "image",
+      ownerEmail: "dev@example.com",
+    });
+
+    expect(allLogs()).not.toContain("Admin console source is in admin/");
+  });
+
   it("prints the /console URL for API-served hosting", () => {
     printSuccessOutput({
       projectName: "my-app",
