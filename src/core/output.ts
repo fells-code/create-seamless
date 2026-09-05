@@ -6,7 +6,6 @@ export function printSuccessOutput(config: {
   webFramework: string | null;
   apiFramework: string | null;
   authMode: "local" | "docker";
-  useDocker: boolean | symbol;
   adminMode: "api" | "image" | "source" | "none";
   ownerEmail: string;
 }) {
@@ -15,7 +14,6 @@ export function printSuccessOutput(config: {
     webFramework,
     apiFramework,
     authMode,
-    useDocker,
     adminMode,
     ownerEmail,
   } = config;
@@ -82,47 +80,13 @@ export function printSuccessOutput(config: {
 
   console.log(kleur.bold("Next steps:\n"));
 
-  if (useDocker) {
-    console.log("  1. Start services");
-    console.log(kleur.cyan("     docker compose up\n"));
+  console.log("  1. Start services");
+  console.log(kleur.cyan("     docker compose up\n"));
 
-    console.log("  2. Register in the browser with " + kleur.bold(ownerEmail));
-    console.log(
-      kleur.dim("     That address is the owner, so it becomes an admin\n"),
-    );
-  } else {
-    if (authMode === "local") {
-      console.log(kleur.dim("  # Auth server"));
-
-      console.log(
-        kleur.yellow(
-          "  Requires a local PostgreSQL instance running on localhost:5432\n",
-        ),
-      );
-
-      console.log("  cd auth");
-      console.log("  npm install\n");
-
-      console.log(kleur.dim("  # Initialize database"));
-      console.log("  npm run db:create");
-      console.log("  npm run db:migrate\n");
-
-      console.log(kleur.dim("  # Start auth server"));
-      console.log("  npm run dev\n");
-    }
-
-    if (apiFramework) {
-      console.log(kleur.dim("  # API server"));
-      console.log("  cd api && npm install && npm run dev\n");
-    }
-
-    if (webFramework) {
-      console.log(kleur.dim("  # Web app"));
-      console.log("  cd web && npm install && npm run dev\n");
-    }
-
-    console.log("  Register with " + kleur.bold(ownerEmail) + " to become an admin.\n");
-  }
+  console.log("  2. Register in the browser with " + kleur.bold(ownerEmail));
+  console.log(
+    kleur.dim("     That address is the owner, so it becomes an admin\n"),
+  );
 
   console.log(kleur.bold("Available services:\n"));
 

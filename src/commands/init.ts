@@ -575,7 +575,6 @@ async function scaffoldLocal(
     webFramework: webEntry.framework,
     apiFramework: apiEntry.framework,
     authMode: answers.authMode,
-    useDocker: answers.useDocker,
     adminMode: answers.adminMode,
     ownerEmail: answers.ownerEmail,
   });
