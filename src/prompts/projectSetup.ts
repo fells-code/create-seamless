@@ -1,4 +1,4 @@
-import { confirm, select, text } from "@clack/prompts";
+import { select, text } from "@clack/prompts";
 
 import { orCancel } from "../core/cancel.js";
 import { requireInteractive } from "../core/tty.js";
@@ -222,26 +222,6 @@ export async function runProjectSetupPrompts(
       ) as AdminMode,
   );
 
-  if (authMode === "local" && !assumeYes) {
-    requireInteractive(
-      "Auth server still requires Docker for full stack. Enable Docker?",
-      "Pass --yes; Docker is enabled either way.",
-    );
-    const confirmDocker = orCancel(
-      await confirm({
-        message:
-          "Auth server still requires Docker for full stack. Enable Docker?",
-        initialValue: true,
-      }),
-    );
-
-    if (!confirmDocker) {
-      console.log(
-        "\nDocker is required for full seamless stack. Enabling automatically.\n",
-      );
-    }
-  }
-
   return {
     web: true,
     webTemplateId,
@@ -250,6 +230,8 @@ export async function runProjectSetupPrompts(
     apiTemplateId,
 
     authMode,
+    // Not a question: the full stack needs Docker either way, so asking and then
+    // overriding the answer only spent a keystroke to say so.
     useDocker: true,
 
     adminMode,

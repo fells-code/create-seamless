@@ -244,39 +244,22 @@ describe("runProjectSetupPrompts", () => {
     expect(result.adminMode).toBe("image");
   });
 
-  it("confirms docker is required when local auth mode is chosen and accepted", async () => {
+  // The full stack needs Docker whichever way the auth server runs, so local auth
+  // mode asks nothing extra about it.
+  it("enables docker for a local auth mode without asking", async () => {
     mockSelect({
       "Web example": "web-a",
       "Backend framework": "api-a",
       "How would you like to run SeamlessAuth?": "local",
       "How would you like to host the admin console?": "api",
-    });
-    mockConfirm({
-      "Auth server still requires Docker for full stack. Enable Docker?": true,
     });
 
     const result = await runProjectSetupPrompts(fullRegistry());
 
     expect(result.authMode).toBe("local");
     expect(result.useDocker).toBe(true);
+    expect(confirm).not.toHaveBeenCalled();
     expect(out()).not.toContain("Enabling automatically");
-  });
-
-  it("logs the auto-enable notice when the local docker confirmation is declined", async () => {
-    mockSelect({
-      "Web example": "web-a",
-      "Backend framework": "api-a",
-      "How would you like to run SeamlessAuth?": "local",
-      "How would you like to host the admin console?": "api",
-    });
-    mockConfirm({
-      "Auth server still requires Docker for full stack. Enable Docker?": false,
-    });
-
-    const result = await runProjectSetupPrompts(fullRegistry());
-
-    expect(result.useDocker).toBe(true);
-    expect(out()).toContain("Enabling automatically");
   });
 });
 
@@ -438,16 +421,16 @@ describe("runProjectSetupPrompts without a terminal", () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  it("stops on the Docker confirmation for a local auth mode", async () => {
-    await expect(
-      runProjectSetupPrompts(fullRegistry(), {
-        webTemplateId: "web-a",
-        apiTemplateId: "api-a",
-        ownerEmail: "dev@example.com",
-        authMode: "local",
-        adminMode: "api",
-      }),
-    ).rejects.toThrow(/Enable Docker\?.*needs an interactive terminal/s);
+  it("does not stop a fully preselected local auth mode on a missing terminal", async () => {
+    const result = await runProjectSetupPrompts(fullRegistry(), {
+      webTemplateId: "web-a",
+      apiTemplateId: "api-a",
+      ownerEmail: "dev@example.com",
+      authMode: "local",
+      adminMode: "api",
+    });
+
+    expect(result.useDocker).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
   });
 
