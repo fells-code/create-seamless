@@ -117,6 +117,43 @@ describe("runSessions list", () => {
     expect(output()).toContain("No active sessions.");
   });
 
+  it("warns about rows it could not read rather than hiding them", async () => {
+    const client = fakeClient(() =>
+      response(200, { sessions: [{ id: "s1", current: false }, {}, 42] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runSessions(["list"]);
+
+    expect(output()).toContain("s1");
+    expect(errOutput()).toContain("2 sessions could not be read");
+  });
+
+  it("uses the singular for one unreadable row", async () => {
+    const client = fakeClient(() => response(200, { sessions: [{}] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runSessions(["list"]);
+
+    expect(errOutput()).toContain("1 session could not be read");
+    // Not "No active sessions.": the instance sent one, this could not read it.
+    expect(output()).not.toContain("No active sessions.");
+  });
+
+  // The warning goes to stderr so it cannot corrupt the JSON on stdout.
+  it("keeps the warning out of --json output", async () => {
+    const client = fakeClient(() =>
+      response(200, { sessions: [{ id: "s1", current: false }, {}] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runSessions(["list", "--json"]);
+
+    expect(() => JSON.parse(output())).not.toThrow();
+    expect(JSON.parse(output())).toEqual([{ id: "s1", current: false }]);
+    expect(errOutput()).toContain("could not be read");
+  });
+
   it("prints the sessions as JSON with --json", async () => {
     const rows = [
       { id: "s1", deviceName: "MacBook", ipAddress: "203.0.113.4", current: true },
