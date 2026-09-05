@@ -155,6 +155,16 @@ export function printSuccessOutput(config: {
       ),
     );
   }
+  if (adminMode === "source") {
+    console.log(
+      kleur.dim(
+        "  • Admin console source is in admin/, yours to edit and commit",
+      ),
+    );
+    console.log(
+      kleur.dim("  • docker compose builds it from that directory, not an image"),
+    );
+  }
   console.log(
     kleur.dim(
       `  • ${ownerEmail} is the owner: registering with it grants the admin role`,

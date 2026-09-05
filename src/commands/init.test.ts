@@ -9,6 +9,7 @@ import {
 import { runOAuthSetupPrompts } from "../prompts/oauthSetup.js";
 import { generateAuthServer } from "../generators/auth/auth.js";
 import { generateDockerCompose } from "../generators/docker/docker.js";
+import { generateAdminSource } from "../generators/admin/admin.js";
 import { generateSeamlessConfig } from "../generators/config/config.js";
 import {
   printManagedSuccessOutput,
@@ -78,6 +79,9 @@ vi.mock("../generators/auth/auth.js", () => ({
 }));
 vi.mock("../generators/docker/docker.js", () => ({
   generateDockerCompose: vi.fn(),
+}));
+vi.mock("../generators/admin/admin.js", () => ({
+  generateAdminSource: vi.fn(),
 }));
 vi.mock("../generators/config/config.js", () => ({
   generateSeamlessConfig: vi.fn(),
@@ -1521,5 +1525,71 @@ describe("init without a terminal", () => {
         email: "dev@example.com",
       }),
     ).resolves.toBeUndefined();
+  });
+});
+
+describe("the admin console source mode", () => {
+  function localAnswers(adminMode: string) {
+    vi.mocked(createPortalClient).mockRejectedValue(
+      new ReauthRequiredError("no session"),
+    );
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "docker",
+      adminMode,
+      useDocker: true,
+      ownerEmail: "dev@example.com",
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
+  }
+
+  // The generated compose file declares `build: ./admin`, so this directory has to
+  // exist or the stack cannot come up.
+  it("fetches the dashboard into admin/ for --admin=source", async () => {
+    localAnswers("source");
+
+    await runCLI();
+
+    expect(generateAdminSource).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(["image", "api", "none"])(
+    "does not fetch the dashboard for --admin=%s",
+    async (mode) => {
+      localAnswers(mode);
+
+      await runCLI();
+
+      expect(generateAdminSource).not.toHaveBeenCalled();
+    },
+  );
+
+  it("fetches the dashboard before the compose file that builds from it", async () => {
+    const order: string[] = [];
+    localAnswers("source");
+    vi.mocked(generateAdminSource).mockImplementation(async () => {
+      order.push("admin");
+      return "/work/admin";
+    });
+    vi.mocked(generateDockerCompose).mockImplementation(async () => {
+      order.push("compose");
+      return {} as never;
+    });
+
+    await runCLI();
+
+    expect(order).toEqual(["admin", "compose"]);
+  });
+
+  it("stops the scaffold when the dashboard cannot be fetched", async () => {
+    localAnswers("source");
+    vi.mocked(generateAdminSource).mockRejectedValue(
+      new Error("Failed to download the admin dashboard (404)."),
+    );
+
+    await expect(runCLI()).rejects.toThrow(/Failed to download the admin dashboard/);
+    expect(generateDockerCompose).not.toHaveBeenCalled();
   });
 });

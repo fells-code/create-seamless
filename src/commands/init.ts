@@ -47,6 +47,7 @@ import {
 } from "../core/authClient.js";
 import { getPortalSession, normalizeInstanceUrl } from "../core/config.js";
 import { parseEnv, writeEnv } from "../core/env.js";
+import { generateAdminSource } from "../generators/admin/admin.js";
 import { generateSecret } from "../core/secrets.js";
 import {
   buildScaffoldDatabaseUrl,
@@ -508,6 +509,13 @@ async function scaffoldLocal(
   for (const { entry, dir } of selected) {
     console.log(`Adding ${entry.label} starter...`);
     await source.copyInto(entry, dir);
+  }
+
+  // Before the compose file is written, because that file declares `build: ./admin`
+  // and a project whose build context never arrived cannot come up at all.
+  if (answers.adminMode === "source") {
+    console.log("Adding admin dashboard source...");
+    await generateAdminSource(root);
   }
 
   let sharedConfig: any = {};
