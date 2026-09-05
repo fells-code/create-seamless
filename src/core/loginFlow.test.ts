@@ -1,5 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { completeLogin, LoginError } from "./loginFlow.js";
+import {
+  completeLogin,
+  EPHEMERAL_WINDOW_MS,
+  LoginError,
+} from "./loginFlow.js";
 
 interface Call {
   url: string;
@@ -595,5 +599,139 @@ describe("completeLogin", () => {
         getCode: async () => "123456",
       }),
     ).rejects.toThrow(/Too many attempts/);
+  });
+
+  // Only a 401 means "that code was wrong". Anything else is a condition retyping the
+  // code cannot fix, and burning the remaining attempts on it buried the real reason.
+  describe("a verify answer that is not a wrong code", () => {
+    // Runs a login that reaches the code step, answering verify with `verify` and
+    // recording which attempt numbers the prompt was actually asked for.
+    function verifying(verify: Responder[], attempts: number[]) {
+      mockRouter({
+        "/login": [
+          () =>
+            json({
+              token: "ephemeral-1",
+              identifierType: "email",
+              loginMethods: ["email_otp"],
+            }),
+        ],
+        "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+        "/otp/verify-login-email-otp": verify,
+      });
+
+      return completeLogin({
+        instanceUrl: INSTANCE,
+        identifier: "dev@example.com",
+        getCode: async ({ attempt }) => {
+          attempts.push(attempt);
+          return "ABCDEF";
+        },
+      });
+    }
+
+    it("stops on a 500 without spending the remaining attempts", async () => {
+      const attempts: number[] = [];
+      await expect(
+        verifying([() => json({ error: "boom" }, 500)], attempts),
+      ).rejects.toThrow(/instance failed while verifying the code \(500\)/);
+      expect(attempts).toEqual([1]);
+    });
+
+    it("says a 503 is not the developer's code", async () => {
+      await expect(
+        verifying([() => json({ error: "boom" }, 503)], []),
+      ).rejects.toThrow(/This is not your code/);
+    });
+
+    it("reports a lockout with its retry window, like /login does", async () => {
+      const attempts: number[] = [];
+      await expect(
+        verifying(
+          [
+            () =>
+              json(
+                { error: "account_locked", retryAfterSeconds: 600 },
+                423,
+              ),
+          ],
+          attempts,
+        ),
+      ).rejects.toThrow(
+        /Too many failed attempts for dev@example.com\. Try again in about 10 minute\(s\)\./,
+      );
+      expect(attempts).toEqual([1]);
+    });
+
+    it("names a login method disabled mid-login", async () => {
+      const attempts: number[] = [];
+      await expect(
+        verifying([() => json({ error: "login_method_disabled" }, 403)], attempts),
+      ).rejects.toThrow(/turned off on the instance mid-login/);
+      expect(attempts).toEqual([1]);
+    });
+
+    it("surfaces the instance's reason on a 400", async () => {
+      const attempts: number[] = [];
+      await expect(
+        verifying([() => json({ error: "Invalid payload" }, 400)], attempts),
+      ).rejects.toThrow(/Could not verify the code \(400\)\. The instance said: Invalid payload/);
+      expect(attempts).toEqual([1]);
+    });
+
+    it("still spends an attempt on a 401, which is how a wrong code answers", async () => {
+      const attempts: number[] = [];
+      await expect(
+        verifying(
+          [
+            () => json({ error: "Not allowed" }, 401),
+            () => json({ error: "Not allowed" }, 401),
+            () => json({ error: "Not allowed" }, 401),
+          ],
+          attempts,
+        ),
+      ).rejects.toThrow(/Could not verify a code for dev@example.com/);
+      expect(attempts).toEqual([1, 2, 3]);
+    });
+  });
+
+  it("says the code was dropped when the login window lapses while typing", async () => {
+    const events: string[] = [];
+    let clock = 0;
+
+    mockRouter({
+      "/login": [
+        () =>
+          json({
+            token: "ephemeral-1",
+            identifierType: "email",
+            loginMethods: ["email_otp"],
+          }),
+      ],
+      "/otp/generate-login-email-otp": [() => json({ message: "sent" })],
+      "/otp/verify-login-email-otp": [
+        () => json({ token: "access-1", refreshToken: "refresh-1" }),
+      ],
+    });
+
+    const result = await completeLogin({
+      instanceUrl: INSTANCE,
+      identifier: "dev@example.com",
+      now: () => clock,
+      getCode: async ({ resent }) => {
+        // The first answer is typed after the window has already lapsed.
+        if (!resent) clock += EPHEMERAL_WINDOW_MS + 1;
+        return "ABCDEF";
+      },
+      notify: (event) => events.push(event.type),
+    });
+
+    expect(events).toContain("code_expired");
+    expect(events.indexOf("code_expired")).toBeLessThan(
+      events.indexOf("code_resent"),
+    );
+    // The dropped code is not reported as incorrect, because it was never sent.
+    expect(events).not.toContain("incorrect");
+    expect(result?.tokens.accessToken).toBe("access-1");
   });
 });

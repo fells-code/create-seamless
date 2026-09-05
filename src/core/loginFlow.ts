@@ -20,6 +20,7 @@ export class LoginError extends Error {
 export type LoginEvent =
   | { type: "code_sent"; channel: LoginChannel }
   | { type: "code_resent"; channel: LoginChannel }
+  | { type: "code_expired"; channel: LoginChannel }
   | { type: "code_autofilled"; channel: LoginChannel }
   | { type: "verifying" }
   | { type: "incorrect"; attemptsLeft: number };
@@ -76,6 +77,18 @@ function apiMessage(data: unknown): string | undefined {
   return undefined;
 }
 
+function lockedMessage(
+  data: Record<string, unknown> | null,
+  identifier: string,
+): string {
+  const retryAfter = data?.retryAfterSeconds;
+  const wait =
+    typeof retryAfter === "number" && retryAfter > 0
+      ? ` Try again in about ${Math.ceil(retryAfter / 60)} minute(s).`
+      : "";
+  return `Too many failed attempts for ${identifier}.${wait}`;
+}
+
 async function request(
   instanceUrl: string,
   url: string,
@@ -123,12 +136,7 @@ async function startLogin(
       // The one remaining answer that does imply an account, and the one worth naming:
       // it needs prior failed attempts against this identifier, and the developer can
       // act on it by waiting.
-      const retryAfter = res.data?.retryAfterSeconds;
-      const wait =
-        typeof retryAfter === "number" && retryAfter > 0
-          ? ` Try again in about ${Math.ceil(retryAfter / 60)} minute(s).`
-          : "";
-      throw new LoginError(`Too many failed attempts for ${identifier}.${wait}`);
+      throw new LoginError(lockedMessage(res.data, identifier));
     }
     if (res.status === 403) {
       throw new LoginError(`Login is not permitted for ${identifier}.`);
@@ -222,6 +230,23 @@ async function verifyCode(
   );
 }
 
+function verifyFailure(
+  res: { status: number; data: Record<string, unknown> | null },
+  identifier: string,
+): string {
+  const message = apiMessage(res.data);
+  if (res.status === 423) return lockedMessage(res.data, identifier);
+  if (res.status === 403) {
+    return "That login method was turned off on the instance mid-login.";
+  }
+  if (res.status >= 500) {
+    return `The instance failed while verifying the code (${res.status}). This is not your code; try again shortly.${
+      message ? ` It said: ${message}` : ""
+    }`;
+  }
+  return `Could not verify the code (${res.status}).${message ? ` The instance said: ${message}` : ""}`;
+}
+
 export async function completeLogin(
   opts: CompleteLoginOptions,
 ): Promise<LoginResult | null> {
@@ -268,6 +293,11 @@ export async function completeLogin(
     if (code === null) return null;
 
     if (now() >= started.deadline) {
+      // The code just typed is dropped rather than sent: the pre-auth token it would
+      // travel under has lapsed, so the instance would answer 401 and spend an attempt
+      // on a code that may well have been right. Say so, because from the outside this
+      // looks like the code being ignored.
+      notify({ type: "code_expired", channel });
       started = await startLogin(opts.instanceUrl, opts.identifier, now);
       autoCode = await sendCode(opts.instanceUrl, started, localDelivery);
       resent = true;
@@ -299,6 +329,14 @@ export async function completeLogin(
       throw new LoginError(
         "Too many attempts. The instance limits OTP to 10 per 15 minutes per IP. Wait and try again.",
       );
+    }
+
+    // Only a 401 is worth another try. The instance answers 401 both for a wrong code
+    // and for a lapsed pre-auth token, so it stays an attempt; every other answer means
+    // retyping the code cannot help, and spending the remaining attempts on it would
+    // bury the real reason under "Could not verify a code".
+    if (res.status !== 401) {
+      throw new LoginError(verifyFailure(res, opts.identifier));
     }
 
     attempt++;
