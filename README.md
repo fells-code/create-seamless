@@ -339,7 +339,12 @@ seamless profile remove local  # delete a profile (also clears its keychain toke
 ```
 
 `instanceUrl` is normalized: the trailing slash is stripped and `https` is required for any host
-other than `localhost`, `127.0.0.1`, or `::1`.
+that is not local. Local means `localhost` and any `.localhost` subdomain, the loopback ranges
+(`127.0.0.0/8`, `::1`), the unspecified addresses a dev server binds to (`0.0.0.0`, `::`), the
+private IPv4 ranges (`10/8`, `172.16/12`, `192.168/16`), link-local (`169.254/16`, `fe80::/10`),
+IPv6 unique-local (`fc00::/7`), and mDNS `.local` names. The same rule gates `--local` OTP
+delivery, so a dev instance reached at a container or LAN address works the same way `localhost`
+does.
 
 ### Logging in
 

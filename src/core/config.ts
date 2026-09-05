@@ -228,8 +228,52 @@ export function clearPortalSession(): SeamlessConfig {
   return config;
 }
 
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+const LOCAL_HOSTS = new Set(["localhost", "::1", "[::1]", "::", "[::]"]);
 
+/** An IPv4 dotted quad, as four numbers, or null when the host is not one. */
+function ipv4Octets(host: string): number[] | null {
+  const parts = host.split(".");
+  if (parts.length !== 4) return null;
+  const octets = parts.map((part) =>
+    /^\d{1,3}$/.test(part) ? Number(part) : NaN,
+  );
+  return octets.every((n) => n >= 0 && n <= 255) ? octets : null;
+}
+
+function isPrivateIpv4(host: string): boolean {
+  const octets = ipv4Octets(host);
+  if (!octets) return false;
+  const [a, b] = octets;
+
+  if (a === 127) return true; // loopback, the whole /8 rather than just .0.1
+  if (a === 0) return true; // 0.0.0.0, what a dev server binds to for "every interface"
+  if (a === 10) return true;
+  if (a === 172 && b >= 16 && b <= 31) return true; // /12, so not 172.32+
+  if (a === 192 && b === 168) return true;
+  if (a === 169 && b === 254) return true; // link-local
+  return false;
+}
+
+function isPrivateIpv6(host: string): boolean {
+  // URL.hostname keeps the brackets on an IPv6 literal.
+  const inner = host.startsWith("[") && host.endsWith("]")
+    ? host.slice(1, -1).toLowerCase()
+    : null;
+  if (!inner) return false;
+  // fc00::/7 unique-local and fe80::/10 link-local. Matching on the leading group
+  // is enough here: a global address never opens with one of these.
+  return /^f[cd]/.test(inner) || /^fe[89ab]/.test(inner);
+}
+
+/**
+ * Whether a URL points at something on the developer's own machine or network.
+ *
+ * Gates two things: allowing plaintext http, and `--local` OTP delivery, which asks
+ * the instance to return the code in the response body. A dev instance is commonly
+ * reached at something other than localhost, a container bound to `0.0.0.0`, a LAN
+ * address from a phone on the same network, or an mDNS `.local` name, and refusing
+ * those forced https onto a box that has no certificate.
+ */
 export function isLocalInstanceUrl(input: string): boolean {
   let url: URL;
   try {
@@ -237,8 +281,15 @@ export function isLocalInstanceUrl(input: string): boolean {
   } catch {
     return false;
   }
-  const host = url.hostname;
-  return LOCAL_HOSTS.has(host) || host.endsWith(".localhost");
+  const host = url.hostname.toLowerCase();
+  return (
+    LOCAL_HOSTS.has(host) ||
+    host.endsWith(".localhost") ||
+    host === "local" ||
+    host.endsWith(".local") ||
+    isPrivateIpv4(host) ||
+    isPrivateIpv6(host)
+  );
 }
 
 export function normalizeInstanceUrl(input: string): string {
