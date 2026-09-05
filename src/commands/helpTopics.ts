@@ -300,8 +300,10 @@ config get [key] [--json]
   • Print the whole config or a single key
 
 config set <key> <value>
-  • Update one key; the value is parsed as JSON, falling back to a string
-    (for example: config set access_token_ttl 15m,
+  • Update one writable key. String-typed keys (app_name, rpid,
+    access_token_ttl, refresh_token_ttl) take the value verbatim; every other
+    key parses it as JSON, falling back to a string
+    (for example: config set app_name 123 sets the string "123",
     config set login_methods '["email_otp","passkey"]')
 
 config roles [--json]

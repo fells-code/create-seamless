@@ -262,6 +262,46 @@ describe("runConfig set", () => {
 
     expect(output()).toContain("No changes.");
   });
+
+  // JSON-parsing a string-typed key sent the wrong type for a value that merely
+  // looks like JSON.
+  it.each([
+    ["app_name", "123"],
+    ["app_name", "true"],
+    ["rpid", "true"],
+    ["access_token_ttl", "900"],
+  ])("sends %s=%s as a string", async (key, raw) => {
+    const { client, calls } = fakeClient(() =>
+      response(200, { success: true, updatedKeys: [key] }),
+    );
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runConfig(["set", key, raw]);
+
+    expect(calls[0].body).toEqual({ [key]: raw });
+  });
+
+  it("rejects a key that is not writable, naming the ones that are", async () => {
+    const { client, calls } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["set", "frontend_url", "https://app.example.com"])).rejects.toThrow(
+      "process.exit(1)",
+    );
+
+    expect(errOutput()).toContain('"frontend_url" is not a writable config key.');
+    expect(errOutput()).toContain("app_name");
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an unknown key before reaching the instance", async () => {
+    const { client, calls } = fakeClient(() => response(200, {}));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await expect(runConfig(["set", "bogus", "1"])).rejects.toThrow("process.exit(1)");
+
+    expect(calls).toHaveLength(0);
+  });
 });
 
 describe("runConfig roles", () => {

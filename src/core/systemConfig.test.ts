@@ -11,10 +11,12 @@ import {
   getRoles,
   getSystemConfig,
   listOAuthProviders,
+  isWritableKey,
   parseValue,
   patchSystemConfig,
   PermissionError,
   updateOAuthProvider,
+  WRITABLE_KEYS,
 } from "./systemConfig.js";
 
 function response<T>(status: number, data: T | null): ApiResponse<T> {
@@ -357,6 +359,64 @@ describe("parseValue", () => {
     ]);
     expect(parseValue("15m")).toBe("15m");
     expect(parseValue("My App")).toBe("My App");
+  });
+
+  // The instance types these as strings, so a value that happens to look like JSON
+  // is still a string. Sending 123 for app_name is a type error the server rejects.
+  it.each([
+    ["app_name", "123"],
+    ["app_name", "true"],
+    ["app_name", "null"],
+    ["rpid", "true"],
+    ["access_token_ttl", "900"],
+    ["refresh_token_ttl", "0"],
+  ])("keeps %s=%s a string", (key, raw) => {
+    expect(parseValue(raw, key)).toBe(raw);
+  });
+
+  it("keeps session_idle_ttl a string", () => {
+    expect(parseValue("8", "session_idle_ttl")).toBe("8");
+    expect(parseValue("8h", "session_idle_ttl")).toBe("8h");
+  });
+
+  it("still parses a non-string key's value", () => {
+    expect(parseValue("250", "rate_limit")).toBe(250);
+    expect(parseValue("true", "passkey_login_fallback_enabled")).toBe(true);
+    expect(parseValue('["email_otp"]', "login_methods")).toEqual(["email_otp"]);
+  });
+
+  it("trims a string key's value", () => {
+    expect(parseValue("  Acme  ", "app_name")).toBe("Acme");
+  });
+
+  it("behaves as before when no key is given", () => {
+    expect(parseValue("123")).toBe(123);
+  });
+});
+
+describe("isWritableKey", () => {
+  it("accepts the keys filterWritable keeps", () => {
+    for (const key of WRITABLE_KEYS) {
+      expect(isWritableKey(key)).toBe(true);
+    }
+  });
+
+  it("rejects read-only and unknown keys", () => {
+    // frontend_url is in the config the instance returns but not in its strict
+    // patch schema, so it is read-only rather than merely unlisted.
+    expect(isWritableKey("frontend_url")).toBe(false);
+    expect(isWritableKey("bogus")).toBe(false);
+  });
+
+  // These were absent from WRITABLE_KEYS while the instance accepted them, so
+  // `config apply` dropped them without applying anything.
+  it.each([
+    "authenticator_policy",
+    "session_idle_ttl",
+    "max_concurrent_sessions",
+    "magic_link_redirect_uris",
+  ])("accepts %s, which the instance's patch schema takes", (key) => {
+    expect(isWritableKey(key)).toBe(true);
   });
 });
 
