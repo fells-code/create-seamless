@@ -12,6 +12,7 @@ import {
   getProfile,
   listProfiles,
   loadConfig,
+  isLocalInstanceUrl,
   normalizeInstanceUrl,
   PORTAL_PROFILE_NAME,
   removeProfile,
@@ -288,5 +289,47 @@ describe("normalizeInstanceUrl", () => {
     expect(() => normalizeInstanceUrl("ftp://auth.example.com")).toThrow(
       /must use http or https/,
     );
+  });
+});
+
+describe("isLocalInstanceUrl", () => {
+  it.each([
+    ["localhost", "http://localhost:5312"],
+    ["a .localhost subdomain", "http://auth.localhost:5312"],
+    ["IPv4 loopback", "http://127.0.0.1:5312"],
+    ["the rest of the loopback /8", "http://127.0.0.2:5312"],
+    ["IPv6 loopback", "http://[::1]:5312"],
+    ["the unspecified IPv4 address a dev server binds to", "http://0.0.0.0:3000"],
+    ["the unspecified IPv6 address", "http://[::]:3000"],
+    ["a 10/8 LAN address", "http://10.1.2.3:5312"],
+    ["a 192.168/16 LAN address", "http://192.168.1.10:5312"],
+    ["the bottom of the 172.16/12 range", "http://172.16.0.1:5312"],
+    ["the top of the 172.16/12 range", "http://172.31.255.254:5312"],
+    ["a link-local address", "http://169.254.1.1:5312"],
+    ["an mDNS .local name", "http://macbook.local:5312"],
+    ["an IPv6 unique-local address", "http://[fd00::1]:5312"],
+    ["an IPv6 link-local address", "http://[fe80::1]:5312"],
+  ])("treats %s as local", (_label, url) => {
+    expect(isLocalInstanceUrl(url)).toBe(true);
+  });
+
+  it.each([
+    ["a public host", "https://auth.example.com"],
+    ["a public IPv4 address", "http://93.184.216.34"],
+    ["172.15, just below the private range", "http://172.15.0.1"],
+    ["172.32, just above the private range", "http://172.32.0.1"],
+    ["a host merely containing localhost", "https://notlocalhost.example.com"],
+    ["a host ending in .local.example.com", "https://box.local.example.com"],
+    ["a global IPv6 address", "http://[2606:4700::1111]"],
+    ["something that is not a URL", "not a url"],
+    ["an empty value", ""],
+  ])("does not treat %s as local", (_label, url) => {
+    expect(isLocalInstanceUrl(url)).toBe(false);
+  });
+
+  // Octets are numbers, not a prefix match: 1.10.0.0 is not inside 10/8.
+  it("does not mistake a public address that starts with a private octet", () => {
+    expect(isLocalInstanceUrl("http://1.10.0.1")).toBe(false);
+    expect(isLocalInstanceUrl("http://100.64.0.1")).toBe(false);
   });
 });
