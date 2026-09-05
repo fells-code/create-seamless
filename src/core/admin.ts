@@ -45,13 +45,27 @@ export interface UserList {
   total: number;
 }
 
-export async function listUsers(client: AuthClient): Promise<UserList> {
+export interface ListUsersOptions {
+  limit?: number;
+  offset?: number;
+}
+
+export async function listUsers(
+  client: AuthClient,
+  opts: ListUsersOptions = {},
+): Promise<UserList> {
+  const query = new URLSearchParams();
+  if (opts.limit !== undefined) query.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) query.set("offset", String(opts.offset));
+  const suffix = query.size ? `?${query}` : "";
+
   const res = await call<{ users?: unknown; total?: number }>(
     client,
     "GET",
-    "/admin/users",
+    `/admin/users${suffix}`,
   );
   if (!res.ok) throw new AdminApiError(`Could not list users (${res.status}).`);
+  // `total` counts every user, not just this page, so callers can report position.
   return { users: arr(res.data?.users), total: res.data?.total ?? 0 };
 }
 

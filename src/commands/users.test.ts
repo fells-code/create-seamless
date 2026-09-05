@@ -114,14 +114,23 @@ describe("runUsers — top-level routing", () => {
 });
 
 describe("runUsers list", () => {
-  it("prints the full JSON payload when --json is passed, ignoring pagination flags", async () => {
-    vi.mocked(listUsers).mockResolvedValue({
-      users: [{ id: "u1" }, { id: "u2" }],
-      total: 2,
+  it("asks the server for the default page", async () => {
+    vi.mocked(listUsers).mockResolvedValue({ users: [{ id: "u1" }], total: 1 });
+    await runUsers(["list"]);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(fakeClient, {
+      limit: 50,
+      offset: 0,
     });
-    await runUsers(["list", "--json", "--limit", "1"]);
-    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(fakeClient);
-    expect(logs()).toContain(JSON.stringify([{ id: "u1" }, { id: "u2" }], null, 2));
+  });
+
+  it("prints the requested page as JSON, honouring the pagination flags", async () => {
+    vi.mocked(listUsers).mockResolvedValue({ users: [{ id: "u2" }], total: 2 });
+    await runUsers(["list", "--json", "--limit", "1", "--offset", "1"]);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(fakeClient, {
+      limit: 1,
+      offset: 1,
+    });
+    expect(logs()).toContain(JSON.stringify([{ id: "u2" }], null, 2));
   });
 
   it("prints an empty message when the page is empty", async () => {
@@ -154,15 +163,32 @@ describe("runUsers list", () => {
     expect(logs()).toContain("Showing 1-1 of 1 user.");
   });
 
-  it("paginates with --limit and --offset", async () => {
-    vi.mocked(listUsers).mockResolvedValue({
-      users: [{ id: "u1" }, { id: "u2" }, { id: "u3" }],
-      total: 3,
-    });
+  it("sends --limit and --offset to the server and reports the page position", async () => {
+    vi.mocked(listUsers).mockResolvedValue({ users: [{ id: "u2" }], total: 3 });
     await runUsers(["list", "--limit", "1", "--offset", "1"]);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(fakeClient, {
+      limit: 1,
+      offset: 1,
+    });
     expect(logs()).toContain("Showing 2-2 of 3 users.");
-    expect(logs()).not.toContain("u1");
-    expect(logs()).not.toContain("u3");
+  });
+
+  it("reports an offset past the end without inventing rows", async () => {
+    vi.mocked(listUsers).mockResolvedValue({ users: [], total: 3 });
+    await runUsers(["list", "--offset", "99"]);
+    expect(logs()).toContain("No users.");
+  });
+
+  it.each([
+    ["--limit", "abc"],
+    ["--limit", "-1"],
+    ["--offset", "1.5"],
+  ])("rejects %s %s", async (flag, value) => {
+    await expect(runUsers(["list", flag, value])).rejects.toBeInstanceOf(ExitError);
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("must be a non-negative whole number"),
+    );
+    expect(vi.mocked(listUsers)).not.toHaveBeenCalled();
   });
 });
 

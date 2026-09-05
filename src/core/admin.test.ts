@@ -62,6 +62,22 @@ describe("users", () => {
     expect(await listUsers(client)).toEqual({ users: [{ id: "u1" }], total: 1 });
   });
 
+  it("sends limit and offset as query params", async () => {
+    const { client } = fakeClient(({ path }) => {
+      expect(path).toBe("/admin/users?limit=10&offset=20");
+      return response(200, { users: [], total: 30 });
+    });
+    await listUsers(client, { limit: 10, offset: 20 });
+  });
+
+  it("keeps a zero limit or offset in the query rather than dropping it", async () => {
+    const { client } = fakeClient(({ path }) => {
+      expect(path).toBe("/admin/users?limit=0&offset=0");
+      return response(200, { users: [], total: 30 });
+    });
+    await listUsers(client, { limit: 0, offset: 0 });
+  });
+
   it("deletes a user via the body userId", async () => {
     const { client, calls } = fakeClient(() => response(200, { message: "ok" }));
     await deleteUser(client, "u1");
