@@ -20,7 +20,7 @@
     "node": ">=24 <25"
   },
   "scripts": {
-    "build": "tsc",
+    "build": "npm run clean && tsc",
     "dev": "tsx src/index.ts",
     "clean": "rm -rf dist",
     "test": "vitest run",
