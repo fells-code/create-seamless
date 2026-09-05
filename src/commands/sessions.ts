@@ -2,6 +2,7 @@ import kleur from "kleur";
 import { extractFlag } from "../core/args.js";
 import { createAuthClient, ReauthRequiredError, type AuthClient } from "../core/authClient.js";
 import { clearLocalSession } from "../core/session.js";
+import { errorMessage } from "../core/errors.js";
 import {
   listSessions,
   revokeAllSessions,
@@ -30,7 +31,7 @@ export async function runSessions(args: string[]): Promise<void> {
       console.log(kleur.yellow(err.message));
       process.exit(1);
     }
-    console.error(kleur.red((err as Error).message));
+    console.error(kleur.red(errorMessage(err)));
     process.exit(1);
   }
 }

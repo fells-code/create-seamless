@@ -7,6 +7,7 @@ import {
 } from "../core/authClient.js";
 import { fetchIdentity, type Identity } from "../core/session.js";
 import { getPortalSession, type Profile } from "../core/config.js";
+import { errorMessage } from "../core/errors.js";
 
 export async function runWhoami(args: string[]): Promise<void> {
   const { value: profileFlag } = extractFlag(args, "profile");
@@ -29,7 +30,7 @@ export async function runWhoami(args: string[]): Promise<void> {
       console.log(kleur.yellow(err.message));
       process.exit(1);
     }
-    console.error(kleur.red((err as Error).message));
+    console.error(kleur.red(errorMessage(err)));
     process.exit(1);
   }
 }
