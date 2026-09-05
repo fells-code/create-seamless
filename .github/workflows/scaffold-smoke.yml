@@ -1,0 +1,47 @@
+# Brings up what `seamless init` writes, and asserts the database keeps its data.
+#
+# Everything else in CI checks the generated files as strings. This is the only job
+# that hands them to Docker, so it is the only one that can catch a compose file that
+# is well-formed and wrong. See #166 for the regression that motivated it.
+name: scaffold-smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: scaffold-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: Scaffold smoke
+    # Its own runner, so the fixed host ports and container names in the generated
+    # compose cannot collide with the conformance stack.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      HUSKY: 0
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Scaffold, bring up, and assert persistence
+        run: ./scripts/scaffold-smoke.sh
