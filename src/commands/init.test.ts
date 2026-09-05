@@ -242,7 +242,6 @@ describe("runCLI directory handling", () => {
       authMode: "docker",
       adminMode: "image",
       includeAdmin: true,
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({
@@ -373,7 +372,6 @@ describe("resolveManagedClient", () => {
       authMode: "docker",
       adminMode: "image",
       includeAdmin: true,
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -393,7 +391,6 @@ describe("resolveManagedClient", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "image",
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -426,7 +423,6 @@ describe("resolveManagedClient", () => {
       authMode: "docker",
       adminMode: "image",
       includeAdmin: true,
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -453,7 +449,6 @@ describe("scaffoldLocal", () => {
       authMode: "docker",
       adminMode: "image",
       includeAdmin: true,
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({
@@ -491,6 +486,44 @@ describe("scaffoldLocal", () => {
     expect(printSuccessOutput).toHaveBeenCalled();
   });
 
+  // The compose file is written in both auth modes, so a local auth server's
+  // own token and kid have to survive the compose call that follows it.
+  it("keeps the local auth server's shared config when auth runs from source", async () => {
+    vi.mocked(runProjectSetupPrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+      authMode: "local",
+      adminMode: "image",
+      includeAdmin: true,
+      ownerEmail: "dev@example.com",
+    } as never);
+    vi.mocked(generateAuthServer).mockResolvedValue({
+      apiToken: "local-token",
+      kid: "local-kid",
+    } as never);
+    vi.mocked(generateDockerCompose).mockResolvedValue({
+      apiToken: "docker-token",
+      kid: "docker-kid",
+    } as never);
+
+    await runCLI(undefined, []);
+
+    expect(generateDockerCompose).toHaveBeenCalledWith("/work", {
+      ownerEmail: "dev@example.com",
+      authMode: "local",
+      adminMode: "image",
+      oauth: [],
+    });
+    expect(applyTemplateEnv).toHaveBeenLastCalledWith(
+      "/work/api",
+      expect.anything(),
+      expect.objectContaining({
+        apiToken: "local-token",
+        jwksKid: "local-kid",
+      }),
+    );
+  });
+
   it("runs the local auth generator and collects OAuth when the web template opts in", async () => {
     const source = makeSource({
       "web-oauth": {
@@ -507,7 +540,6 @@ describe("scaffoldLocal", () => {
       adminMode: "image",
       ownerEmail: "dev@example.com",
       includeAdmin: true,
-      useDocker: false,
     } as never);
     vi.mocked(runOAuthSetupPrompts).mockResolvedValue([
       {
@@ -538,8 +570,14 @@ describe("scaffoldLocal", () => {
       "image",
       "dev@example.com",
     );
-    // Docker not requested, so the compose generator is untouched.
-    expect(generateDockerCompose).not.toHaveBeenCalled();
+    expect(generateDockerCompose).toHaveBeenCalledWith("/work", {
+      ownerEmail: "dev@example.com",
+      authMode: "local",
+      adminMode: "image",
+      oauth: expect.arrayContaining([
+        expect.objectContaining({ catalog: { label: "Google" } }),
+      ]),
+    });
     // OAuth next-steps summary lists ready and pending providers.
     expect(out()).toContain("Enabled: Google");
     expect(out()).toContain("Needs credentials before use: GitHub");
@@ -554,7 +592,6 @@ describe("scaffoldLocal", () => {
       adminMode: "image",
       ownerEmail: "dev@example.com",
       includeAdmin: false,
-      useDocker: false,
     } as never);
     vi.mocked(generateAuthServer).mockResolvedValue({} as never);
 
@@ -578,7 +615,6 @@ describe("template alias resolution", () => {
       authMode: "docker",
       adminMode: "image",
       includeAdmin: true,
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -703,7 +739,6 @@ describe("findEntry", () => {
       authMode: "docker",
       adminMode: "image",
       includeAdmin: true,
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
 
@@ -875,7 +910,6 @@ describe("init mode selection", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "image",
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -942,7 +976,6 @@ describe("init mode selection", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "image",
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -1072,7 +1105,6 @@ describe("managed database wiring", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "image",
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -1107,7 +1139,6 @@ describe("integrateExistingProject", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "image",
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
     vi.mocked(generateDockerCompose).mockResolvedValue({} as never);
@@ -1264,7 +1295,6 @@ describe("non-interactive init (--yes)", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "api",
-      useDocker: true,
       ownerEmail: "dev@example.com",
       ...over,
     } as never;
@@ -1510,7 +1540,6 @@ describe("init without a terminal", () => {
       apiTemplateId: "api-express",
       authMode: "docker",
       adminMode: "api",
-      useDocker: true,
       ownerEmail: "dev@example.com",
     } as never);
 
