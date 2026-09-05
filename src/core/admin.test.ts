@@ -228,6 +228,40 @@ describe("organizations", () => {
     );
   });
 
+  it("reports the server's reason for a duplicate org rather than the bare status", async () => {
+    const { client } = fakeClient(() =>
+      response(409, { error: "Organization slug already in use" }),
+    );
+    await expect(createOrg(client, { name: "Acme", slug: "acme" })).rejects.toThrow(
+      "Organization slug already in use (409).",
+    );
+  });
+
+  it("includes validation details the server sends back", async () => {
+    const { client } = fakeClient(() =>
+      response(400, { error: "Invalid payload", details: { slug: "required" } }),
+    );
+    await expect(createOrg(client, { name: "Acme" })).rejects.toThrow(
+      /Invalid payload \(400\)\. \{"slug":"required"\}/,
+    );
+  });
+
+  it("redacts a secret in the details it echoes", async () => {
+    const { client } = fakeClient(() =>
+      response(400, { error: "Invalid", details: { body: { password: "hunter2" } } }),
+    );
+    const err = await createOrg(client, { name: "Acme" }).catch((e: Error) => e);
+    expect((err as Error).message).toContain('"password":"[redacted]"');
+    expect((err as Error).message).not.toContain("hunter2");
+  });
+
+  it("names the failure when the server answers ok with no organization", async () => {
+    const { client } = fakeClient(() => response(200, {}));
+    await expect(createOrg(client, { name: "Acme" })).rejects.toThrow(
+      /returned no organization \(200\)/,
+    );
+  });
+
   it("maps a 404 on listMembers to a clear error", async () => {
     const { client } = fakeClient(() => response(404, { error: "not found" }));
     await expect(listMembers(client, "missing")).rejects.toThrow(
@@ -240,6 +274,31 @@ describe("organizations", () => {
     await expect(addMember(client, "o1", { email: "x@example.com" })).rejects.toBeInstanceOf(
       AdminApiError,
     );
+  });
+
+  it("reports the server's reason for an already-present member", async () => {
+    const { client } = fakeClient(() =>
+      response(409, { error: "User is already an organization member" }),
+    );
+    await expect(
+      addMember(client, "o1", { email: "x@example.com" }),
+    ).rejects.toThrow("User is already an organization member (409).");
+  });
+
+  it("reports the server's reason for removing the last owner", async () => {
+    const { client } = fakeClient(() =>
+      response(400, { error: "Organization must keep at least one owner" }),
+    );
+    await expect(
+      updateMember(client, "o1", "u1", { role: "member" }),
+    ).rejects.toThrow("Organization must keep at least one owner (400).");
+  });
+
+  it("falls back to a named failure when the server gives no reason", async () => {
+    const { client } = fakeClient(() => response(500, {}));
+    await expect(
+      addMember(client, "o1", { email: "x@example.com" }),
+    ).rejects.toThrow("Membership request failed (500).");
   });
 
   it("maps a 404 on addMember to a clear error", async () => {

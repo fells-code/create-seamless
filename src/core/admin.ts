@@ -1,6 +1,7 @@
 import type { AuthClient } from "./authClient.js";
 import type { ApiResponse } from "./http.js";
 import { PermissionError } from "./systemConfig.js";
+import { scrubTokens } from "./redact.js";
 
 export { PermissionError };
 
@@ -15,6 +16,24 @@ export type Json = Record<string, unknown>;
 
 function arr(value: unknown): Json[] {
   return Array.isArray(value) ? (value as Json[]) : [];
+}
+
+// The server says why: "User is already an organization member", "Organization must
+// keep at least one owner". Collapsing that to the status code throws away the only
+// part the developer can act on. Mirrors systemConfig's handling, scrubbing included,
+// because a rejected body is echoed back in `details`.
+function reasonFrom(
+  res: { status: number; data: unknown },
+  fallback: string,
+): string {
+  const data = res.data as { error?: unknown; details?: unknown } | null;
+  const error = typeof data?.error === "string" ? data.error : undefined;
+  const details = data?.details
+    ? ` ${JSON.stringify(scrubTokens(data.details))}`
+    : "";
+  return error
+    ? `${error} (${res.status}).${details}`
+    : `${fallback} (${res.status}).${details}`;
 }
 
 async function call<T>(
@@ -142,8 +161,13 @@ export async function listOrgs(client: AuthClient): Promise<OrgList> {
 }
 
 function orgEnvelope(res: ApiResponse<{ organization?: Json }>): Json {
-  if (!res.ok || !res.data?.organization) {
-    throw new AdminApiError(`Request failed (${res.status}).`);
+  if (!res.ok) {
+    throw new AdminApiError(reasonFrom(res, "Organization request failed"));
+  }
+  if (!res.data?.organization) {
+    throw new AdminApiError(
+      `The instance returned no organization (${res.status}).`,
+    );
   }
   return res.data.organization;
 }
@@ -212,8 +236,11 @@ export async function listMembers(
 }
 
 function membershipEnvelope(res: ApiResponse<{ membership?: Json }>): Json {
-  if (!res.ok || !res.data?.membership) {
-    throw new AdminApiError(`Request failed (${res.status}).`);
+  if (!res.ok) {
+    throw new AdminApiError(reasonFrom(res, "Membership request failed"));
+  }
+  if (!res.data?.membership) {
+    throw new AdminApiError(`The instance returned no membership (${res.status}).`);
   }
   return res.data.membership;
 }
