@@ -106,6 +106,21 @@ describe("patchSystemConfig", () => {
     );
   });
 
+  it("redacts a secret the echoed details hand back", async () => {
+    const { client } = fakeClient(() =>
+      response(400, {
+        error: "Invalid payload",
+        details: { received: { apiKey: "sk-live-abcd1234" } },
+      }),
+    );
+    await expect(patchSystemConfig(client, { rpid: "" })).rejects.toThrow(
+      /"apiKey":"\[redacted\]"/,
+    );
+    await expect(patchSystemConfig(client, { rpid: "" })).rejects.not.toThrow(
+      /sk-live-abcd1234/,
+    );
+  });
+
   it("maps 403 to a PermissionError", async () => {
     const { client } = fakeClient(() => response(403, { error: "Forbidden" }));
     await expect(
@@ -220,6 +235,38 @@ describe("createOAuthProvider", () => {
     await expect(
       createOAuthProvider(client, { id: "google" }),
     ).rejects.toThrow(/Invalid.*tokenUrl/);
+  });
+
+  // The CLI puts clientSecret in this request body itself, so a validation error
+  // that quotes the body back is the one path that can print it, in CI, into a log.
+  it("redacts the clientSecret a rejected provider echoes back", async () => {
+    const { client } = fakeClient(() =>
+      response(400, {
+        error: "Invalid",
+        details: { body: { id: "google", clientSecret: "gho_supersecret" } },
+      }),
+    );
+    const err = await createOAuthProvider(client, { id: "google" }).catch(
+      (e: Error) => e,
+    );
+    expect((err as Error).message).toContain('"clientSecret":"[redacted]"');
+    expect((err as Error).message).not.toContain("gho_supersecret");
+  });
+
+  it("redacts a token quoted inside the details message", async () => {
+    const { client } = fakeClient(() =>
+      response(400, {
+        error: "Invalid",
+        details: {
+          message:
+            "rejected eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.abcdefghij",
+        },
+      }),
+    );
+    const err = await createOAuthProvider(client, { id: "google" }).catch(
+      (e: Error) => e,
+    );
+    expect((err as Error).message).toContain("rejected [redacted]");
   });
 
   it("surfaces a 400 without details as a bare reason", async () => {

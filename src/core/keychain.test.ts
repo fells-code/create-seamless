@@ -3,9 +3,7 @@ import {
   accountKey,
   deleteTokens,
   getTokens,
-  redactToken,
   saveTokens,
-  scrubTokens,
   setBackendForTesting,
   type KeychainBackend,
   type TokenBundle,
@@ -106,30 +104,6 @@ describe("deleteTokens", () => {
 
   it("reports false when there was nothing to delete", async () => {
     expect(await deleteTokens(prod)).toBe(false);
-  });
-});
-
-describe("redaction", () => {
-  it("redactToken never returns the secret", () => {
-    expect(redactToken("super-secret-refresh-token")).toBe("[redacted]");
-    expect(redactToken("")).toBe("(none)");
-    expect(redactToken(undefined)).toBe("(none)");
-  });
-
-  it("scrubTokens masks token-like fields recursively", () => {
-    const scrubbed = scrubTokens({
-      email: "dev@example.com",
-      token: "access-abc",
-      nested: { refreshToken: "refresh-xyz", other: 1 },
-      list: [{ Authorization: "Bearer x" }],
-    });
-
-    expect(scrubbed).toEqual({
-      email: "dev@example.com",
-      token: "[redacted]",
-      nested: { refreshToken: "[redacted]", other: 1 },
-      list: [{ Authorization: "[redacted]" }],
-    });
   });
 });
 
