@@ -1,4 +1,5 @@
 import type { AuthClient } from "./authClient.js";
+import { scrubTokens } from "./redact.js";
 
 export type SystemConfig = Record<string, unknown>;
 
@@ -82,7 +83,7 @@ export async function patchSystemConfig(
   if (res.status === 400) {
     const reason = res.data?.error ?? "Invalid configuration";
     const details = res.data?.details
-      ? ` ${JSON.stringify(res.data.details)}`
+      ? ` ${JSON.stringify(scrubTokens(res.data.details))}`
       : "";
     throw new ConfigApiError(`${reason}.${details}`);
   }
@@ -121,7 +122,7 @@ function providerMutationError(
   if (res.status === 400) {
     const reason = res.data?.error ?? "Invalid OAuth provider";
     const details = res.data?.details
-      ? ` ${JSON.stringify(res.data.details)}`
+      ? ` ${JSON.stringify(scrubTokens(res.data.details))}`
       : "";
     throw new ConfigApiError(`${reason}.${details}`);
   }

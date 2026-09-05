@@ -114,31 +114,3 @@ export async function deleteTokens(
   const b = await loadBackend();
   return b.delete(accountKey(profile));
 }
-
-export function redactToken(value?: string | null): string {
-  return value ? "[redacted]" : "(none)";
-}
-
-const TOKEN_KEYS = new Set([
-  "token",
-  "accesstoken",
-  "refreshtoken",
-  "verificationtoken",
-  "authorization",
-]);
-
-export function scrubTokens<T>(value: T): T {
-  if (Array.isArray(value)) {
-    return value.map((item) => scrubTokens(item)) as unknown as T;
-  }
-  if (value && typeof value === "object") {
-    const out: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(value)) {
-      out[key] = TOKEN_KEYS.has(key.toLowerCase())
-        ? redactToken(typeof val === "string" ? val : String(val))
-        : scrubTokens(val);
-    }
-    return out as T;
-  }
-  return value;
-}
