@@ -249,6 +249,26 @@ describe("index dispatcher", () => {
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
 
+  // `throw` accepts anything. Reading .message off a non-Error printed
+  // "Error: undefined", which named neither the failure nor the fact that
+  // something unexpected came back.
+  it.each([
+    ["a string", "just a string", "just a string"],
+    ["a plain object", { status: 502 }, '{"status":502}'],
+    ["undefined", undefined, "Unexpected error: undefined"],
+  ])("renders %s thrown by a command", async (_label, thrown, expected) => {
+    process.argv = ["node", "index.js", "check"];
+    const { runCheck } = await import("./commands/check.js");
+    vi.mocked(runCheck).mockRejectedValueOnce(thrown);
+
+    await import("./index.js");
+    await flush();
+    await flush();
+
+    expect(errSpy).toHaveBeenCalledWith("Error:", expected);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
   // Ctrl-C is not a failure: it reports as a cancellation on stdout and uses the
   // conventional interrupt status rather than the generic error path.
   it("reports a cancellation and exits 130", async () => {

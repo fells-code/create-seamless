@@ -5,6 +5,7 @@ import { extractFlag, hasHelpFlag } from "./core/args.js";
 import { runCheck } from "./commands/check.js";
 import { printCommandHelp, printHelp } from "./commands/help.js";
 import { COMMANDS } from "./commands/helpTopics.js";
+import { errorMessage } from "./core/errors.js";
 import pkg from "../package.json" with { type: "json" };
 import { runVerify } from "./commands/verify.js";
 import { runProfile } from "./commands/profile.js";
@@ -192,10 +193,10 @@ function unknownCommand(name: string) {
 
 main().catch((err) => {
   if (isCancelled(err)) {
-    console.log(err.message);
+    console.log(errorMessage(err));
     // 130 is the conventional exit status for a command ended by Ctrl-C.
     process.exit(130);
   }
-  console.error("Error:", err.message);
+  console.error("Error:", errorMessage(err));
   process.exit(1);
 });
