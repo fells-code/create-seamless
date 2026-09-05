@@ -33,6 +33,7 @@ import {
   confirmLocalFallback,
 } from "../prompts/initMode.js";
 import { parseEnv, writeEnv } from "../core/env.js";
+import { fetchActiveJwksKid } from "../core/jwksKid.js";
 
 import { CancelledError } from "../core/cancel.js";
 import { runCLI } from "./init.js";
@@ -125,6 +126,9 @@ vi.mock("../core/env.js", () => ({
 }));
 vi.mock("../core/secrets.js", () => ({
   generateSecret: vi.fn(() => "generated-secret"),
+}));
+vi.mock("../core/jwksKid.js", () => ({
+  fetchActiveJwksKid: vi.fn(async () => undefined),
 }));
 
 const CWD = "/work";
@@ -1624,23 +1628,25 @@ describe("the admin console source mode", () => {
   });
 });
 
+// A managed run against one application. `over` patches the app record the portal
+// returns, so a test can say what the control plane reported for it.
+function managedRun(over: Record<string, any> = {}) {
+  vi.mocked(createPortalClient).mockResolvedValue({} as never);
+  vi.mocked(listApplications).mockResolvedValue([app(over)] as never);
+  vi.mocked(selectApplication).mockResolvedValue(app(over) as never);
+  vi.mocked(rotateServiceToken).mockResolvedValue("svc-token" as never);
+  vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+  vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
+    webTemplateId: "web-basic",
+    apiTemplateId: "api-express",
+  } as never);
+  return runCLI(undefined, [], { appId: "app-1" });
+}
+
 // The portal serves mvp and business instances at `domain/<infraId>`, so `domain` is a
 // stored column that goes stale when a trial is upgraded and its tenant moves zones.
 // The scaffold has to point at the server-computed instanceUrl instead.
 describe("managed scaffold instance URL", () => {
-  function managedRun(over: Record<string, any>) {
-    vi.mocked(createPortalClient).mockResolvedValue({} as never);
-    vi.mocked(listApplications).mockResolvedValue([app(over)] as never);
-    vi.mocked(selectApplication).mockResolvedValue(app(over) as never);
-    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token" as never);
-    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
-    vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
-      webTemplateId: "web-basic",
-      apiTemplateId: "api-express",
-    } as never);
-    return runCLI(undefined, [], { appId: "app-1" });
-  }
-
   it("prefers instanceUrl over the stale domain column", async () => {
     await managedRun({
       instanceUrl: "https://zone-b.example.com/inf-42",
@@ -1680,5 +1686,41 @@ describe("managed scaffold instance URL", () => {
         authServerUrl: "norm:https://zone-b.example.com/inf-42",
       }),
     );
+  });
+});
+
+// Instances pin their signing kid per tier (trialkey1, paidkey1). The scaffold used
+// to write the dev default regardless, so every managed app booted warning that it
+// was misconfigured.
+describe("managed scaffold JWKS kid", () => {
+  it("writes the kid the instance is publishing", async () => {
+    vi.mocked(fetchActiveJwksKid).mockResolvedValue("paidkey1");
+
+    await managedRun();
+
+    expect(fetchActiveJwksKid).toHaveBeenCalledWith("norm:https://acme.example.com");
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      "/work/api",
+      expect.anything(),
+      expect.objectContaining({ jwksKid: "paidkey1" }),
+    );
+  });
+
+  it("falls back to the dev default and says so when the instance cannot be read", async () => {
+    vi.mocked(fetchActiveJwksKid).mockResolvedValue(undefined);
+
+    await managedRun();
+
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      "/work/api",
+      expect.anything(),
+      expect.objectContaining({ jwksKid: "dev-main" }),
+    );
+    expect(out()).toContain("Could not read the signing key id");
+  });
+
+  it("does not fail the scaffold when the kid cannot be read", async () => {
+    vi.mocked(fetchActiveJwksKid).mockResolvedValue(undefined);
+    await expect(managedRun()).resolves.not.toThrow();
   });
 });

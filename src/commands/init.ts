@@ -49,6 +49,7 @@ import { getPortalSession, normalizeInstanceUrl } from "../core/config.js";
 import { parseEnv, writeEnv } from "../core/env.js";
 import { generateAdminSource } from "../generators/admin/admin.js";
 import { generateSecret } from "../core/secrets.js";
+import { fetchActiveJwksKid } from "../core/jwksKid.js";
 import {
   buildScaffoldDatabaseUrl,
   getApplicationDatabase,
@@ -62,10 +63,10 @@ import { selectApplication } from "../prompts/appSelect.js";
 const AUTH_SERVER_URL = "http://localhost:5312";
 const API_URL = "http://localhost:3000";
 
-// Managed auth instances resolve signing keys from the token header and do not
-// expose a per-application JWKS kid, so the scaffolded backend uses the SDK's
-// default. This matches the portal's own "Get connected" guidance.
-const MANAGED_JWKS_KID = "dev-main";
+// Only reached when the instance cannot be asked. Adapters resolve the signing key
+// from the token header through the remote JWKS, so this value verifies nothing, but
+// they warn on boot while it is the dev default, so the real kid is worth fetching.
+const FALLBACK_JWKS_KID = "dev-main";
 
 export interface InitOptions {
   profileFlag?: string;
@@ -408,6 +409,7 @@ async function scaffoldManaged(
   const serviceToken = await issueServiceToken(client, app, opts);
 
   const authServerUrl = normalizeInstanceUrl(requireInstanceUrl(app));
+  const jwksKid = await resolveJwksKid(authServerUrl);
 
   // Everything past rotation is guarded: if it throws, the freshly issued token is
   // printed so a deployed app can be re-wired rather than left bricked (the control
@@ -417,7 +419,7 @@ async function scaffoldManaged(
       authServerUrl,
       apiUrl: API_URL,
       apiToken: serviceToken,
-      jwksKid: MANAGED_JWKS_KID,
+      jwksKid,
       // A managed instance hosts its own dashboard, so the app API does not proxy
       // the console. Keeps the template's SERVE_ADMIN_CONSOLE gate off.
       serveAdminConsole: "false",
@@ -458,7 +460,7 @@ async function scaffoldManaged(
         "\nScaffolding failed after a new service token was issued. The token below is valid — set it on your backend to recover:",
       ),
     );
-    printManagedValues(authServerUrl, serviceToken);
+    printManagedValues(authServerUrl, serviceToken, jwksKid);
     throw err;
   }
 }
@@ -603,10 +605,11 @@ async function integrateExistingProject(
   const serviceToken = await issueServiceToken(client, app, opts);
 
   const authServerUrl = normalizeInstanceUrl(requireInstanceUrl(app));
+  const jwksKid = await resolveJwksKid(authServerUrl);
   const apiDir = path.join(root, "api");
 
   if (!fs.existsSync(apiDir)) {
-    printManagedValues(authServerUrl, serviceToken);
+    printManagedValues(authServerUrl, serviceToken, jwksKid);
     return;
   }
 
@@ -620,7 +623,7 @@ async function integrateExistingProject(
         "\nFailed to write api/.env after issuing a new service token. Set it by hand to recover:",
       ),
     );
-    printManagedValues(authServerUrl, serviceToken);
+    printManagedValues(authServerUrl, serviceToken, jwksKid);
     throw err;
   }
 
@@ -644,7 +647,7 @@ function wireApiEnv(
 
   values.AUTH_SERVER_URL = authServerUrl;
   values.API_SERVICE_TOKEN = serviceToken;
-  values.JWKS_KID = values.JWKS_KID || MANAGED_JWKS_KID;
+  values.JWKS_KID = values.JWKS_KID || FALLBACK_JWKS_KID;
   values.COOKIE_SIGNING_KEY =
     values.COOKIE_SIGNING_KEY || generateSecret(32);
   // Never overwritten: an existing project may already hold a working
@@ -657,11 +660,35 @@ function wireApiEnv(
   writeEnv(envPath, values);
 }
 
-function printManagedValues(authServerUrl: string, serviceToken: string) {
+// Asked of the instance rather than assumed: instances pin their kid per tier
+// (trialkey1, paidkey1), so writing the dev default made every managed scaffold boot
+// an app warning that it was misconfigured.
+async function resolveJwksKid(authServerUrl: string): Promise<string> {
+  const kid = await fetchActiveJwksKid(authServerUrl);
+  if (kid) return kid;
+
+  console.log(
+    kleur.yellow(
+      `Could not read the signing key id from ${authServerUrl}, so JWKS_KID is set to "${FALLBACK_JWKS_KID}".`,
+    ),
+  );
+  console.log(
+    kleur.dim(
+      "  Nothing verifies against it, the SDK resolves the key from the token, but your adapter will warn on boot until it matches. Read it from /.well-known/jwks.json once the instance is up.",
+    ),
+  );
+  return FALLBACK_JWKS_KID;
+}
+
+function printManagedValues(
+  authServerUrl: string,
+  serviceToken: string,
+  jwksKid: string,
+) {
   console.log(kleur.green("\nManaged connection values:\n"));
   console.log(kleur.dim("  AUTH_SERVER_URL   ") + authServerUrl);
   console.log(kleur.dim("  API_SERVICE_TOKEN ") + serviceToken);
-  console.log(kleur.dim("  JWKS_KID          ") + MANAGED_JWKS_KID);
+  console.log(kleur.dim("  JWKS_KID          ") + jwksKid);
   console.log(
     kleur.yellow(
       "\nCopy the service token now. The control plane will not show it again.",
