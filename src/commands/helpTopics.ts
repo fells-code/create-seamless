@@ -243,13 +243,16 @@ apps get <id|name|infra-id> [--json]
   },
   {
     name: "whoami",
-    usage: ["seamless whoami [--profile <name>]"],
+    usage: ["seamless whoami [--profile <name>] [--json]"],
     sections: [
       {
         heading: "whoami",
         body: `Show the identity behind your portal session (sub, email, roles), alongside
 the instance URL. Pass --profile <name> to report an instance session
-instead. Fails cleanly if not logged in.`,
+instead. Fails cleanly if not logged in.
+
+--json
+  • Print the same fields as JSON, with a missing sub or email as null`,
       },
     ],
   },
@@ -268,14 +271,17 @@ instead. Fails cleanly if not logged in.`,
   {
     name: "sessions",
     usage: [
-      "seamless sessions [list]",
+      "seamless sessions [list] [--json]",
       "seamless sessions revoke <id | --all> [--force]",
     ],
     sections: [
       {
-        heading: "sessions [list]",
+        heading: "sessions [list] [--json]",
         body: `List the active sessions for the logged-in user, with the current session
-marked. Shows the session id, device or user agent, IP, and last-used time.`,
+marked. Shows the session id, device or user agent, IP, and last-used time.
+
+--json
+  • Print the sessions as JSON instead of the table`,
       },
       {
         heading: "sessions revoke <id | --all> [--force]",

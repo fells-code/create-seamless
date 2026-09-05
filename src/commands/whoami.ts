@@ -9,7 +9,8 @@ import { fetchIdentity, type Identity } from "../core/session.js";
 import { getPortalSession, type Profile } from "../core/config.js";
 
 export async function runWhoami(args: string[]): Promise<void> {
-  const { value: profileFlag } = extractFlag(args, "profile");
+  const { value: profileFlag, rest } = extractFlag(args, "profile");
+  const json = rest.includes("--json");
 
   try {
     // Without --profile this reports the portal account. An instance profile is
@@ -23,7 +24,13 @@ export async function runWhoami(args: string[]): Promise<void> {
         : await createPortalClient();
 
     const identity = await fetchIdentity(client);
-    printIdentity(portal ? "Seamless portal" : client.profile.name, client.profile, identity);
+    const account = portal ? "Seamless portal" : client.profile.name;
+
+    if (json) {
+      printIdentityJson(account, client.profile, identity);
+      return;
+    }
+    printIdentity(account, client.profile, identity);
   } catch (err) {
     if (err instanceof ReauthRequiredError) {
       console.log(kleur.yellow(err.message));
@@ -32,6 +39,28 @@ export async function runWhoami(args: string[]): Promise<void> {
     console.error(kleur.red((err as Error).message));
     process.exit(1);
   }
+}
+
+// The same fields the table shows, as null rather than "(unknown)" when absent: a
+// script asking for JSON wants a missing value it can test, not prose.
+function printIdentityJson(
+  account: string,
+  profile: Profile,
+  identity: Identity,
+): void {
+  console.log(
+    JSON.stringify(
+      {
+        account,
+        instanceUrl: profile.instanceUrl,
+        sub: identity.sub ?? profile.sub ?? null,
+        email: identity.email ?? profile.email ?? null,
+        roles: identity.roles,
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 function printIdentity(

@@ -117,6 +117,43 @@ describe("runSessions list", () => {
     expect(output()).toContain("No active sessions.");
   });
 
+  it("prints the sessions as JSON with --json", async () => {
+    const rows = [
+      { id: "s1", deviceName: "MacBook", ipAddress: "203.0.113.4", current: true },
+      { id: "s2", current: false },
+    ];
+    const client = fakeClient(() => response(200, { sessions: rows }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runSessions(["list", "--json"]);
+
+    const parsed = JSON.parse(output());
+    expect(parsed).toHaveLength(2);
+    expect(parsed[0]).toMatchObject({ id: "s1", deviceName: "MacBook", current: true });
+    expect(parsed[1]).toMatchObject({ id: "s2", current: false });
+  });
+
+  // A script piping to jq wants valid JSON for the empty case too, not prose.
+  it("prints an empty array rather than a message when --json finds nothing", async () => {
+    const client = fakeClient(() => response(200, { sessions: [] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runSessions(["list", "--json"]);
+
+    expect(JSON.parse(output())).toEqual([]);
+    expect(output()).not.toContain("No active sessions.");
+  });
+
+  it("still lists when --json is combined with --profile", async () => {
+    const client = fakeClient(() => response(200, { sessions: [{ id: "s1" }] }));
+    vi.mocked(createAuthClient).mockResolvedValue(client);
+
+    await runSessions(["list", "--profile", "staging", "--json"]);
+
+    expect(createAuthClient).toHaveBeenCalledWith({ profileFlag: "staging" });
+    expect(JSON.parse(output())[0]).toMatchObject({ id: "s1" });
+  });
+
   it("prints each session with device, ip, and last-used details", async () => {
     const client = fakeClient(() =>
       response(200, {

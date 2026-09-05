@@ -128,6 +128,40 @@ describe("runWhoami", () => {
     expect(lines.some((l) => l.includes("Roles") && l.includes("admin, user"))).toBe(true);
   });
 
+  it("prints the identity as JSON with --json", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        json({
+          user: { id: "user-1", email: "dev@example.com", roles: ["admin", "user"] },
+        }),
+      ),
+    );
+
+    await runWhoami(["--json"]);
+
+    const parsed = JSON.parse(logSpy.mock.calls.map((c) => c[0] as string).join(""));
+    expect(parsed).toEqual({
+      account: "default",
+      instanceUrl: profile.instanceUrl,
+      sub: "user-1",
+      email: "dev@example.com",
+      roles: ["admin", "user"],
+    });
+  });
+
+  // "(unknown)" is prose for a reader. A script wants a value it can test.
+  it("reports a missing sub and email as null in JSON", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ user: {} })));
+
+    await runWhoami(["--json"]);
+
+    const parsed = JSON.parse(logSpy.mock.calls.map((c) => c[0] as string).join(""));
+    expect(parsed.sub).toBeNull();
+    expect(parsed.email).toBeNull();
+    expect(parsed.roles).toEqual([]);
+  });
+
   it("falls back to the profile's sub/email and (unknown)/(none) when identity omits them", async () => {
     upsertProfile({ ...profile, sub: "profile-sub", email: "profile@example.com" });
     vi.stubGlobal(
