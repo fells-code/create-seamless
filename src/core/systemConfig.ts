@@ -2,6 +2,9 @@ import type { AuthClient } from "./authClient.js";
 
 export type SystemConfig = Record<string, unknown>;
 
+// Mirrors the instance's patch schema, which is strict: a key missing here is one
+// `config apply` silently drops and `config set` refuses, so the two lists have to
+// stay in step.
 export const WRITABLE_KEYS = [
   "app_name",
   "default_roles",
@@ -10,12 +13,16 @@ export const WRITABLE_KEYS = [
   "passkey_login_fallback_enabled",
   "oauth_providers",
   "lockout_policy",
+  "authenticator_policy",
   "access_token_ttl",
+  "session_idle_ttl",
   "refresh_token_ttl",
+  "max_concurrent_sessions",
   "rate_limit",
   "delay_after",
   "rpid",
   "origins",
+  "magic_link_redirect_uris",
 ] as const;
 
 const WRITABLE = new Set<string>(WRITABLE_KEYS);
@@ -191,12 +198,35 @@ export async function deleteOAuthProvider(
   throw providerMutationError(res, "remove", id);
 }
 
-export function parseValue(raw: string): unknown {
+// The writable keys the instance types as a plain string. Their values are never
+// JSON-parsed, so `config set app_name 123` sends the string "123" rather than the
+// number 123, and `config set rpid true` sends "true". Everything else (arrays,
+// objects, numbers, booleans) is parsed, falling back to the raw string when the
+// value is not valid JSON, which is what makes `access_token_ttl 15m` work.
+const STRING_KEYS = new Set<string>([
+  "app_name",
+  "access_token_ttl",
+  "session_idle_ttl",
+  "refresh_token_ttl",
+  "rpid",
+]);
+
+export function isStringKey(key: string): boolean {
+  return STRING_KEYS.has(key);
+}
+
+export function parseValue(raw: string, key?: string): unknown {
+  const trimmed = raw.trim();
+  if (key !== undefined && STRING_KEYS.has(key)) return trimmed;
   try {
-    return JSON.parse(raw.trim());
+    return JSON.parse(trimmed);
   } catch {
     return raw;
   }
+}
+
+export function isWritableKey(key: string): boolean {
+  return WRITABLE.has(key);
 }
 
 export function filterWritable(config: SystemConfig): {

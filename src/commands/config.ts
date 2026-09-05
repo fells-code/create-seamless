@@ -11,6 +11,7 @@ import {
   getRoles,
   getSystemConfig,
   listOAuthProviders,
+  isWritableKey,
   parseValue,
   patchSystemConfig,
   PermissionError,
@@ -18,6 +19,7 @@ import {
   type ConfigChange,
   type OAuthProvider,
   type SystemConfig,
+  WRITABLE_KEYS,
 } from "../core/systemConfig.js";
 import {
   confirmDestructive,
@@ -107,7 +109,13 @@ async function configSet(client: AuthClient, rest: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const value = parseValue(valueParts.join(" "));
+  if (!isWritableKey(key)) {
+    console.error(kleur.red(`"${key}" is not a writable config key.`));
+    console.error(kleur.dim(`Writable keys: ${WRITABLE_KEYS.join(", ")}`));
+    process.exit(1);
+  }
+
+  const value = parseValue(valueParts.join(" "), key);
   const result = await patchSystemConfig(client, { [key]: value });
 
   if (result.updatedKeys.length) {
