@@ -370,14 +370,20 @@ the OTP rate limiter, and refreshes the code automatically if the five minute wi
 ```bash
 seamless whoami                 # sub, email, roles, and instance URL for your portal session
 seamless whoami --profile prod  # the same for an instance session
+seamless whoami --json          # the same fields as JSON, for scripting
 seamless logout                 # end the portal session and clear local tokens
 seamless logout --profile prod  # end an instance session instead
 seamless logout --all           # revoke every session for the user, then clear local tokens
 
 seamless sessions               # list active sessions (current one marked)
+seamless sessions --json        # the same list as JSON
 seamless sessions revoke <id>   # revoke one session (confirms if it is the current one)
 seamless sessions revoke --all  # revoke every session (confirms, then clears local tokens)
 ```
+
+`--json` on either prints machine-readable output and nothing else, so an empty session list
+is `[]` rather than a message. `whoami --json` reports a missing `sub` or `email` as `null`
+instead of the `(unknown)` the table shows.
 
 ### Configuration as code
 

@@ -24,7 +24,7 @@ export async function runSessions(args: string[]): Promise<void> {
     if (sub === "revoke") {
       await revoke(client, positional);
     } else {
-      await list(client);
+      await list(client, positional);
     }
   } catch (err) {
     if (err instanceof ReauthRequiredError) {
@@ -36,8 +36,14 @@ export async function runSessions(args: string[]): Promise<void> {
   }
 }
 
-async function list(client: AuthClient): Promise<void> {
+async function list(client: AuthClient, positional: string[]): Promise<void> {
   const sessions = await listSessions(client);
+
+  if (positional.includes("--json")) {
+    console.log(JSON.stringify(sessions, null, 2));
+    return;
+  }
+
   if (sessions.length === 0) {
     console.log(kleur.dim("No active sessions."));
     return;
