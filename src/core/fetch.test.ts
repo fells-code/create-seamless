@@ -33,14 +33,18 @@ describe("fetchEnvExample", () => {
     );
   });
 
-  it("propagates a network failure", async () => {
+  it("names the URL and the purpose when the connection fails", async () => {
+    const cause = new TypeError("fetch failed");
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => {
-        throw new Error("network down");
+        throw cause;
       }),
     );
 
-    await expect(fetchEnvExample()).rejects.toThrow("network down");
+    await expect(fetchEnvExample()).rejects.toThrow(
+      `Could not reach https://raw.githubusercontent.com/fells-code/seamless-auth-api/${SEAMLESS_AUTH_API_VERSION}/.env.example to read the auth server's env.example. Check your network connection.`,
+    );
+    await expect(fetchEnvExample()).rejects.toMatchObject({ cause });
   });
 });

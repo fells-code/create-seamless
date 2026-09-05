@@ -248,6 +248,18 @@ describe("openTemplateSource (remote)", () => {
     );
   });
 
+  it("names the registry URL when the connection fails", async () => {
+    mockFetchByUrl({
+      "registry.json": () => {
+        throw new TypeError("fetch failed");
+      },
+    });
+
+    await expect(openTemplateSource()).rejects.toThrow(
+      `Could not reach https://raw.githubusercontent.com/${SEAMLESS_TEMPLATES_REPO}/${SEAMLESS_TEMPLATES_REF}/registry.json to read the template registry. Check your network connection.`,
+    );
+  });
+
   it("throws when the fetched registry is malformed", async () => {
     mockFetchByUrl({
       "registry.json": () => ({ ok: true, text: () => JSON.stringify({}) }),
@@ -269,6 +281,25 @@ describe("openTemplateSource (remote)", () => {
     await expect(
       source.readManifest(registryPayload.templates[0] as RegistryEntry),
     ).rejects.toThrow(/Failed to download templates \(503\)/);
+  });
+
+  it("names the archive URL when the connection fails", async () => {
+    mockFetchByUrl({
+      "registry.json": () => ({
+        ok: true,
+        text: () => JSON.stringify(registryPayload),
+      }),
+      ".zip": () => {
+        throw new TypeError("fetch failed");
+      },
+    });
+
+    const source = await openTemplateSource();
+    await expect(
+      source.readManifest(registryPayload.templates[0] as RegistryEntry),
+    ).rejects.toThrow(
+      `Could not reach https://github.com/${SEAMLESS_TEMPLATES_REPO}/archive/${SEAMLESS_TEMPLATES_REF}.zip to download the project templates. Check your network connection.`,
+    );
   });
 
   it("throws when the downloaded archive has no entries", async () => {

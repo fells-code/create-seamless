@@ -5,6 +5,7 @@ import AdmZip from "adm-zip";
 
 import { VERSION } from "../index.js";
 import { parseEnvString, writeEnv } from "./env.js";
+import { fetchRemote } from "./fetch.js";
 import { generateSecret } from "./secrets.js";
 import { SEAMLESS_TEMPLATES_REF, SEAMLESS_TEMPLATES_REPO } from "./images.js";
 
@@ -140,7 +141,7 @@ function openLocalSource(dir: string): TemplateSource {
 
 async function openRemoteSource(repo: string, ref: string): Promise<TemplateSource> {
   const registryUrl = `https://raw.githubusercontent.com/${repo}/${ref}/registry.json`;
-  const res = await fetch(registryUrl);
+  const res = await fetchRemote(registryUrl, "read the template registry");
   if (!res.ok) {
     throw new Error(
       `Failed to fetch the template registry (${res.status}) from ${registryUrl}.`,
@@ -154,7 +155,7 @@ async function openRemoteSource(repo: string, ref: string): Promise<TemplateSour
   const ensureArchive = async () => {
     if (archive) return archive;
     const url = `https://github.com/${repo}/archive/${ref}.zip`;
-    const zipRes = await fetch(url);
+    const zipRes = await fetchRemote(url, "download the project templates");
     if (!zipRes.ok) {
       throw new Error(`Failed to download templates (${zipRes.status}) from ${url}.`);
     }
