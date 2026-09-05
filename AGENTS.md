@@ -157,7 +157,6 @@ Modes and sibling repos:
 - [src/generators](src/generators): locally generated scaffolding (auth, docker, config)
 - [src/core](src/core): shared helpers (templates, exec, env, fetch, secrets, paths, package manager, output)
 - [src/prompts](src/prompts): interactive setup prompts (`@clack/prompts`)
-- [src/utils](src/utils): repo and env-file helpers
 - [verify](verify): the conformance harness (shipped with the package)
 
 Templates are not in this repo — they live in the `seamless-templates` monorepo

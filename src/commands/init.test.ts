@@ -568,8 +568,7 @@ describe("scaffoldLocal", () => {
 
     expect(runOAuthSetupPrompts).toHaveBeenCalled();
     expect(generateAuthServer).toHaveBeenCalledWith(
-      { root: "/work" },
-      "local",
+      "/work",
       expect.arrayContaining([
         expect.objectContaining({ catalog: { label: "Google" } }),
       ]),
