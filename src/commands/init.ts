@@ -54,6 +54,7 @@ import {
   getApplicationDatabase,
   listApplications,
   rotateServiceToken,
+  resolveAppInstanceUrl,
   type PortalApp,
 } from "../core/portal.js";
 import { selectApplication } from "../prompts/appSelect.js";
@@ -370,7 +371,7 @@ async function scaffoldManaged(
   preselect: TemplatePreselect,
   openSource: OpenSource,
   client: AuthClient,
-  apps: ConnectableApp[],
+  apps: PortalApp[],
   opts: InitOptions,
 ) {
   const source = await openSource();
@@ -406,7 +407,7 @@ async function scaffoldManaged(
 
   const serviceToken = await issueServiceToken(client, app, opts);
 
-  const authServerUrl = normalizeInstanceUrl(app.domain);
+  const authServerUrl = normalizeInstanceUrl(requireInstanceUrl(app));
 
   // Everything past rotation is guarded: if it throws, the freshly issued token is
   // printed so a deployed app can be re-wired rather than left bricked (the control
@@ -590,7 +591,7 @@ async function scaffoldLocal(
 async function integrateExistingProject(
   root: string,
   client: AuthClient,
-  apps: ConnectableApp[],
+  apps: PortalApp[],
   opts: InitOptions,
 ) {
   const app = await selectApplication(apps, opts.appId);
@@ -602,7 +603,7 @@ async function integrateExistingProject(
 
   const serviceToken = await issueServiceToken(client, app, opts);
 
-  const authServerUrl = normalizeInstanceUrl(app.domain);
+  const authServerUrl = normalizeInstanceUrl(requireInstanceUrl(app));
   const apiDir = path.join(root, "api");
 
   if (!fs.existsSync(apiDir)) {
@@ -719,13 +720,27 @@ async function issueServiceToken(
   return rotateServiceToken(client, app.id);
 }
 
-type ConnectableApp = PortalApp & { domain: string };
+// connectable() filters out applications with no auth server, so this throwing means
+// the filtered list and the selection disagreed, not that one is simply not ready yet.
+function requireInstanceUrl(app: PortalApp): string {
+  const url = resolveAppInstanceUrl(app);
+  if (!url) {
+    throw new Error(
+      `Application "${app.name}" has no auth instance URL yet. Run seamless apps list to check whether it has finished provisioning.`,
+    );
+  }
+  return url;
+}
 
 // listApplications reports applications that have not finished provisioning too,
 // because `seamless apps list` has to show them. Managed connect needs an auth
 // server to point at, so it keeps considering only the ones that have one.
-function connectable(apps: PortalApp[]): ConnectableApp[] {
-  return apps.filter((app): app is ConnectableApp => !!app.domain);
+//
+// Asked through resolveAppInstanceUrl rather than of `domain` directly: an
+// application served at an instanceUrl its stale domain column never carried would
+// otherwise be filtered out here and never offered.
+function connectable(apps: PortalApp[]): PortalApp[] {
+  return apps.filter((app) => resolveAppInstanceUrl(app) !== undefined);
 }
 
 interface SelectedTemplate {
