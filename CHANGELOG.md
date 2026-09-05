@@ -1,5 +1,152 @@
 # seamless-cli
 
+## 0.12.2
+
+### Patch Changes
+
+- cc54666: Make `--admin=source` produce a stack that runs.
+
+  "Separate container, clone repo for modification" wrote `build: ./admin` into the compose
+  file and recorded `path: "./admin"` in `seamless.config.json`, but nothing ever created
+  `admin/`. `docker compose up` failed on a missing build context, and the success output
+  said nothing about it, so a first-class menu option scaffolded a project that could not
+  start.
+
+  `init` now unpacks the admin dashboard into `admin/` for that mode, from the same tag the
+  published image is built from, so both admin modes scaffold the same dashboard. It arrives
+  as plain files rather than a git clone, which is what a directory destined for the
+  developer's own repository wants, and needs no git binary. Override the ref with
+  `SEAMLESS_ADMIN_DASHBOARD_REF`, or scaffold from a local checkout with
+  `SEAMLESS_ADMIN_DASHBOARD_DIR`.
+
+  The fetch runs before the compose file is written, so a failed download stops the scaffold
+  instead of leaving a project that cannot come up, and the success output now points at
+  `admin/`.
+
+  Extraction is constrained to the project directory: an archive entry whose resolved path
+  would escape it fails the scaffold rather than being written or silently skipped. Not
+  reachable while the archive is our own repository over https, but this is a new extraction
+  site and it should not add to what #135 already tracks for the templates source.
+
+- 464f0c0: Stop `config set` from changing the type of a string value, and check the key first.
+
+  `parseValue` ran `JSON.parse` on every value, so `config set app_name 123` sent the number
+  `123` and `config set rpid true` sent the boolean `true` for keys the instance types as
+  strings. `set` also skipped the `WRITABLE_KEYS` filter that `apply` applies, so a key the
+  instance's strict patch schema rejects was sent anyway and came back as an opaque failure.
+
+  String-typed keys (`app_name`, `rpid`, `access_token_ttl`, `session_idle_ttl`,
+  `refresh_token_ttl`) now take their value verbatim; every other key parses as JSON with the
+  existing fallback to a string. An unwritable key is refused before the request, naming the
+  keys that are writable.
+
+  That guard is only correct if the list is, and it had drifted: `authenticator_policy`,
+  `session_idle_ttl`, `max_concurrent_sessions`, and `magic_link_redirect_uris` are all
+  accepted by the instance but were missing from `WRITABLE_KEYS`, so `config apply` had been
+  silently dropping them. They are now included.
+
+- 40c533e: Remove the `useDocker` flag that could only ever be true.
+
+  With the Docker confirm gone, `runProjectSetupPrompts` still returned `useDocker: true`
+  unconditionally and `init` still gated the Docker Compose generation on it. The condition
+  had no false case, so the guard read like a real choice while describing a scaffold the
+  CLI never produced.
+
+  The field is off the answers object and the compose file is now generated outright on the
+  local scaffold path. Nothing about what `init` generates changes.
+
+- 5450c34: Stop asking a question whose answer was never used.
+
+  Choosing to run the auth server from local source prompted "Auth server still requires
+  Docker for full stack. Enable Docker?", then discarded the answer: `useDocker` was returned
+  as `true` either way, and declining only printed "Enabling automatically". The full stack
+  needs Docker regardless, so the prompt cost a keystroke to tell the developer their answer
+  did not count.
+
+  The prompt is gone, and with it the entire non-docker branch of the success output, which
+  described a workflow (bring your own PostgreSQL, `npm run dev` per service) that no run
+  could ever reach. Nothing about what `init` generates changes.
+
+- cccc0ed: Stop reading every failed code verification as a wrong code.
+
+  `completeLogin` handled only `200` and `429` specially, so a `500`, a `423` lockout, a
+  `403` for a login method disabled mid-flow, and a `400` all fell through to "That code was
+  not accepted", spent an attempt, and ended three attempts later on a generic message with
+  the real reason nowhere in sight.
+
+  Only a `401` is retried now, because that is how the instance answers a genuinely wrong
+  code. Everything else stops immediately and reports what the instance said, with a lockout
+  formatted the same way `/login` already formats it.
+
+  Separately, when the five minute login window lapses while a code is being typed, the CLI
+  drops that code and requests a new one. It now says so rather than appearing to ignore
+  what was entered.
+
+- 9e13d09: Stop the login prompt from deciding what a valid one-time code looks like.
+
+  The email branch required `/^[A-Za-z]{6}$/` and the phone branch `/^\d{4,8}$/`, so a code
+  outside those shapes was refused locally, before the instance ever saw it, with no way to
+  override. The email code was also force-uppercased on the way out. Both encode a detail
+  that belongs to the instance: the shape it issues can change, and it normalizes email OTP
+  case itself, so the uppercasing was redundant at best and corrupting for a case-sensitive
+  code.
+
+  The prompt now refuses only an empty answer and sends what was typed, trimmed. The
+  placeholder still shows today's shape as a hint.
+
+- da160ca: Redact secrets in the server validation details the CLI prints.
+
+  `patchSystemConfig` and the OAuth provider mutations splice a rejected request's `details`
+  payload into the error they throw, and `runConfig` prints it to stderr. Validation errors
+  commonly quote the offending value back, and for `seamless config oauth-providers
+add|update` that request body carries a `clientSecret`, so a rejected provider config could
+  print a client secret, in CI, into a build log. Both sites now scrub before stringifying.
+
+  The scrubber itself grew to match. It covers `secret`, `clientSecret`, `client_secret`,
+  `password`, `apiKey`, `api_key`, `otp`, and `code` alongside the token keys it already knew,
+  and it now masks by shape as well as by key: a JWT or a `Bearer ...` credential quoted
+  inside a message string is caught wherever it appears, including in a bare string body,
+  which key matching alone could never reach.
+
+  `redactToken` and `scrubTokens` moved from `core/keychain.ts` to a new `core/redact.ts`.
+  They are a logging concern with no keychain dependency. `--json` output is deliberately
+  left unscrubbed: it is a machine-readable contract, and rewriting values there would break
+  scripts and hide data the caller asked for.
+
+- 1f9e25f: Make transparent token refresh survive rotation, concurrency, and a persistent 401.
+
+  Four problems, all sharpened by the same instance behaviour: `/refresh` rotates the refresh
+  token on every call, and a second use of a spent one is read as theft and revokes the whole
+  session chain.
+
+  - **A refresh that renewed only the access token wiped the session.**
+    `tokensFromAuthResponse` required both tokens, which is right for a login but not for a
+    refresh: the response schema marks both optional. A new `tokensFromRefreshResponse` keeps
+    the current refresh token when the instance does not send a new one.
+  - **Concurrent 401s fired parallel refreshes.** With reuse detection that does not merely
+    race, it logs the developer out. Refreshes are now single-flight, and a request whose
+    token was already replaced while it was in flight simply retries instead of refreshing
+    again.
+  - **A headless run broke itself after the first rotation.** `SEAMLESS_REFRESH_TOKEN` is read
+    fresh on every run, so a rotated token written to the keychain was never read back, and
+    the next run re-sent the spent one, revoking the session. The CLI no longer writes it, and
+    a rejected environment token now explains rotation and names the command that issues a new
+    one.
+  - **A 401 that survived a refresh was returned verbatim**, leaving commands to report an
+    opaque failure rather than saying the session is gone. It now raises `ReauthRequired`.
+
+- eab9c29: Send `--limit` and `--offset` to the server on `seamless users list`.
+
+  Both flags were parsed and then dropped: `listUsers` called `GET /admin/users` with no
+  query, and the command sliced the single page the server returned (its own default of 50)
+  client-side. An `--offset` past that page printed "No users." while the summary line
+  reported a larger `total`, and `--json` ignored paging entirely, so a script could never
+  walk past the first 50 users.
+
+  The flags now travel as query params, which the API already honours, and `--json` returns
+  the same page the table does. A non-numeric or negative `--limit`/`--offset` is rejected
+  instead of being coerced to `NaN` and silently returning nothing.
+
 ## 0.12.1
 
 ### Patch Changes
