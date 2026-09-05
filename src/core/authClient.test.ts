@@ -20,6 +20,7 @@ import {
   createPortalClient,
   ReauthRequiredError,
   tokensFromAuthResponse,
+  tokensFromRefreshResponse,
 } from "./authClient.js";
 
 function fakeBackend(): KeychainBackend {
@@ -424,5 +425,164 @@ describe("tokensFromAuthResponse", () => {
   it("returns null when required fields are missing", () => {
     expect(tokensFromAuthResponse({ token: "a" })).toBeNull();
     expect(tokensFromAuthResponse(null)).toBeNull();
+  });
+});
+
+describe("tokensFromRefreshResponse", () => {
+  const current = {
+    accessToken: "old-access",
+    refreshToken: "old-refresh",
+    refreshTokenExpiresAt: 4_000,
+  };
+
+  // The response schema marks both tokens optional. Requiring the pair, as a login
+  // rightly does, wiped a session the instance had just renewed.
+  it("keeps the current refresh token when only the access token comes back", () => {
+    const bundle = tokensFromRefreshResponse({ token: "new-access" }, current);
+
+    expect(bundle?.accessToken).toBe("new-access");
+    expect(bundle?.refreshToken).toBe("old-refresh");
+    expect(bundle?.refreshTokenExpiresAt).toBe(4_000);
+  });
+
+  it("takes the rotated refresh token when the instance sends one", () => {
+    const bundle = tokensFromRefreshResponse(
+      { token: "new-access", refreshToken: "new-refresh", refreshTtl: 3600 },
+      current,
+    );
+
+    expect(bundle?.refreshToken).toBe("new-refresh");
+    expect(bundle?.refreshTokenExpiresAt).toBeGreaterThan(Date.now());
+  });
+
+  it("returns null without a usable access token", () => {
+    expect(tokensFromRefreshResponse({ refreshToken: "r" }, current)).toBeNull();
+    expect(tokensFromRefreshResponse({}, current)).toBeNull();
+    expect(tokensFromRefreshResponse(null, current)).toBeNull();
+  });
+});
+
+describe("refresh robustness", () => {
+  it("keeps working when the instance rotates only the access token", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+    });
+
+    const calls = mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ message: "Success", token: "new-access" }),
+      () => json({ ok: true }),
+    ]);
+
+    const client = await createAuthClient();
+    const res = await client.get("/whoami");
+
+    expect(res.status).toBe(200);
+    expect(authHeader(calls[2])).toBe("Bearer new-access");
+    expect((await getTokens(profile))?.refreshToken).toBe("old-refresh");
+  });
+
+  // The instance revokes the whole session chain when it sees a refresh token twice,
+  // so parallel refreshes would log the developer out rather than merely race.
+  it("refreshes once for concurrent 401s", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+    });
+
+    const calls: Call[] = [];
+    let refreshes = 0;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init: RequestInit = {}) => {
+        calls.push({ url, init });
+        if (url.endsWith("/refresh")) {
+          refreshes++;
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return json({ token: "new-access", refreshToken: "new-refresh" });
+        }
+        const auth = (init.headers as Record<string, string>)?.Authorization;
+        return auth === "Bearer new-access"
+          ? json({ ok: true })
+          : new Response(null, { status: 401 });
+      }),
+    );
+
+    const client = await createAuthClient();
+    const results = await Promise.all([
+      client.get("/a"),
+      client.get("/b"),
+      client.get("/c"),
+    ]);
+
+    expect(refreshes).toBe(1);
+    expect(results.every((r) => r.status === 200)).toBe(true);
+  });
+
+  it("raises ReauthRequired when a refreshed token is still rejected", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+    });
+
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ token: "new-access", refreshToken: "new-refresh" }),
+      () => new Response(null, { status: 401 }),
+    ]);
+
+    const client = await createAuthClient();
+    const err = await client.get("/whoami").catch((e: Error) => e);
+
+    expect(err).toBeInstanceOf(ReauthRequiredError);
+    expect((err as Error).message).toMatch(/rejected after refreshing it/);
+    expect(await getTokens(profile)).toBeNull();
+  });
+
+  it("leaves a non-401 failure to the caller", async () => {
+    await saveTokens(profile, {
+      accessToken: "old-access",
+      refreshToken: "old-refresh",
+    });
+
+    mockFetch([() => json({ error: "nope" }, 403)]);
+
+    const client = await createAuthClient();
+    expect((await client.get("/whoami")).status).toBe(403);
+  });
+});
+
+describe("a headless session", () => {
+  beforeEach(() => {
+    process.env.SEAMLESS_REFRESH_TOKEN = "env-refresh";
+  });
+
+  // getTokens reads the environment fresh on every run, so a rotated token written
+  // to the keychain is never read back: storing it only makes it look preserved.
+  it("does not write a rotated token to the keychain", async () => {
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ token: "new-access", refreshToken: "rotated" }),
+      () => json({ ok: true }),
+    ]);
+
+    const client = await createAuthClient();
+    await client.get("/whoami");
+
+    delete process.env.SEAMLESS_REFRESH_TOKEN;
+    expect(await getTokens(profile)).toBeNull();
+  });
+
+  it("explains rotation when the environment's token is rejected", async () => {
+    mockFetch([
+      () => new Response(null, { status: 401 }),
+      () => json({ error: "refresh_token_reused" }, 401),
+    ]);
+
+    const client = await createAuthClient();
+    await expect(client.get("/whoami")).rejects.toThrow(
+      /SEAMLESS_REFRESH_TOKEN.*rotates the refresh token on every refresh/s,
+    );
   });
 });

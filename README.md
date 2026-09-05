@@ -440,8 +440,11 @@ never in a plaintext file:
 
 Tokens are keyed per profile (by name and instance URL) so multiple instances never collide, and
 they are removed when you log out or remove the profile. Access tokens are refreshed transparently:
-on a `401` the CLI rotates the pair via `/refresh`, stores the new tokens, and retries once. A
-rotated or reused refresh token clears the local session and prompts a fresh login.
+on a `401` the CLI refreshes via `/refresh`, stores what came back, and retries once. Concurrent
+requests share a single refresh rather than racing, because the instance would read the second
+use of the old token as reuse and revoke the session. A refresh that renews only the access token
+keeps the existing refresh token instead of discarding the session. A rejected refresh token, or a
+`401` that survives a refresh, clears the local session and prompts a fresh login.
 
 ### Headless and CI
 
@@ -455,8 +458,14 @@ export SEAMLESS_REFRESH_TOKEN=<refresh-token>
 seamless whoami
 ```
 
-Because `/refresh` rotates the refresh token on every call, this path is best for a single
-invocation; the rotated token is held only in memory for that process.
+`/refresh` rotates the refresh token on every call, and the instance treats a second use of a
+spent one as theft: it revokes the whole session chain. So a token that has already been
+refreshed once must not be sent again on a later run. The CLI keeps a rotated token in memory
+for the process and deliberately does not write it to the keychain, since `SEAMLESS_REFRESH_TOKEN`
+is read fresh on every run and would shadow it anyway.
+
+Issue a fresh refresh token per job rather than reusing one across builds. If a stale one is sent,
+the CLI says so and names the command that issues a new one.
 
 No command will render a prompt when stdin is not a terminal. Each one stops instead, naming the
 flag that answers the question, so a CI step fails immediately rather than hanging until its job

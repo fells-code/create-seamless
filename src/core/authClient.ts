@@ -6,6 +6,7 @@ import {
 import {
   deleteTokens,
   getTokens,
+  headlessRefreshToken,
   KeychainUnavailableError,
   saveTokens,
   type TokenBundle,
@@ -51,6 +52,49 @@ export function tokensFromAuthResponse(
     accessTokenExpiresAt: ttl !== undefined ? now + ttl * 1000 : undefined,
     refreshTokenExpiresAt:
       refreshTtl !== undefined ? now + refreshTtl * 1000 : undefined,
+  };
+}
+
+/**
+ * Reads a `/refresh` response, keeping the current refresh token when the instance
+ * did not send a new one.
+ *
+ * Separate from `tokensFromAuthResponse` because the two answer different questions.
+ * A login must establish both tokens, and a response missing either is unusable. A
+ * refresh only has to produce a usable access token: the response schema marks both
+ * fields optional, so requiring the pair would wipe a session that is still valid
+ * the first time an instance rotates only the access token.
+ */
+export function tokensFromRefreshResponse(
+  data: Record<string, unknown> | null,
+  current: TokenBundle,
+): TokenBundle | null {
+  if (!data) return null;
+
+  const accessToken = typeof data.token === "string" ? data.token : undefined;
+  if (!accessToken) return null;
+
+  const rotated =
+    typeof data.refreshToken === "string" && data.refreshToken
+      ? data.refreshToken
+      : undefined;
+
+  const now = Date.now();
+  const ttl = typeof data.ttl === "number" ? data.ttl : undefined;
+  const refreshTtl =
+    typeof data.refreshTtl === "number" ? data.refreshTtl : undefined;
+
+  return {
+    accessToken,
+    refreshToken: rotated ?? current.refreshToken,
+    accessTokenExpiresAt: ttl !== undefined ? now + ttl * 1000 : undefined,
+    refreshTokenExpiresAt:
+      refreshTtl !== undefined
+        ? now + refreshTtl * 1000
+        : // An unrotated token keeps the expiry it already had.
+          rotated
+          ? undefined
+          : current.refreshTokenExpiresAt,
   };
 }
 
@@ -108,11 +152,16 @@ async function createClientForProfile(
   }
   const session = tokens;
 
+  // A headless run reads SEAMLESS_REFRESH_TOKEN fresh every time, so the keychain is
+  // never consulted and writing a rotated token there only makes it look preserved.
+  const headless = headlessRefreshToken() !== undefined;
+
   const persist = async (next: TokenBundle): Promise<void> => {
     session.accessToken = next.accessToken;
     session.refreshToken = next.refreshToken;
     session.accessTokenExpiresAt = next.accessTokenExpiresAt;
     session.refreshTokenExpiresAt = next.refreshTokenExpiresAt;
+    if (headless) return;
     try {
       await saveTokens(profile, next);
     } catch (err) {
@@ -128,7 +177,12 @@ async function createClientForProfile(
     }
   };
 
-  const refresh = async (): Promise<void> => {
+  const expiredMessage = (): string =>
+    headless
+      ? `The refresh token in SEAMLESS_REFRESH_TOKEN was rejected by ${copy.label}. The instance rotates the refresh token on every refresh and revokes the session if a spent one is sent again, so a token that has already been refreshed once cannot be reused on a later run. Issue a fresh one with: ${copy.reauthCommand}.`
+      : `Your session for ${copy.label} has expired or was revoked. Run: ${copy.reauthCommand}.`;
+
+  const runRefresh = async (): Promise<void> => {
     const res = await apiRequest<Record<string, unknown>>(
       joinUrl(profile.instanceUrl, "/refresh"),
       {
@@ -139,12 +193,10 @@ async function createClientForProfile(
 
     if (!res.ok) {
       await clearSession();
-      throw new ReauthRequiredError(
-        `Your session for ${copy.label} has expired or was revoked. Run: ${copy.reauthCommand}.`,
-      );
+      throw new ReauthRequiredError(expiredMessage());
     }
 
-    const next = tokensFromAuthResponse(res.data);
+    const next = tokensFromRefreshResponse(res.data, session);
     if (!next) {
       await clearSession();
       throw new ReauthRequiredError(
@@ -153,6 +205,19 @@ async function createClientForProfile(
     }
 
     await persist(next);
+  };
+
+  // Single-flight. The instance rotates the refresh token on every call and reads a
+  // second use of the old one as theft, revoking the whole session chain, so two
+  // concurrent refreshes would not merely race: they would log the developer out.
+  let inFlight: Promise<void> | null = null;
+  const refresh = (): Promise<void> => {
+    if (!inFlight) {
+      inFlight = runRefresh().finally(() => {
+        inFlight = null;
+      });
+    }
+    return inFlight;
   };
 
   const authedFetch = async <T>(
@@ -168,11 +233,26 @@ async function createClientForProfile(
     });
 
     const url = joinUrl(profile.instanceUrl, path);
+    const sentWith = session.accessToken;
     let res = await apiRequest<T>(url, build());
 
     if (res.status === 401 && session.refreshToken) {
-      await refresh();
+      // Only refresh if nothing else already did while this request was in flight.
+      // Otherwise a burst of 401s against one stale token would each rotate again.
+      if (session.accessToken === sentWith) {
+        await refresh();
+      }
       res = await apiRequest<T>(url, build());
+
+      // A 401 on a freshly refreshed token is not something a caller can act on by
+      // retrying, and returning it verbatim left commands reporting an opaque failure
+      // instead of saying the session is gone.
+      if (res.status === 401) {
+        await clearSession();
+        throw new ReauthRequiredError(
+          `Your session for ${copy.label} was rejected after refreshing it. Run: ${copy.reauthCommand}.`,
+        );
+      }
     }
 
     return res;
