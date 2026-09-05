@@ -26,12 +26,21 @@ const CONFIG = {
 };
 
 let logs: string[];
+let errors: string[];
+let exitSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
   logs = [];
+  errors = [];
   vi.spyOn(console, "log").mockImplementation((msg?: unknown) => {
     logs.push(String(msg ?? ""));
   });
+  vi.spyOn(console, "error").mockImplementation((msg?: unknown) => {
+    errors.push(String(msg ?? ""));
+  });
+  exitSpy = vi.spyOn(process, "exit").mockImplementation(((code?: number) => {
+    throw new Error(`process.exit(${code})`);
+  }) as never);
   vi.restoreAllMocks;
   vi.mocked(fs.existsSync).mockReset();
   vi.mocked(fs.readFileSync).mockReset();
@@ -47,6 +56,19 @@ afterEach(() => {
 
 function output(): string {
   return logs.join("\n");
+}
+
+function errOutput(): string {
+  return errors.join("\n");
+}
+
+// A project where everything passes: files present, docker installed, containers up,
+// every endpoint healthy.
+function allPassing(): void {
+  vi.mocked(fs.existsSync).mockReturnValue(true);
+  vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(CONFIG) as never);
+  vi.mocked(execSync).mockReturnValue("seamless-api\nseamless-auth" as never);
+  vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 200 })));
 }
 
 describe("runCheck", () => {
@@ -231,5 +253,63 @@ describe("runCheck", () => {
     await runCheck();
 
     expect(output()).toContain("Failed to check containers");
+  });
+});
+
+// `check` is what anyone reaches for in a health-check script, and it always exited 0.
+// --strict makes it usable as a gate without changing what existing scripts see.
+describe("runCheck --strict", () => {
+  it("exits 0 without --strict even when checks fail", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    await runCheck();
+
+    expect(output()).toContain("seamless.config.json not found");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("exits 1 with --strict when a check fails", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+
+    await expect(runCheck(["--strict"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("1 check failed.");
+  });
+
+  it("exits 0 with --strict when everything passes", async () => {
+    allPassing();
+
+    await runCheck(["--strict"]);
+
+    expect(output()).toContain("Check complete.");
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  // One failure must not stop the others: the point of running check is the whole
+  // picture, and a gate that reports the first problem only is a worse gate.
+  it("runs every check before exiting, and counts them all", async () => {
+    vi.mocked(fs.existsSync).mockImplementation(
+      (p: unknown) => String(p).endsWith("seamless.config.json"),
+    );
+    vi.mocked(fs.readFileSync).mockReturnValue(JSON.stringify(CONFIG) as never);
+    vi.mocked(execSync).mockImplementation(() => {
+      throw new Error("no docker");
+    });
+    vi.stubGlobal("fetch", vi.fn(async () => {
+      throw new Error("refused");
+    }));
+
+    await expect(runCheck(["--strict"])).rejects.toThrow("process.exit(1)");
+
+    // web, api, docker, compose, containers, API, Auth, Console
+    expect(output()).toContain("Web project missing");
+    expect(output()).toContain("Auth not reachable");
+    expect(errOutput()).toMatch(/8 checks failed\./);
+  });
+
+  it("pluralizes the failure count", async () => {
+    vi.mocked(fs.existsSync).mockReturnValue(false);
+    await expect(runCheck(["--strict"])).rejects.toThrow("process.exit(1)");
+    expect(errOutput()).toContain("1 check failed.");
+    expect(errOutput()).not.toContain("1 checks failed.");
   });
 });
