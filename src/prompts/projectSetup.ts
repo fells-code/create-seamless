@@ -230,9 +230,6 @@ export async function runProjectSetupPrompts(
     apiTemplateId,
 
     authMode,
-    // Not a question: the full stack needs Docker either way, so asking and then
-    // overriding the answer only spent a keystroke to say so.
-    useDocker: true,
 
     adminMode,
     ownerEmail: ownerEmail.trim(),

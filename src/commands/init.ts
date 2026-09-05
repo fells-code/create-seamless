@@ -530,17 +530,18 @@ async function scaffoldLocal(
     );
   }
 
-  if (answers.useDocker) {
-    const dockerShared = await generateDockerCompose(root, {
-      authMode: answers.authMode,
-      adminMode: answers.adminMode,
-      oauth: oauthProviders,
-      ownerEmail: answers.ownerEmail,
-    });
+  // Both auth modes run the stack on compose, so the file is always written.
+  // Only the docker mode takes its shared config from here; a local auth server
+  // has already produced its own above.
+  const dockerShared = await generateDockerCompose(root, {
+    authMode: answers.authMode,
+    adminMode: answers.adminMode,
+    oauth: oauthProviders,
+    ownerEmail: answers.ownerEmail,
+  });
 
-    if (answers.authMode === "docker") {
-      sharedConfig = dockerShared;
-    }
+  if (answers.authMode === "docker") {
+    sharedConfig = dockerShared;
   }
 
   const ctx: ScaffoldContext = {

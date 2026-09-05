@@ -160,7 +160,6 @@ describe("runProjectSetupPrompts", () => {
       api: true,
       apiTemplateId: "api-a",
       authMode: "docker",
-      useDocker: true,
       adminMode: "api",
       ownerEmail: "dev@example.com",
     });
@@ -246,7 +245,7 @@ describe("runProjectSetupPrompts", () => {
 
   // The full stack needs Docker whichever way the auth server runs, so local auth
   // mode asks nothing extra about it.
-  it("enables docker for a local auth mode without asking", async () => {
+  it("resolves a local auth mode without asking anything extra", async () => {
     mockSelect({
       "Web example": "web-a",
       "Backend framework": "api-a",
@@ -257,7 +256,6 @@ describe("runProjectSetupPrompts", () => {
     const result = await runProjectSetupPrompts(fullRegistry());
 
     expect(result.authMode).toBe("local");
-    expect(result.useDocker).toBe(true);
     expect(confirm).not.toHaveBeenCalled();
     expect(out()).not.toContain("Enabling automatically");
   });
@@ -280,7 +278,6 @@ describe("runProjectSetupPrompts with --yes", () => {
       api: true,
       apiTemplateId: "api-a",
       authMode: "docker",
-      useDocker: true,
       adminMode: "api",
       ownerEmail: "owner@example.com",
     });
@@ -323,10 +320,7 @@ describe("runProjectSetupPrompts with --yes", () => {
       authMode: "local",
       adminMode: "none",
     });
-    // The Docker-is-required confirmation is a prompt, not a question --yes has
-    // an answer for; useDocker is true either way.
     expect(confirm).not.toHaveBeenCalled();
-    expect(result.useDocker).toBe(true);
   });
 
   it("falls back to the portal session email", async () => {
@@ -430,7 +424,7 @@ describe("runProjectSetupPrompts without a terminal", () => {
       adminMode: "api",
     });
 
-    expect(result.useDocker).toBe(true);
+    expect(result.authMode).toBe("local");
     expect(confirm).not.toHaveBeenCalled();
   });
 
