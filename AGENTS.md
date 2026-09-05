@@ -185,6 +185,24 @@ Templates are not in this repo — they live in the `seamless-templates` monorep
   the pre-commit hook (matching `seamless-auth-api`) rather than a CI staleness check, so the committed
   badge always reflects the latest local run. If you change coverage, let the hook regenerate the badge;
   do not hand-edit the SVG.
+## The scaffold smoke job
+
+[.github/workflows/scaffold-smoke.yml](.github/workflows/scaffold-smoke.yml) runs
+[scripts/scaffold-smoke.sh](scripts/scaffold-smoke.sh) on every PR: it scaffolds with
+`init --local --yes --auth=docker --admin=none`, brings up `db` and `auth` from the
+generated compose, then writes a row, recreates the container, and reads it back.
+
+It exists because every other job asserts the generated files as *strings*. This is the
+only one that hands them to Docker, so it is the only one that can catch a compose file
+that is well-formed and wrong. Bring-up alone is not enough: a volume mounted where the
+image does not store data leaves a database that starts, passes its healthcheck, serves
+queries, and quietly writes to the container layer. The read-back is what catches that.
+
+If you change [src/generators/docker/docker.ts](src/generators/docker/docker.ts), expect
+this job to be the one that fails. Run it locally with `./scripts/scaffold-smoke.sh`; set
+`SMOKE_EXTRA_COMPOSE` to an override file if you already have something on 5432 or 5312,
+since the generated compose pins both the ports and the container names.
+
 ## Before You Finish A Change
 
 - Run `npm run build` (the root package's only build step).
