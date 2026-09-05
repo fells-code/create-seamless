@@ -72,7 +72,7 @@ async function main() {
   }
 
   if (command === "check") {
-    await runCheck();
+    await runCheck(args.slice(1));
     return;
   }
 

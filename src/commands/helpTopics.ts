@@ -117,16 +117,24 @@ Needs no login.
   },
   {
     name: "check",
-    usage: ["seamless check"],
+    usage: ["seamless check [--strict]"],
     sections: [
       {
-        heading: "check",
-        body: `Validate project setup, Docker, and running services`,
+        heading: "check [--strict]",
+        body: `Validate project setup, Docker, and running services.
+
+Every check runs, so one failure does not hide the rest.
+
+--strict
+  • Exit 1 when any check failed, for a health-check script or a CI gate.
+    Without it the exit status is always 0, whatever the checks reported`,
       },
     ],
     examples: [
       `seamless check
   → Validate your project`,
+      `seamless check --strict
+  → The same, but exit non-zero if anything failed`,
     ],
   },
   {
