@@ -299,7 +299,7 @@ describe("runLogin: success", () => {
     ).toBe(true);
   });
 
-  it("validates the code prompt input as letters for an email login", async () => {
+  it("hints the email code shape without rejecting another one", async () => {
     mockRouter({
       "/login": [
         () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
@@ -316,12 +316,11 @@ describe("runLogin: success", () => {
       validate: (v: string) => string | undefined;
     };
     expect(codeCall.placeholder).toBe("ABCDEF");
-    expect(codeCall.validate("ABCDEF")).toBeUndefined();
-    expect(codeCall.validate("abcdef")).toBeUndefined();
-    expect(codeCall.validate("123456")).toMatch(/6-letter code/);
+    expect(codeCall.validate("A1B2C3")).toBeUndefined();
+    expect(codeCall.validate("")).toBe("A code is required");
   });
 
-  it("uppercases a lowercase email code before verifying", async () => {
+  it("verifies with the email code exactly as it was typed", async () => {
     const calls = mockRouter({
       "/login": [
         () => json({ token: "e1", identifierType: "email", loginMethods: ["email_otp"] }),
@@ -334,10 +333,10 @@ describe("runLogin: success", () => {
     await runLogin([]);
 
     const verify = calls.find((c) => c.url.endsWith("/otp/verify-login-email-otp"))!;
-    expect(verify.init.body).toBe(JSON.stringify({ verificationToken: "ABCDEF" }));
+    expect(verify.init.body).toBe(JSON.stringify({ verificationToken: "abcdef" }));
   });
 
-  it("validates the code prompt input as digits for a phone login", async () => {
+  it("hints the phone code shape without rejecting another one", async () => {
     mockRouter({
       "/login": [
         () => json({ token: "e1", identifierType: "phone", loginMethods: ["phone_otp"] }),
@@ -354,8 +353,8 @@ describe("runLogin: success", () => {
       validate: (v: string) => string | undefined;
     };
     expect(codeCall.placeholder).toBe("123456");
-    expect(codeCall.validate("123456")).toBeUndefined();
-    expect(codeCall.validate("ABCDEF")).toMatch(/numeric code/);
+    expect(codeCall.validate("12345678901")).toBeUndefined();
+    expect(codeCall.validate("  ")).toBe("A code is required");
   });
 
   it("validates the identifier prompt input", async () => {
