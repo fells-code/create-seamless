@@ -89,10 +89,23 @@ export async function saveTokens(
   b.set(accountKey(profile), JSON.stringify(bundle));
 }
 
+/**
+ * The refresh token supplied by the environment, for a run with no keychain (CI).
+ *
+ * Worth knowing about separately from `getTokens`, because it is read fresh on every
+ * run: the instance rotates the refresh token on every `/refresh` and treats a second
+ * use of a spent one as theft, revoking the whole session chain. So a rotated token
+ * cannot be persisted anywhere this will read it back, and a run that rotates leaves
+ * the environment holding a token that must not be sent again.
+ */
+export function headlessRefreshToken(): string | undefined {
+  return process.env.SEAMLESS_REFRESH_TOKEN?.trim() || undefined;
+}
+
 export async function getTokens(
   profile: Pick<Profile, "name" | "instanceUrl">,
 ): Promise<TokenBundle | null> {
-  const envRefresh = process.env.SEAMLESS_REFRESH_TOKEN?.trim();
+  const envRefresh = headlessRefreshToken();
   if (envRefresh) {
     return { accessToken: "", refreshToken: envRefresh };
   }
