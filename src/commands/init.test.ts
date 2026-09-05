@@ -112,6 +112,8 @@ vi.mock("../core/portal.js", () => ({
     (db: { host: string; port: number; database: string }) =>
       `postgres://USER:PASSWORD@${db.host}:${db.port}/${db.database}?sslmode=require`,
   ),
+  resolveAppInstanceUrl: (app: { instanceUrl?: string; domain?: string }) =>
+    app.instanceUrl ?? app.domain,
 }));
 vi.mock("../core/config.js", () => ({
   normalizeInstanceUrl: vi.fn((u: string) => `norm:${u}`),
@@ -1620,5 +1622,64 @@ describe("the admin console source mode", () => {
 
     await expect(runCLI()).rejects.toThrow(/Failed to download the admin dashboard/);
     expect(generateDockerCompose).not.toHaveBeenCalled();
+  });
+});
+
+// The portal serves mvp and business instances at `domain/<infraId>`, so `domain` is a
+// stored column that goes stale when a trial is upgraded and its tenant moves zones.
+// The scaffold has to point at the server-computed instanceUrl instead.
+describe("managed scaffold instance URL", () => {
+  function managedRun(over: Record<string, any>) {
+    vi.mocked(createPortalClient).mockResolvedValue({} as never);
+    vi.mocked(listApplications).mockResolvedValue([app(over)] as never);
+    vi.mocked(selectApplication).mockResolvedValue(app(over) as never);
+    vi.mocked(rotateServiceToken).mockResolvedValue("svc-token" as never);
+    vi.mocked(openTemplateSource).mockResolvedValue(makeSource() as never);
+    vi.mocked(runManagedTemplatePrompts).mockResolvedValue({
+      webTemplateId: "web-basic",
+      apiTemplateId: "api-express",
+    } as never);
+    return runCLI(undefined, [], { appId: "app-1" });
+  }
+
+  it("prefers instanceUrl over the stale domain column", async () => {
+    await managedRun({
+      instanceUrl: "https://zone-b.example.com/inf-42",
+      domain: "https://acme.example.com",
+    });
+
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      "/work/api",
+      expect.anything(),
+      expect.objectContaining({
+        authServerUrl: "norm:https://zone-b.example.com/inf-42",
+      }),
+    );
+  });
+
+  it("falls back to domain when the portal sends no instanceUrl", async () => {
+    await managedRun({ domain: "https://acme.example.com" });
+
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      "/work/api",
+      expect.anything(),
+      expect.objectContaining({
+        authServerUrl: "norm:https://acme.example.com",
+      }),
+    );
+  });
+
+  // An application whose domain column was never populated is still connectable if
+  // the portal computed an instanceUrl for it; filtering on domain hid it entirely.
+  it("offers an application that has an instanceUrl but no domain", async () => {
+    await managedRun({ instanceUrl: "https://zone-b.example.com/inf-42", domain: undefined });
+
+    expect(applyTemplateEnv).toHaveBeenCalledWith(
+      "/work/api",
+      expect.anything(),
+      expect.objectContaining({
+        authServerUrl: "norm:https://zone-b.example.com/inf-42",
+      }),
+    );
   });
 });
