@@ -58,22 +58,19 @@ export async function promptLogin(
       );
       const answer = await text({
         message: resent ? "Enter the new code" : "Enter the code we sent you",
+        // A hint, not a rule: the code format belongs to the instance, so the
+        // prompt only refuses an empty answer and lets the server judge the rest.
+        // Encoding today's shape here would reject a valid code from an instance
+        // that ever issues a different one, with no way to override it.
         placeholder: email ? "ABCDEF" : "123456",
-        validate: (value) => {
-          const code = (value ?? "").trim();
-          if (email) {
-            return /^[A-Za-z]{6}$/.test(code)
-              ? undefined
-              : "Enter the 6-letter code from the email.";
-          }
-          return /^\d{4,8}$/.test(code)
-            ? undefined
-            : "Enter the numeric code from the message.";
-        },
+        validate: (value) =>
+          (value ?? "").trim() ? undefined : "A code is required",
       });
       if (isCancel(answer)) return null;
-      const code = (answer as string).trim();
-      return email ? code.toUpperCase() : code;
+      // Sent as typed apart from surrounding whitespace. The instance normalizes
+      // case for email codes itself, so uppercasing here would only corrupt a
+      // case-sensitive one.
+      return (answer as string).trim();
     },
     notify: (event) => {
       switch (event.type) {
