@@ -1,5 +1,15 @@
 import type { AuthClient } from "./authClient.js";
 
+/**
+ * A session as the CLI reads it.
+ *
+ * `lastUsedAt` and `expiresAt` are optional here while the API declares them
+ * required, and that is deliberate rather than drift. Both columns are
+ * `allowNull: false` on the instance, so a current one always sends them, but the
+ * CLI is versioned separately from the instances it talks to and its serializer
+ * omits a field it cannot render. Parsing leniently and reporting what could not be
+ * read beats refusing a session over a date this never displays as more than text.
+ */
 export interface SessionInfo {
   id: string;
   deviceName?: string;
@@ -31,16 +41,32 @@ function toSessionInfo(raw: unknown): SessionInfo | null {
   };
 }
 
-export async function listSessions(client: AuthClient): Promise<SessionInfo[]> {
+export interface SessionList {
+  sessions: SessionInfo[];
+  /**
+   * Rows the instance sent that could not be read, almost always a missing or
+   * non-string `id`.
+   *
+   * Counted rather than discarded quietly. A session this cannot parse is still a
+   * session the developer has, and one they cannot revoke without an id, so reporting
+   * a shorter list than the instance sent is the wrong way for this command to be
+   * wrong.
+   */
+  unreadable: number;
+}
+
+export async function listSessions(client: AuthClient): Promise<SessionList> {
   const res = await client.get<{ sessions?: unknown[] }>("/sessions");
   if (!res.ok) {
     throw new Error(`Could not list sessions (${res.status}).`);
   }
 
   const raw = Array.isArray(res.data?.sessions) ? res.data.sessions : [];
-  return raw
+  const sessions = raw
     .map(toSessionInfo)
     .filter((session): session is SessionInfo => session !== null);
+
+  return { sessions, unreadable: raw.length - sessions.length };
 }
 
 export interface RevokeResult {

@@ -36,14 +36,15 @@ export async function runSessions(args: string[]): Promise<void> {
 }
 
 async function list(client: AuthClient, positional: string[]): Promise<void> {
-  const sessions = await listSessions(client);
+  const { sessions, unreadable } = await listSessions(client);
 
   if (positional.includes("--json")) {
     console.log(JSON.stringify(sessions, null, 2));
+    if (unreadable > 0) warnUnreadable(unreadable);
     return;
   }
 
-  if (sessions.length === 0) {
+  if (sessions.length === 0 && unreadable === 0) {
     console.log(kleur.dim("No active sessions."));
     return;
   }
@@ -51,6 +52,20 @@ async function list(client: AuthClient, positional: string[]): Promise<void> {
   for (const session of sessions) {
     printSession(session);
   }
+  if (unreadable > 0) warnUnreadable(unreadable);
+}
+
+// On stderr, so it cannot corrupt the JSON a script is parsing on stdout.
+function warnUnreadable(count: number): void {
+  console.error(
+    kleur.yellow(
+      `${count} session${count === 1 ? "" : "s"} could not be read and ${
+        count === 1 ? "is" : "are"
+      } not listed above. The instance sent ${
+        count === 1 ? "a record" : "records"
+      } this version does not understand; upgrade the CLI, or revoke everything with seamless sessions revoke --all.`,
+    ),
+  );
 }
 
 async function revoke(client: AuthClient, positional: string[]): Promise<void> {
@@ -89,7 +104,7 @@ async function revoke(client: AuthClient, positional: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const sessions = await listSessions(client);
+  const { sessions } = await listSessions(client);
   const isCurrent = sessions.find((session) => session.id === id)?.current ?? false;
 
   if (isCurrent) {
