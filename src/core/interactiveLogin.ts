@@ -82,6 +82,13 @@ export async function promptLogin(
             kleur.dim(`If an account exists for ${resolved}, a code is on its way.`),
           );
           break;
+        case "code_expired":
+          console.log(
+            kleur.yellow(
+              "That code was not sent: the five minute login window lapsed while you were typing.",
+            ),
+          );
+          break;
         case "code_resent":
           console.log(
             kleur.dim("Your previous code expired, so we sent a new one."),
