@@ -62,7 +62,7 @@ describe("generateAuthServer local mode", () => {
       return child as never;
     });
 
-    const promise = generateAuthServer({ root: tmpDir }, "local", [
+    const promise = generateAuthServer(tmpDir, [
       googleProvider(),
     ]);
     child.emit("close", 0);
@@ -89,37 +89,9 @@ describe("generateAuthServer local mode", () => {
     const child = fakeChild();
     vi.mocked(spawn).mockReturnValue(child as never);
 
-    const promise = generateAuthServer({ root: tmpDir }, "local");
+    const promise = generateAuthServer(tmpDir);
     child.emit("close", 1);
 
     await expect(promise).rejects.toThrow("git failed");
-  });
-});
-
-describe("generateAuthServer docker mode", () => {
-  it("fetches the env example and writes a docker-compose.yml", async () => {
-    stubEnvExampleFetch("SOME_VAR=value\n");
-
-    const shared = await generateAuthServer({ root: tmpDir }, "docker");
-
-    expect(spawn).not.toHaveBeenCalled();
-    expect(shared.kid).toBe("dev-main");
-    expect(shared.apiToken).toMatch(/^[0-9a-f]{64}$/);
-
-    const compose = fs.readFileSync(
-      path.join(tmpDir, "docker-compose.yml"),
-      "utf-8",
-    );
-
-    expect(compose).toContain(`image: ${POSTGRES_IMAGE}`);
-    expect(compose).toContain(`image: ${SEAMLESS_AUTH_API_IMAGE}`);
-    expect(compose).toContain(`"${shared.apiToken}"`);
-    expect(compose).toContain("volumes:\n  pgdata:");
-    expect(compose.endsWith("\n")).toBe(true);
-
-    // The auth-only compose publishes on loopback for the same reason as the
-    // full stack: this instance returns OTP codes in the response body.
-    expect(compose).toContain('- "127.0.0.1:5432:5432"');
-    expect(compose).toContain('- "127.0.0.1:5312:5312"');
   });
 });

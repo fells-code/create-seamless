@@ -4,7 +4,6 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   buildAuthEnv,
-  buildJWKSConfig,
   configureAuthLocalEnv,
   envToDockerBlock,
   extractSharedFromExistingEnv,
@@ -64,22 +63,6 @@ describe("envToDockerBlock", () => {
     expect(block).toBe("      KEY: |\n        line1\n        line2");
   });
 });
-
-describe("buildJWKSConfig", () => {
-  it("generates a keypair and a valid public JWKS document", () => {
-    const config = buildJWKSConfig();
-
-    expect(config.kid).toBe("main");
-    expect(config.privateKey).toContain("PRIVATE KEY");
-    expect(config.publicKey).toContain("PUBLIC KEY");
-
-    const parsed = JSON.parse(config.publicJwksJson);
-    expect(parsed).toEqual({
-      keys: [{ kid: "main", pem: config.publicKey }],
-    });
-  });
-});
-
 describe("buildAuthEnv", () => {
   it("wires docker-mode networking values", () => {
     const { env, shared } = buildAuthEnv({}, "docker");

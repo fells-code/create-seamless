@@ -522,8 +522,7 @@ async function scaffoldLocal(
 
   if (answers.authMode === "local") {
     sharedConfig = await generateAuthServer(
-      { root },
-      "local",
+      root,
       oauthProviders,
       answers.adminMode,
       answers.ownerEmail,

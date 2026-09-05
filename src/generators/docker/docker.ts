@@ -3,7 +3,6 @@ import path from "path";
 import { fetchEnvExample } from "../../core/fetch.js";
 import { parseEnv, parseEnvString } from "../../core/env.js";
 import { generateSecret } from "../../core/secrets.js";
-import { generateJWKS } from "../../core/jwks.js";
 import {
   buildOAuthAuthEnv,
   withLoginMethod,
@@ -365,30 +364,6 @@ function indentMultiline(value: string, spaces: number) {
     .split("\n")
     .map((line) => `${indent}${line}`)
     .join("\n");
-}
-
-export function buildJWKSConfig() {
-  const kid = "main";
-
-  const { publicKey, privateKey } = generateJWKS();
-
-  return {
-    kid,
-    privateKey,
-    publicKey,
-    publicJwksJson: JSON.stringify(
-      {
-        keys: [
-          {
-            kid,
-            pem: publicKey,
-          },
-        ],
-      },
-      null,
-      2,
-    ),
-  };
 }
 
 export async function configureAuthLocalEnv(
