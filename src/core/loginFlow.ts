@@ -120,12 +120,11 @@ async function startLogin(
     );
   }
 
-  // `/login` no longer answers 401. An identifier with no usable account, which used to
-  // mean unknown, unverified, or with no permitted method, now gets a 200 and a decoy
-  // pre-auth token so the response cannot be used to test whether an account exists. The
-  // branches that read 401 as "no such user" and "not verified yet" were removed with it:
-  // there is no longer an answer for them to read. Such a login fails at the code step
-  // instead, which is what `completeLogin` reports.
+  // `/login` never answers 401. An identifier with no usable account (unknown,
+  // unverified, or with no permitted method) gets a 200 and a decoy pre-auth token, so
+  // no answer here can be used to test whether an account exists. Nothing to read means
+  // nothing to report: such a login fails at the code step, which `completeLogin` names.
+  // Do not add a branch that reads a status as "no such user"; there is not one.
   if (!res.ok) {
     if (res.status === 400) {
       throw new LoginError(
@@ -133,9 +132,8 @@ async function startLogin(
       );
     }
     if (res.status === 423) {
-      // The one remaining answer that does imply an account, and the one worth naming:
-      // it needs prior failed attempts against this identifier, and the developer can
-      // act on it by waiting.
+      // The one answer that does imply an account, and the one worth naming: it needs
+      // prior failed attempts against this identifier, and waiting resolves it.
       throw new LoginError(lockedMessage(res.data, identifier));
     }
     if (res.status === 403) {

@@ -240,7 +240,6 @@ function adminService(mode: "image" | "source") {
       - "127.0.0.1:5174:80"
     environment:
       API_URL: http://localhost:3000/
-      AUTH_MODE: server
     volumes:
       - ./admin:/app
       - /app/node_modules
@@ -297,7 +296,6 @@ export function buildAuthEnv(
   env.PORT = "5312";
   env.NODE_ENV = "development";
 
-  env.AUTH_MODE = "server";
   env.ISSUER =
     mode === "docker" ? "http://auth:5312" : "http://localhost:5312";
 

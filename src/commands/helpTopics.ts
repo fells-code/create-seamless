@@ -40,7 +40,8 @@ With a template flag (e.g. --oauth, --react-oauth, --fastify):
   • Run seamless templates list to see every id, alias, and flag
 
 --profile <name>
-  • Use that profile instead of the active one
+  • Accepted and ignored, with a warning. Managed connect uses your portal
+    session (seamless login), not an instance profile
 
 --app <id>
   • Connect the project to that managed application (needs a portal
@@ -315,8 +316,8 @@ config get [key] [--json]
 
 config set <key> <value>
   • Update one writable key. String-typed keys (app_name, rpid,
-    access_token_ttl, refresh_token_ttl) take the value verbatim; every other
-    key parses it as JSON, falling back to a string
+    access_token_ttl, session_idle_ttl, refresh_token_ttl) take the value
+    verbatim; every other key parses it as JSON, falling back to a string
     (for example: config set app_name 123 sets the string "123",
     config set login_methods '["email_otp","passkey"]')
 

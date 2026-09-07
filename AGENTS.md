@@ -146,9 +146,15 @@ Modes and sibling repos:
 
 - `--local` builds the `@seamless-auth/*` packages from source (pre-publish contract testing); the
   default uses the published packages.
+- The browser layer runs once per web template, not once. `verify` reads the templates registry
+  and drives every `kind: web` entry that is not `coming-soon`, each served at :5173 in turn and
+  scoped to the flow tags its `template.json` declares in `verify.flows` (the whole suite when it
+  declares none). So `react-oauth` runs only `@oauth`, and `react-vite` runs everything.
 - The sibling repos are resolved relative to this repo, overridable with `SEAMLESS_API_DIR`,
-  `SEAMLESS_SERVER_DIR`, `SEAMLESS_REACT_SDK_DIR` (the React SDK), and `SEAMLESS_REACT_DIR` (the
-  `react-vite` web template, defaulting to `../seamless-templates/templates/web/react-vite`).
+  `SEAMLESS_SERVER_DIR`, `SEAMLESS_REACT_SDK_DIR` (the React SDK), and `SEAMLESS_TEMPLATES_DIR`
+  (the templates checkout the web templates come from, defaulting to `../seamless-templates`).
+  `SEAMLESS_REACT_DIR` is the narrower override: it names a single template directory and runs
+  that one instead of the registry's set.
 - Useful flags: `--api-only`, `--no-react`, `--filter=<flow>` (the `=` form; a space-separated `--filter <flow>` is not parsed), `--keep-up`.
 
 ## Important Folders
@@ -222,7 +228,17 @@ since the generated compose pins both the ports and the container names.
   limiter (10 per 15 minutes, hardcoded) bounds adapter / react OTP traffic. Keep specs off it where
   possible (for example, magic-link login instead of a second email-OTP round trip).
 - **Version pins**: [verify/adapter-app](verify/adapter-app) pins `@seamless-auth/express`,
-  [verify/adapter-fastify-app](verify/adapter-fastify-app) pins `@seamless-auth/fastify`, and the
-  `react-vite` template pins `@seamless-auth/react`. Bump these when new versions publish.
-- **Templates ref**: the CLI scaffolds from `seamless-templates` at `SEAMLESS_TEMPLATES_REF`
-  ([src/core/images.ts](src/core/images.ts)); bump it when a new templates release publishes.
+  [verify/adapter-fastify-app](verify/adapter-fastify-app) pins `@seamless-auth/fastify`, and each
+  web template pins `@seamless-auth/react`. Bump these when new versions publish.
+- **The four pins in [src/core/images.ts](src/core/images.ts)** are what a scaffold gets, and each
+  drifts on its own: `SEAMLESS_AUTH_API_VERSION` (the auth server image), the admin dashboard image
+  and ref, and `SEAMLESS_TEMPLATES_REF`. Check them against the sibling repos' latest tags before a
+  release; nothing fails when they lag, the scaffold just quietly ships an older stack.
+- **`--auth=local` is not pinned**: it `git clone`s `seamless-auth-api` at its default branch
+  ([src/generators/auth/auth.ts](src/generators/auth/auth.ts)) while `--auth=docker` runs the pinned
+  image, so the two auth modes can scaffold different servers from the same CLI version.
+- **Config keys ahead of the API**: `WRITABLE_KEYS` in
+  [src/core/systemConfig.ts](src/core/systemConfig.ts) mirrors the instance's strict patch schema.
+  `magic_link_redirect_uris` is currently ahead of it (defined in `@seamless-auth/types`, not yet
+  released there, and not yet read by the auth API), so an instance rejects that key today. Adding a
+  key here before the API accepts it makes `config set` fail against every live instance.

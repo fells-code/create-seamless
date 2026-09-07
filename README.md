@@ -201,11 +201,12 @@ Depending on your selections, the CLI generates a project like this:
 
 ```text
 my-app/
-├─ auth/        # Seamless Auth server (optional)
-├─ web/         # React web application (optional)
-├─ api/         # Express or Fastify API server (optional)
-├─ docker-compose.yml (optional)
-└─ README.md
+├─ auth/                  # Seamless Auth server (local auth mode only)
+├─ web/                   # React web application (optional)
+├─ api/                   # Express or Fastify API server (optional)
+├─ admin/                 # Admin console source (--admin=source only)
+├─ docker-compose.yml     # not written for a managed project
+└─ seamless.config.json
 ```
 
 All services are preconfigured to work together.
@@ -228,14 +229,13 @@ If you choose Docker during setup:
 docker compose up
 ```
 
-This starts:
-
-- PostgreSQL
-- Auth server
-- API server
-- Web app
+This starts PostgreSQL, the auth server, the API server, and the web app, plus a
+standalone admin console container under `--admin=image` or `--admin=source`.
 
 All services are configured to communicate correctly inside the container network.
+Ports are published on `127.0.0.1` only: the auth server returns OTP codes in the
+response for local login, which would be an authentication bypass for anyone else
+on the network.
 
 ---
 
@@ -256,10 +256,13 @@ cd auth
 npm install
 
 npm run db:create
-npm run db:migrate
+npm run migrate:up
 
 npm run dev
 ```
+
+The Docker path runs both of these for you at container start, so they are only
+needed when the auth server runs on the host.
 
 ---
 
@@ -280,6 +283,54 @@ cd web
 npm install
 npm run dev
 ```
+
+---
+
+## Checking and verifying
+
+Two commands answer two different questions: is *this project* healthy, and does the
+*whole auth surface* still behave.
+
+### `seamless check`
+
+Health-checks the project in the current directory, reading `seamless.config.json` to
+decide what applies. A local project gets the Docker and Compose checks; a managed one
+skips them and validates the remote instance instead. Every check runs, so one failure
+never hides the rest.
+
+```bash
+seamless check           # always exits 0, whatever it reported
+seamless check --strict  # exit 1 if any check failed, for a CI gate
+```
+
+The exit status is 0 without `--strict` because this output has been parsed by scripts
+since before the flag existed.
+
+### `seamless verify`
+
+The cross-package conformance harness. It stands up the ecosystem with Docker Compose
+(Postgres, the auth API, an Express adapter, a Fastify adapter, and the web starter),
+runs a Playwright matrix over it, and prints a flow x layer pass/fail grid plus JUnit and
+HTML reports. It ships with the package, so it needs no checkout of its own, but it does
+need Docker and a sibling `seamless-auth-api` source tree to build the auth server from.
+
+```bash
+seamless verify                    # everything, against the published SDKs
+seamless verify --api-only         # fast pass: the API layer alone
+seamless verify --no-react         # skip the browser layer, keep the adapters
+seamless verify --local            # build @seamless-auth/* from source first
+seamless verify --filter=passkey   # one flow (the = form only)
+seamless verify --keep-up          # leave the stack running afterwards
+```
+
+`--local` is the pre-publish check: it builds and packs the local SDK source rather than
+installing from npm, so an SDK regression surfaces before a release rather than after.
+The browser layer runs once per web template in the registry, each scoped to the flows
+its `template.json` declares.
+
+Sibling repositories are resolved next to this one and can be pointed elsewhere with
+`SEAMLESS_API_DIR`, `SEAMLESS_SERVER_DIR`, `SEAMLESS_REACT_SDK_DIR`, and
+`SEAMLESS_TEMPLATES_DIR`.
 
 ---
 
@@ -518,17 +569,18 @@ Everything is aligned across services so the system works immediately after setu
 
 ## Included projects
 
-Seamless CLI pulls from the following repositories:
+Seamless CLI scaffolds from, and conformance-tests against, these repositories:
 
-- Seamless Auth API
-  [https://github.com/fells-code/seamless-auth-api](https://github.com/fells-code/seamless-auth-api)
-
-- Seamless Templates (the frontend and API starters)
-  [https://github.com/fells-code/seamless-templates](https://github.com/fells-code/seamless-templates)
+| Repository | What it provides | How the CLI uses it |
+| --- | --- | --- |
+| [seamless-auth-api](https://github.com/fells-code/seamless-auth-api) | The auth server | Run as a pinned image (`--auth=docker`) or cloned into `auth/` (`--auth=local`) |
+| [seamless-templates](https://github.com/fells-code/seamless-templates) | The web and API starters | Scaffolded from its registry at a pinned ref |
+| [seamless-auth-server](https://github.com/fells-code/seamless-auth-server) | `@seamless-auth/core`, `/express`, `/fastify` | The adapters the scaffolded `api/` runs on |
+| [seamless-auth-react](https://github.com/fells-code/seamless-auth-react) | `@seamless-auth/react` | The client SDK the scaffolded `web/` runs on |
 
 The starters live in the templates monorepo and are listed in its registry, so the set of
 frameworks the CLI offers grows there. Each project can be used independently, but the CLI connects
-them into a working system.
+them into a working system, and `seamless verify` checks that connection holds across all four.
 
 ---
 
@@ -544,8 +596,8 @@ Full documentation is available at:
 
 Seamless Auth is built around a few principles:
 
-- Passwordless authentication only
-- No redirects or third-party auth providers
+- Passwordless authentication only (passkeys, magic links, email and phone OTP)
+- Optional OIDC sign-in, configured explicitly and self-hosted like everything else
 - Self-hosted by default
 - Production-shaped local development
 - Explicit configuration over hidden behavior
