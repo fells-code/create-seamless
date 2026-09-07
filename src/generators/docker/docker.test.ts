@@ -69,13 +69,14 @@ describe("buildAuthEnv", () => {
 
     expect(env.ISSUER).toBe("http://auth:5312");
     expect(env.DB_HOST).toBe("db");
-    expect(env.AUTH_MODE).toBe("server");
     expect(env.PORT).toBe("5312");
     expect(env.NODE_ENV).toBe("development");
     // The scaffolded stack no longer enables the bootstrap route: the first
     // admin comes from the OWNER_EMAIL grant at signup.
     expect(env.SEAMLESS_BOOTSTRAP_ENABLED).toBeUndefined();
     expect(env.SEAMLESS_BOOTSTRAP_SECRET).toBeUndefined();
+    // Nothing in the ecosystem reads AUTH_MODE, so the scaffold does not write it.
+    expect(env.AUTH_MODE).toBeUndefined();
     expect("bootstrapSecret" in shared).toBe(false);
     expect(env.API_SERVICE_TOKEN).toBe(shared.apiToken);
     expect(env.REFRESH_TOKEN_LOOKUP_SECRET).toMatch(/^[0-9a-f]{64}$/);
@@ -171,7 +172,7 @@ describe("configureAuthLocalEnv", () => {
     const written = fs.readFileSync(path.join(tmpDir, "auth", ".env"), "utf-8");
     expect(written).toContain(`API_SERVICE_TOKEN=${shared.apiToken}`);
     expect(written).toContain("SOME_KEY=placeholder");
-    expect(written).toContain("AUTH_MODE=server");
+    expect(written).not.toContain("AUTH_MODE");
     expect(written).toContain("ISSUER=http://localhost:5312");
     expect(written).toContain("DB_HOST=localhost");
     expect(written.endsWith("\n")).toBe(true);
@@ -309,7 +310,7 @@ describe("generateDockerCompose", () => {
     );
     expect(compose).toContain("container_name: admin");
     expect(compose).toContain("build: ./admin");
-    expect(compose).toContain("AUTH_MODE: server");
+    expect(compose).not.toContain("AUTH_MODE");
     expect(compose).toContain("- ./admin:/app");
     expect(compose).toContain(
       "UI_ORIGINS: http://localhost:5173,http://localhost:5174",
