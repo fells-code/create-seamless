@@ -78,9 +78,10 @@ export interface InitOptions {
   email?: string;
   auth?: string;
   admin?: string;
-  // --yes: answer every remaining question with the recommended option rather
-  // than prompting. It never stands in for a destructive confirmation; those
-  // take --force.
+  // The split every prompt below is written against: --yes answers the ordinary
+  // questions with the recommended option, --force answers the destructive ones
+  // (overwriting a non-empty directory, rotating a live service token), and
+  // neither answers managed-or-local, which --app and --local settle outright.
   yes?: boolean;
   force?: boolean;
 }
@@ -269,9 +270,7 @@ async function scaffold(
 }
 
 // Writing starter files over a directory someone already has work in is the one
-// destructive step in a scaffold, so --yes is deliberately not enough to reach
-// it. --force is, and it says nothing about the integrate-or-scaffold question,
-// which --app answers instead.
+// destructive step in a scaffold, so this takes --force rather than --yes.
 async function resolveExistingDirectoryAction(
   canConnect: boolean,
   opts: InitOptions,
@@ -296,8 +295,8 @@ async function resolveExistingDirectoryAction(
   return "scaffold";
 }
 
-// Managed or local decides where the project's auth lives for good, so --yes
-// alone will not pick: --app <id> means managed and --local means self-hosted.
+// Where the project's auth lives is settled for good here, so --yes will not pick:
+// --app <id> means managed, --local means self-hosted.
 async function resolveScaffoldTarget(
   appCount: number,
   opts: InitOptions,
@@ -318,6 +317,10 @@ async function resolveScaffoldTarget(
 // The bundled database as a connection string with placeholder credentials, or
 // an empty string when the control plane has not provisioned one yet. Never
 // requests ?reveal=true, so no live credential reaches this machine.
+//
+// Both callers run this before rotating the service token: a database that is not
+// provisioned yet is a warning rather than a failure, and finding that out after
+// the rotation would mean reporting it against a half-wired project.
 async function resolveDatabaseUrl(
   client: AuthClient,
   app: PortalApp,
@@ -400,9 +403,6 @@ async function scaffoldManaged(
     await source.copyInto(entry, dir);
   }
 
-  // Read before rotating: a database that is not provisioned yet is a warning,
-  // not a failure, and finding that out after the token is rotated would mean
-  // reporting it against a half-wired project.
   const databaseUrl = await resolveDatabaseUrl(client, app);
 
   const serviceToken = await issueServiceToken(client, app, opts);
@@ -595,9 +595,6 @@ async function integrateExistingProject(
 ) {
   const app = await selectApplication(apps, opts.appId);
 
-  // Read before rotating: a database that is not provisioned yet is a warning,
-  // not a failure, and finding that out after the token is rotated would mean
-  // reporting it against a half-wired project.
   const databaseUrl = await resolveDatabaseUrl(client, app);
 
   const serviceToken = await issueServiceToken(client, app, opts);
@@ -686,9 +683,8 @@ async function issueServiceToken(
   opts: InitOptions,
 ): Promise<string> {
   if (app.hasServiceToken) {
-    // Rotation breaks whatever is running on the old token, so it is a
-    // destructive confirmation like the overwrite one: --yes does not answer it,
-    // --force does.
+    // Rotation breaks whatever is running on the old token, so it confirms like
+    // the overwrite step does.
     if (opts.yes) {
       if (!opts.force) {
         throw new Error(

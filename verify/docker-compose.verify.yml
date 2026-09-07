@@ -1,15 +1,19 @@
 # Conformance stack for `seamless verify`.
-# Brings up Postgres + the auth API + the Express adapter from local source
-# (paths supplied by the verify command via env) so the Playwright harness can
-# drive every auth flow. NODE_ENV=test enables the API's external-delivery seam
-# so OTP / magic-link tokens are returned in responses (no real email/SMS).
 #
-# Required env (the `seamless verify` command writes these into .env.verify):
-#   SEAMLESS_API_DIR      absolute path to seamless-auth-api source
-#   SEAMLESS_ADAPTER_DIR  absolute path to the express adapter source
-#   API_SERVICE_TOKEN     shared secret between API and adapter
-#   JWKS_KID              key id the adapter expects (must match the API's active kid)
-#   OWNER_EMAIL           tenant owner; this email gets the admin role at signup
+# Postgres, the auth API built from local source, and two adopter backends that are
+# deliberate twins (Express on 3000, Fastify on 3001) so a failure is attributable to
+# one framework. The web starter is behind the `react` profile, since the api and
+# adapter layers need no browser.
+#
+# Env comes from the `seamless verify` process, not a file:
+#   SEAMLESS_API_DIR    absolute path to the seamless-auth-api source (build context)
+#   SEAMLESS_REACT_DIR  absolute path to the web template to serve (react profile only)
+#   API_SERVICE_TOKEN   shared secret between the API and both adapters
+#   JWKS_KID            key id the adapters expect (must match the API's active kid)
+#   OWNER_EMAIL         tenant owner; this email gets the admin role at signup
+#
+# The adapters are built from ./adapter-app and ./adapter-fastify-app in this repo,
+# so they take no path from the environment.
 
 name: seamless-verify
 
@@ -30,19 +34,17 @@ services:
       retries: 20
 
   auth-api:
-    # Built with the production Dockerfile (compiles dist/), but run with
-    # NODE_ENV=test so signing keys auto-generate and prod-only env (JWKS keys)
-    # is skipped. validateEnvs.sh gates startup on the env below.
+    # Built with the production Dockerfile (compiles dist/). Its validateEnvs.sh
+    # entrypoint runs the migrations and gates startup on the env below.
     build:
       context: ${SEAMLESS_API_DIR}
       dockerfile: Dockerfile
     ports:
       - '5312:5312'
     environment:
-      # `development` (not `test`): the API's JWKS endpoint only serves the
-      # auto-generated dev public key when NODE_ENV === 'development', even though
-      # signing treats any non-production env as dev. Running as development keeps
-      # JWKS publication working so the adapter/SDKs can verify tokens.
+      # `development`, not `test`: signing treats any non-production env as dev, but
+      # the JWKS endpoint only serves the auto-generated dev public key under
+      # `development`. The adapters and SDKs need that key to verify tokens.
       NODE_ENV: development
       PORT: '5312'
       APP_NAME: Seamless Verify
@@ -54,9 +56,9 @@ services:
       DEFAULT_ROLES: user
       AVAILABLE_ROLES: user,admin
       LOGIN_METHODS: passkey,magic_link,email_otp,phone_otp,oauth
-      # Required system config as of auth-api 0.3.0: the base URL for emailed
-      # magic links. Without it (and with a fresh DB, so system_config isn't seeded)
-      # the server exits at startup. The browser-visible web app runs on 5173.
+      # The base URL for emailed magic links, required at boot: with a fresh DB
+      # there is no seeded system_config row to fall back on, so the server exits
+      # without it. The browser-visible web app runs on 5173.
       FRONTEND_URL: http://localhost:5173
       DB_LOGGING: 'false'
       ACCESS_TOKEN_TTL: 15m

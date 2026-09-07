@@ -220,8 +220,9 @@ export function assertCliSupports(manifest: TemplateManifest, label: string) {
 }
 
 // Copies the template's example env to .env (if declared), then applies the
-// manifest's env.set, resolving {{placeholders}} against the scaffold context.
-// This replaces the per-framework configure step.
+// manifest's env.set, resolving {{placeholders}} against the scaffold context. This
+// is the whole per-template configuration contract: a starter that needs a new value
+// declares it in template.json rather than earning a branch here.
 export function applyTemplateEnv(
   destDir: string,
   manifest: TemplateManifest,

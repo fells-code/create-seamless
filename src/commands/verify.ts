@@ -88,8 +88,9 @@ function readTemplateFlows(dir: string): string[] | undefined {
 }
 
 // The web templates to build, serve, and drive. Each is served at :5173 in turn and
-// pointed at the adapter. Resolution order: an explicit SEAMLESS_REACT_DIR (a single
-// template path, used by CI), otherwise every runnable web template in the registry.
+// pointed at the adapter. SEAMLESS_REACT_DIR narrows the run to one template directory;
+// otherwise every runnable web template in the registry is driven, which is what CI does
+// (it sets SEAMLESS_TEMPLATES_DIR and leaves the set alone).
 function resolveWebTemplates(): WebTemplate[] {
   const override = process.env.SEAMLESS_REACT_DIR;
   if (override) {

@@ -6,6 +6,12 @@ export type SystemConfig = Record<string, unknown>;
 // Mirrors the instance's patch schema, which is strict: a key missing here is one
 // `config apply` silently drops and `config set` refuses, so the two lists have to
 // stay in step.
+//
+// `magic_link_redirect_uris` is the one entry ahead of it. The key is defined in
+// @seamless-auth/types but not yet released there, and the auth API still treats the
+// configured origins as the magic-link allowlist, so an instance rejects it today.
+// Leave it listed (a released API accepts it without a CLI change) but expect the
+// rejection until that release lands.
 export const WRITABLE_KEYS = [
   "app_name",
   "default_roles",
@@ -201,9 +207,9 @@ export async function deleteOAuthProvider(
 
 // The writable keys the instance types as a plain string. Their values are never
 // JSON-parsed, so `config set app_name 123` sends the string "123" rather than the
-// number 123, and `config set rpid true` sends "true". Everything else (arrays,
-// objects, numbers, booleans) is parsed, falling back to the raw string when the
-// value is not valid JSON, which is what makes `access_token_ttl 15m` work.
+// number 123, and `config set rpid true` sends "true". Everything else is parsed as
+// JSON, falling back to the raw string, which is what makes `access_token_ttl 15m`
+// work: a TTL is string-typed, but the fallback would have carried it anyway.
 const STRING_KEYS = new Set<string>([
   "app_name",
   "access_token_ttl",
