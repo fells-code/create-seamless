@@ -142,13 +142,29 @@ export interface OrgList {
   total: number;
 }
 
-export async function listOrgs(client: AuthClient): Promise<OrgList> {
+export interface ListOrgsOptions {
+  limit?: number;
+  offset?: number;
+  search?: string;
+}
+
+export async function listOrgs(
+  client: AuthClient,
+  opts: ListOrgsOptions = {},
+): Promise<OrgList> {
+  const query = new URLSearchParams();
+  if (opts.limit !== undefined) query.set("limit", String(opts.limit));
+  if (opts.offset !== undefined) query.set("offset", String(opts.offset));
+  if (opts.search) query.set("search", opts.search);
+  const suffix = query.size ? `?${query}` : "";
+
   const res = await call<{ organizations?: unknown; total?: number }>(
     client,
     "GET",
-    "/admin/organizations",
+    `/admin/organizations${suffix}`,
   );
   if (!res.ok) throw new AdminApiError(`Could not list organizations (${res.status}).`);
+  // `total` counts every match, not just this page, so callers can report position.
   return {
     organizations: arr(res.data?.organizations),
     total: res.data?.total ?? 0,

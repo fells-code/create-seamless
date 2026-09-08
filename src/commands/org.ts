@@ -12,7 +12,12 @@ import {
   updateOrg,
   type Json,
 } from "../core/admin.js";
-import { parseList, reportAdminError } from "./adminShared.js";
+import {
+  pagePosition,
+  parseList,
+  parseWindow,
+  reportAdminError,
+} from "./adminShared.js";
 import {
   confirmDestructive,
   hasForceFlag,
@@ -83,7 +88,14 @@ async function runOrgMembers(args: string[]): Promise<void> {
 
 async function orgList(client: AuthClient, rest: string[]): Promise<void> {
   const json = rest.includes("--json");
-  const { organizations, total } = await listOrgs(client);
+  const { limit, offset, rest: remaining } = parseWindow(rest);
+  const { value: search } = extractFlag(remaining, "search");
+
+  const { organizations, total } = await listOrgs(client, {
+    limit,
+    offset,
+    ...(search ? { search } : {}),
+  });
 
   if (json) {
     console.log(JSON.stringify(organizations, null, 2));
@@ -96,7 +108,9 @@ async function orgList(client: AuthClient, rest: string[]): Promise<void> {
   for (const org of organizations) {
     printOrgRow(org);
   }
-  console.log(kleur.dim(`${total} organization${total === 1 ? "" : "s"}.`));
+  console.log(
+    kleur.dim(pagePosition(offset, organizations.length, total, "organization")),
+  );
 }
 
 async function orgCreate(client: AuthClient, rest: string[]): Promise<void> {
