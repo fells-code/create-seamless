@@ -1,5 +1,89 @@
 # seamless-cli
 
+## 0.14.0
+
+### Minor Changes
+
+- af41ba4: Move the scaffold onto auth API `v0.12.0`, admin dashboard `v0.6.0`, and seamless-templates `v0.13.0`.
+
+  `v0.11.0` puts passkey enrollment behind an access session. It is a breaking change to the wire
+  contract: `/webAuthn/register/start` and `/webAuthn/register/finish` used to accept the ephemeral
+  token the API mints from an email address alone, so anyone who knew an address could enroll a
+  credential against that account and sign in as its owner. Both routes read the access session now,
+  and enrollment no longer issues a session of its own, answering `200` with the credential instead.
+  The same release declares and validates the window on `GET /admin/users`, and adds organization
+  deletion along with a paged, searchable admin organization list. `v0.12.0` ships dashboard `v0.6.0`
+  inside the API image, which is what that dashboard release needs: it pages and searches organizations
+  on the server, gains a remove action, takes a date range on Overview and Security, and grows an
+  Authenticator Policy section.
+
+  The admin dashboard pin moves with it, so the standalone console (`--admin=image` and
+  `--admin=source`) serves the same release the API image serves at `/console`.
+
+  The enrollment change has no safe release order, so every side of it moves here at once. Templates
+  `v0.13.0` carries `@seamless-auth/react` `0.12.0`, `@seamless-auth/express` `0.14.0` and
+  `@seamless-auth/fastify` `0.5.0` in the starters, and the conformance harness's adapters take the
+  same `^0.14.0` and `^0.5.0`. The adapters forward the access session the API now requires; an older
+  one sends what this API refuses, so a scaffold pinned to either half alone would answer `401` at
+  enrollment. No shipped flow loses a step, because registration proves an address with an email OTP
+  and verifying it issues the session before the passkey screen appears.
+
+  The adapters also proxy `DELETE /admin/organizations/:organizationId`, and forward the query string
+  on `GET /admin/users` and `GET /internal/auth-events/login-stats`, which both dropped it, so the
+  dashboard's user search and its login statistics range now reach the API as sent.
+
+- 206e3cd: Move the scaffold onto the current Seamless ecosystem: auth API `v0.10.0`, admin dashboard `v0.5.0`,
+  and seamless-templates `v0.12.0`.
+
+  Three releases of auth API work land together. `v0.8.0` gives WebAuthn challenges their own store
+  with a five-minute expiry and one-time use, so a registration and a login can be outstanding at once
+  instead of clobbering each other, and it adds `AUTHENTICATOR_POLICY`, which decides attachment, user
+  verification, attestation, and whether a synced passkey may enrol. `v0.9.0` puts the lockout policy
+  and the per-IP and per-identity limiters on TOTP step-up, which had none of the three, and stops
+  running refresh tokens through bcrypt. `v0.10.0` drops the `sessions.refreshTokenHash` column the
+  previous release stopped writing.
+
+  A scaffold's compose file is built from the pinned release's `.env.example`, so a new project picks up
+  `AUTHENTICATOR_POLICY` along with `SESSION_IDLE_TTL`, `MAX_CONCURRENT_SESSIONS` and a commented
+  `TRUST_PROXY`, and `REFRESH_TOKEN_TTL` moves from `1h` to `1d`.
+
+  The admin dashboard bump keeps the standalone console (`--admin=image` and `--admin=source`) in step
+  with the one the API image now serves at `/console`, since `v0.10.0` embeds dashboard `v0.5.0` itself.
+  That release names the acting administrator separately from the subject in the events table, and
+  collects identity proofing before preparing a device replacement, which is what the API already
+  records and requires.
+
+  Templates `v0.12.0` moves the starters onto `@seamless-auth/react` `0.11.0`, `@seamless-auth/express`
+  `0.13.0` and `@seamless-auth/fastify` `0.4.0`. All three are 0.x minors, so the caret ranges the
+  starters carried could never have resolved to them and a scaffolded project stayed on the older
+  versions however long ago they were pinned. It also carries per-application auth cookie names read
+  from `AUTH_COOKIE_PREFIX`, so two Seamless apps on one host stop overwriting each other's session. The
+  manifest contract is unchanged, so nothing in `init` moves with it.
+
+  The conformance harness's adapters follow the same SDKs the starters now install:
+  `@seamless-auth/express` `^0.13.0` and `@seamless-auth/fastify` `^0.4.0`. Both stop repeating the
+  access and refresh tokens in the body of the response that sets them as `httpOnly` cookies, and both
+  forward a magic link's `redirectUri` to the API.
+
+- ec85b59: Match the list windows the auth API now enforces, and let `org list` page.
+
+  The API validates the window on its admin list routes: `limit` is 1 to 100 and
+  `offset` is 0 or more. The CLI checked both flags against one range with a floor
+  of zero, which was right for `--offset` and wrong for `--limit`, so
+  `users list --limit 0` and `users list --limit 500` were sent and came back as a
+  400 naming neither the flag nor the bound. Each flag is checked against its own
+  range now, and the message says which one was wrong and what it accepts.
+
+  `--limit 0` is therefore an error rather than a request for nothing. Asking the
+  server for zero rows and reporting "No users." said there were none when the CLI
+  had not looked, which is worse than saying the flag is out of range.
+
+  `org list` gains `--limit`, `--offset` and `--search`. It sent no window at all,
+  so once the API started defaulting to 50 it printed the first 50 organizations
+  and then a count of every organization, claiming rows it had not shown. It now
+  reports where the page sits, the way `users list` already did, and `--search`
+  matches the name and slug server-side.
+
 ## 0.13.0
 
 ### Minor Changes
