@@ -8,7 +8,11 @@ import {
   prepareDeviceReplacement,
   type Json,
 } from "../core/admin.js";
-import { reportAdminError } from "./adminShared.js";
+import {
+  pagePosition,
+  parseWindow,
+  reportAdminError,
+} from "./adminShared.js";
 import {
   confirmDestructive,
   hasForceFlag,
@@ -45,27 +49,9 @@ export async function runUsers(args: string[]): Promise<void> {
   }
 }
 
-const DEFAULT_LIMIT = 50;
-
-// `--limit 0` is a legitimate answer (ask for nothing), so the floor is 0 rather
-// than 1, but a negative or non-numeric page is a typo the server would silently
-// reinterpret.
-function pageNumber(raw: string | undefined, flag: string, fallback: number): number {
-  if (raw === undefined) return fallback;
-  const value = Number(raw);
-  if (!Number.isInteger(value) || value < 0) {
-    console.error(kleur.red(`--${flag} must be a non-negative whole number.`));
-    process.exit(1);
-  }
-  return value;
-}
-
 async function usersList(client: AuthClient, rest: string[]): Promise<void> {
   const json = rest.includes("--json");
-  const limitFlag = extractFlag(rest, "limit");
-  const offsetFlag = extractFlag(limitFlag.rest, "offset");
-  const limit = pageNumber(limitFlag.value, "limit", DEFAULT_LIMIT);
-  const offset = pageNumber(offsetFlag.value, "offset", 0);
+  const { limit, offset } = parseWindow(rest);
 
   const { users, total } = await listUsers(client, { limit, offset });
 
@@ -82,13 +68,7 @@ async function usersList(client: AuthClient, rest: string[]): Promise<void> {
   for (const user of users) {
     printUserRow(user);
   }
-  console.log(
-    kleur.dim(
-      `Showing ${offset + 1}-${offset + users.length} of ${total} user${
-        total === 1 ? "" : "s"
-      }.`,
-    ),
-  );
+  console.log(kleur.dim(pagePosition(offset, users.length, total, "user")));
 }
 
 async function usersDelete(client: AuthClient, rest: string[]): Promise<void> {

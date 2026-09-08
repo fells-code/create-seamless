@@ -128,7 +128,10 @@ describe("runOrg list", () => {
       total: 1,
     });
     await runOrg(["list", "--json"]);
-    expect(vi.mocked(listOrgs)).toHaveBeenCalledWith(fakeClient);
+    expect(vi.mocked(listOrgs)).toHaveBeenCalledWith(fakeClient, {
+      limit: 50,
+      offset: 0,
+    });
     expect(logs()).toContain(JSON.stringify([{ id: "o1", name: "Acme" }], null, 2));
   });
 
@@ -159,6 +162,39 @@ describe("runOrg list", () => {
     expect(logs()).toContain("(no id)");
     expect(logs()).toContain("(no name)");
     expect(logs()).toContain("2 organizations.");
+  });
+
+  // The endpoint returns one page and a count of every match, so printing the
+  // count alone claimed rows that were never shown.
+  it("reports where the page sits in the result set", async () => {
+    vi.mocked(listOrgs).mockResolvedValue({
+      organizations: [{ id: "o1", name: "Acme" }],
+      total: 140,
+    });
+    await runOrg(["list", "--limit", "1", "--offset", "50"]);
+    expect(vi.mocked(listOrgs)).toHaveBeenCalledWith(fakeClient, {
+      limit: 1,
+      offset: 50,
+    });
+    expect(logs()).toContain("Showing 51-51 of 140 organizations.");
+  });
+
+  it("sends a search term when one is given", async () => {
+    vi.mocked(listOrgs).mockResolvedValue({
+      organizations: [{ id: "o1", name: "Acme" }],
+      total: 1,
+    });
+    await runOrg(["list", "--search", "acme"]);
+    expect(vi.mocked(listOrgs)).toHaveBeenCalledWith(fakeClient, {
+      limit: 50,
+      offset: 0,
+      search: "acme",
+    });
+  });
+
+  it("rejects a window the API would refuse", async () => {
+    await expect(runOrg(["list", "--limit", "0"])).rejects.toBeInstanceOf(ExitError);
+    expect(vi.mocked(listOrgs)).not.toHaveBeenCalled();
   });
 });
 

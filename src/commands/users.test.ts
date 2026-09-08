@@ -183,12 +183,44 @@ describe("runUsers list", () => {
     ["--limit", "abc"],
     ["--limit", "-1"],
     ["--offset", "1.5"],
+    ["--offset", "-1"],
   ])("rejects %s %s", async (flag, value) => {
     await expect(runUsers(["list", flag, value])).rejects.toBeInstanceOf(ExitError);
     expect(errorSpy).toHaveBeenCalledWith(
-      expect.stringContaining("must be a non-negative whole number"),
+      expect.stringContaining("must be a whole number"),
     );
     expect(vi.mocked(listUsers)).not.toHaveBeenCalled();
+  });
+
+  // The two flags do not share a range, so the message has to name the one that
+  // was wrong and the bound it broke.
+  it.each(["0", "101"])(
+    "rejects --limit %s outside the range the API accepts",
+    async (value) => {
+      await expect(runUsers(["list", "--limit", value])).rejects.toBeInstanceOf(ExitError);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "--limit must be a whole number between 1 and 100.",
+      );
+      expect(vi.mocked(listUsers)).not.toHaveBeenCalled();
+    },
+  );
+
+  it("still accepts an offset of zero", async () => {
+    vi.mocked(listUsers).mockResolvedValue({ users: [{ id: "u1" }], total: 1 });
+    await runUsers(["list", "--offset", "0"]);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(fakeClient, {
+      limit: 50,
+      offset: 0,
+    });
+  });
+
+  it("accepts the largest window the API allows", async () => {
+    vi.mocked(listUsers).mockResolvedValue({ users: [{ id: "u1" }], total: 1 });
+    await runUsers(["list", "--limit", "100"]);
+    expect(vi.mocked(listUsers)).toHaveBeenCalledWith(fakeClient, {
+      limit: 100,
+      offset: 0,
+    });
   });
 });
 

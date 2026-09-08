@@ -356,7 +356,9 @@ config oauth-providers <list|add|update|remove>
         body: `Admin user management (requires an admin role).
 
 users list [--limit <n>] [--offset <n>] [--json]
-  • List users
+  • List users, 50 at a time by default
+  • --limit is 1 to 100, --offset is 0 or more; total counts every user, not
+    just the page shown
 users delete <id> [--force]
   • Delete a user (asks for confirmation)
 users credentials <id> [--json]
@@ -383,7 +385,10 @@ users prepare-device-replacement <id> [--force] [--keep-sessions] [--keep-passke
           "org <list|create|get|update>, org members <list|add|update|remove>",
         body: `Admin organization management (requires an admin role).
 
-org list [--json]
+org list [--limit <n>] [--offset <n>] [--search <text>] [--json]
+  • Lists 50 at a time; --limit is 1 to 100, --offset is 0 or more
+  • --search matches the name and slug, and total counts every match rather
+    than the page shown
 org create <name> [--slug <slug>]
 org get <id> [--json]
 org update <id> [--name <name>] [--slug <slug>]
